@@ -241,7 +241,7 @@ function flash(message, tone = "info") {
   flash._timeout = window.setTimeout(() => {
     state.flash = null;
     syncFlashLayer();
-  }, 7000);
+  }, 11000);
 }
 
 function fieldWrapper(field) {
