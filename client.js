@@ -236,12 +236,105 @@ function escapeHtml(value) {
 
 function flash(message, tone = "info") {
   state.flash = { message, tone };
-  render();
+  syncFlashLayer();
   window.clearTimeout(flash._timeout);
   flash._timeout = window.setTimeout(() => {
     state.flash = null;
-    render();
-  }, 4200);
+    syncFlashLayer();
+  }, 7000);
+}
+
+function fieldWrapper(field) {
+  return field?.closest(".field");
+}
+
+function clearFieldError(field) {
+  if (!field || !["INPUT", "TEXTAREA", "SELECT"].includes(field.tagName)) return;
+  field.setCustomValidity("");
+  const wrapper = fieldWrapper(field);
+  if (!wrapper) return;
+  wrapper.classList.remove("has-error");
+  const note = wrapper.querySelector(".field-error");
+  if (note) note.remove();
+}
+
+function clearFormErrors(form) {
+  form?.querySelectorAll("input, textarea, select").forEach((field) => clearFieldError(field));
+}
+
+function setFieldError(form, name, message) {
+  const field = form?.querySelector(`[name="${CSS.escape(name)}"]`);
+  if (!field) return false;
+  field.setCustomValidity(message);
+  const wrapper = fieldWrapper(field);
+  if (wrapper) {
+    wrapper.classList.add("has-error");
+    const existing = wrapper.querySelector(".field-error");
+    if (existing) {
+      existing.textContent = message;
+    } else {
+      wrapper.insertAdjacentHTML("beforeend", `<small class="field-error">${escapeHtml(message)}</small>`);
+    }
+  }
+  return true;
+}
+
+function syncInvalidFields(form) {
+  form?.querySelectorAll("input, textarea, select").forEach((field) => {
+    const wrapper = fieldWrapper(field);
+    if (!wrapper) return;
+    if (field.validity.valid) {
+      wrapper.classList.remove("has-error");
+      const note = wrapper.querySelector(".field-error");
+      if (note) note.remove();
+      return;
+    }
+    wrapper.classList.add("has-error");
+    const message = field.validationMessage;
+    const existing = wrapper.querySelector(".field-error");
+    if (existing) {
+      existing.textContent = message;
+    } else {
+      wrapper.insertAdjacentHTML("beforeend", `<small class="field-error">${escapeHtml(message)}</small>`);
+    }
+  });
+}
+
+function reportFormValidity(form) {
+  const valid = form.reportValidity();
+  syncInvalidFields(form);
+  return valid;
+}
+
+function applyApiErrorToForm(form, message) {
+  if (!form || !message) return false;
+  const mappings = [
+    { match: "This email already exists.", fields: ["email"] },
+    { match: "Invalid email or password.", fields: ["email", "password"] },
+    { match: "No account found for this email.", fields: ["email"] },
+    { match: "Reset link is invalid.", fields: ["password"] },
+    { match: "Reset link has expired.", fields: ["password"] },
+    { match: "Full name is required.", fields: ["fullName"] },
+    { match: "Gender is required", fields: ["gender"] },
+    { match: "Mobile number is required.", fields: ["mobile"] },
+    { match: "Mobile number must be 8 digits", fields: ["mobile"] },
+    { match: "City is required.", fields: ["cityId"] },
+    { match: "Instagram is required.", fields: ["instagram"] },
+    { match: "Password is required.", fields: ["password"] },
+    { match: "New password is required.", fields: ["password"] },
+    { match: "Password must be", fields: ["password"] },
+  ];
+  const matched = mappings.find((entry) => String(message).includes(entry.match));
+  if (!matched) return false;
+  matched.fields.forEach((name) => setFieldError(form, name, message));
+  syncInvalidFields(form);
+  return true;
+}
+
+function syncFlashLayer() {
+  const layer = app.querySelector("[data-flash-layer]");
+  if (!layer) return;
+  layer.innerHTML = renderFlash();
 }
 
 function formatDate(value) {
@@ -285,6 +378,28 @@ function validateKuwaitMobile(value) {
   return !local || /^\d{8}$/.test(local)
     ? null
     : l("Mobile number must be 8 digits after +965.", "يجب أن يكون رقم الهاتف 8 أرقام بعد +965.");
+}
+
+function validatePasswordStrength(value) {
+  const password = String(value || "");
+  if (!password) return l("Password is required.", "كلمة المرور مطلوبة.");
+  if (password.length < 8) {
+    return l("Password must be at least 8 characters.", "يجب أن تكون كلمة المرور 8 أحرف على الأقل.");
+  }
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    return l(
+      "Password must include uppercase, lowercase, and a number.",
+      "يجب أن تحتوي كلمة المرور على حرف كبير وحرف صغير ورقم."
+    );
+  }
+  return null;
+}
+
+function passwordRequirementHint() {
+  return l(
+    "Use at least 8 characters with uppercase, lowercase, and a number.",
+    "استخدم 8 أحرف على الأقل مع حرف كبير وحرف صغير ورقم."
+  );
 }
 
 function renderKuwaitMobileField(name, value = "", required = false) {
@@ -1143,10 +1258,12 @@ function render(options = {}) {
   document.body.classList.toggle("rtl", state.locale === "ar");
   if (!state.currentUser) {
     app.innerHTML = renderAuth();
+    syncFlashLayer();
     if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
     return;
   }
   app.innerHTML = renderShell();
+  syncFlashLayer();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
 
@@ -1155,12 +1272,12 @@ function renderAuth() {
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
+    <div class="flash-layer" data-flash-layer></div>
     <section class="login-shell">
       <article class="login-card">
         <p class="eyebrow">PICK Internal</p>
         <h1>${l("PICK Influence Hub", "منصة PICK لإدارة المؤثرين")}</h1>
         <p class="login-copy">${l("Sign in, request access, or reset your password.", "سجّل الدخول أو اطلب حساباً أو أعد تعيين كلمة المرور.")}</p>
-        ${renderFlash()}
         <div class="row-wrap" style="margin-bottom: 18px;">
           <button class="${state.authMode === "login" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="login">${l("Sign In", "تسجيل الدخول")}</button>
           <button class="${state.authMode === "signup" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="signup">${l("Sign Up", "تسجيل جديد")}</button>
@@ -1205,7 +1322,7 @@ function renderSignupForm() {
     <form id="signupForm" class="form-grid two-col">
       <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required /></label>
       <label class="field"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required /></label>
-      <label class="field"><span>${l("Password", "كلمة المرور")} <em class="required-mark">*</em></span><input name="password" type="password" required /></label>
+      <label class="field"><span>${l("Password", "كلمة المرور")} <em class="required-mark">*</em></span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
       <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", "", true)}</label>
       <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", "", true)}</label>
       <label class="field"><span>${l("City", "المدينة")} <em class="required-mark">*</em></span>${renderCitySelect("cityId", "", false, true)}</label>
@@ -1231,7 +1348,7 @@ function renderForgotPasswordForm() {
 function renderResetPasswordForm() {
   return `
     <form id="resetPasswordForm" class="form-grid">
-      <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="password" required /></label>
+      <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
       <button type="submit">${l("Reset password", "إعادة تعيين كلمة المرور")}</button>
     </form>
   `;
@@ -1271,6 +1388,7 @@ function renderShell() {
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
+    <div class="flash-layer" data-flash-layer></div>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand-block">
@@ -1310,7 +1428,6 @@ function renderShell() {
         </div>
       </aside>
       <main class="main-stage">
-        ${renderFlash()}
         ${renderPage()}
       </main>
     </div>
@@ -1318,7 +1435,14 @@ function renderShell() {
 }
 
 function renderFlash() {
-  return state.flash ? `<div class="flash-banner ${state.flash.tone}">${escapeHtml(state.flash.message)}</div>` : "";
+  return state.flash
+    ? `
+      <div class="flash-banner ${state.flash.tone}" role="status" aria-live="polite">
+        <div class="flash-banner-copy">${escapeHtml(state.flash.message)}</div>
+        <button type="button" class="flash-dismiss" data-action="dismiss-flash" aria-label="${escapeHtml(l("Dismiss message", "إغلاق الرسالة"))}">×</button>
+      </div>
+    `
+    : "";
 }
 
 function pageHeader(title, copy, options = {}) {
@@ -1705,7 +1829,7 @@ function renderInfluencersPage() {
                       </div>
                     </form>
                     ${state.passwordEditorUserId === user.id ? `<form class="inline-form manual-password-form" data-user-id="${user.id}" style="margin-top: 12px;">
-                      <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="text" required /></label>
+                      <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
                       <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
                     </form>` : ""}
                   </article>
@@ -2699,7 +2823,7 @@ function renderManagersPage() {
       <form id="createManagerForm" class="form-grid two-col">
         <label class="field"><span>${l("Full name", "الاسم الكامل")}</span><input name="fullName" required /></label>
         <label class="field"><span>${l("Email", "البريد الإلكتروني")}</span><input name="email" type="email" required /></label>
-        <label class="field"><span>${l("Password", "كلمة المرور")}</span><input name="password" type="text" required /></label>
+        <label class="field"><span>${l("Password", "كلمة المرور")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
         <label class="field"><span>${l("Mobile", "الهاتف")}</span>${renderKuwaitMobileField("mobile")}</label>
         <div class="row-wrap field-span-full">
           <button type="submit">${l("Create manager", "إنشاء المدير")}</button>
@@ -2801,7 +2925,7 @@ function renderManagerEditPage() {
             </div>
             ${state.passwordEditorUserId === manager.id ? `
               <form class="form-grid manual-password-form" data-user-id="${manager.id}" style="margin-top: 12px;">
-                <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="text" required /></label>
+                <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
                 <div class="row-wrap">
                   <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
                 </div>
@@ -3764,7 +3888,7 @@ function renderInfluencerProfilePage() {
           <button type="button" class="secondary" data-action="toggle-password-editor" data-user-id="${user.id}">${state.passwordEditorUserId === user.id ? l("Close password", "إغلاق كلمة المرور") : l("Change password", "تغيير كلمة المرور")}</button>
         </div>
         ${state.passwordEditorUserId === user.id ? `<form class="inline-form manual-password-form" data-user-id="${user.id}" style="margin-top: 12px;">
-          <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="text" required /></label>
+          <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
           <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
         </form>` : ""}
       </section>
@@ -3918,6 +4042,13 @@ async function handleClick(event) {
     state.authMode = target.dataset.mode;
     if (state.authMode !== "reset") state.generatedLink = "";
     render();
+    return;
+  }
+
+  if (action === "dismiss-flash") {
+    state.flash = null;
+    window.clearTimeout(flash._timeout);
+    syncFlashLayer();
     return;
   }
 
@@ -4132,6 +4263,8 @@ async function handleClick(event) {
 async function handleSubmit(event) {
   event.preventDefault();
   const form = event.target;
+  clearFormErrors(form);
+  if (!reportFormValidity(form)) return;
   try {
     if (form.id === "loginForm") {
       const payload = formDataToObject(new FormData(form));
@@ -4145,12 +4278,18 @@ async function handleSubmit(event) {
     }
     if (form.id === "signupForm") {
       const values = formDataToObject(new FormData(form));
+      const passwordError = validatePasswordStrength(values.password);
+      if (passwordError) {
+        setFieldError(form, "password", passwordError);
+        reportFormValidity(form);
+        throw new Error(passwordError);
+      }
       const mobileError = validateKuwaitMobile(values.mobile);
-      if (mobileError) throw new Error(mobileError);
-      if (!values.gender) throw new Error(l("Gender is required.", "الجنس مطلوب."));
-      if (!values.mobile) throw new Error(l("Mobile number is required.", "رقم الهاتف مطلوب."));
-      if (!values.cityId) throw new Error(l("City is required.", "المدينة مطلوبة."));
-      if (!String(values.instagram || "").trim()) throw new Error(l("Instagram is required.", "حساب إنستغرام مطلوب."));
+      if (mobileError) {
+        setFieldError(form, "mobile", mobileError);
+        reportFormValidity(form);
+        throw new Error(mobileError);
+      }
       await api("/api/signup", { method: "POST", body: JSON.stringify(values) });
       state.authMode = "login";
       flash(l("Your signup request was created and is waiting for approval.", "تم إنشاء طلب التسجيل وهو بانتظار الاعتماد."), "success");
@@ -4165,9 +4304,16 @@ async function handleSubmit(event) {
       return;
     }
     if (form.id === "resetPasswordForm") {
+      const password = new FormData(form).get("password");
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        setFieldError(form, "password", passwordError);
+        reportFormValidity(form);
+        throw new Error(passwordError);
+      }
       await api("/api/password/reset", {
         method: "POST",
-        body: JSON.stringify({ token: state.resetToken, password: new FormData(form).get("password") }),
+        body: JSON.stringify({ token: state.resetToken, password }),
       });
       state.resetToken = "";
       state.authMode = "login";
@@ -4181,7 +4327,11 @@ async function handleSubmit(event) {
       const tagError = validateTagInputAgainstLibrary(payload.targetTags, availableTagValues());
       if (tagError) throw new Error(tagError);
       const timelineError = validateCampaignTimeline(payload);
-      if (timelineError) throw new Error(timelineError);
+      if (timelineError) {
+        ["startDate", "endDate", "visitDeadline", "submissionDeadline"].forEach((name) => setFieldError(form, name, timelineError));
+        reportFormValidity(form);
+        throw new Error(timelineError);
+      }
       const created = await api("/api/campaigns", { method: "POST", body: JSON.stringify(payload) });
       const bannerFile = form.querySelector("[name='banner']")?.files?.[0];
       if (bannerFile) {
@@ -4206,25 +4356,29 @@ async function handleSubmit(event) {
       const tagError = validateTagInputAgainstLibrary(payload.targetTags, availableTagValues(campaign?.targetTags || []));
       if (tagError) throw new Error(tagError);
       const timelineError = validateCampaignTimeline(payload);
-      if (timelineError) throw new Error(timelineError);
-      await mutateAndRefresh(`/api/campaigns/${campaignId}/update`, payload, l("Campaign updated.", "تم تحديث الحملة."));
+      if (timelineError) {
+        ["startDate", "endDate", "visitDeadline", "submissionDeadline"].forEach((name) => setFieldError(form, name, timelineError));
+        reportFormValidity(form);
+        throw new Error(timelineError);
+      }
+      await mutateAndRefresh(`/api/campaigns/${campaignId}/update`, payload, l("Campaign updated.", "تم تحديث الحملة."), { rethrow: true });
       return;
     }
     if (form.id === "bannerForm") {
       const formData = new FormData(form);
       const campaignId = formData.get("campaignId");
-      await mutateAndRefresh(`/api/campaigns/${campaignId}/banner`, formData, l("Banner uploaded.", "تم رفع البانر."));
+      await mutateAndRefresh(`/api/campaigns/${campaignId}/banner`, formData, l("Banner uploaded.", "تم رفع البانر."), { rethrow: true });
       return;
     }
     if (form.id === "uploadCodesForm") {
       const formData = new FormData(form);
       const campaignId = formData.get("campaignId");
-      await mutateAndRefresh(`/api/campaigns/${campaignId}/codes/upload`, formData, l("Codes uploaded.", "تم رفع الأكواد."));
+      await mutateAndRefresh(`/api/campaigns/${campaignId}/codes/upload`, formData, l("Codes uploaded.", "تم رفع الأكواد."), { rethrow: true });
       return;
     }
     if (form.id === "resetCodesForm") {
       const campaignId = new FormData(form).get("campaignId");
-      await mutateAndRefresh(`/api/campaigns/${campaignId}/codes/reset`, {}, l("Uploaded codes deleted and affected assignments canceled.", "تم حذف الأكواد وإلغاء التخصيصات المتأثرة."));
+      await mutateAndRefresh(`/api/campaigns/${campaignId}/codes/reset`, {}, l("Uploaded codes deleted and affected assignments canceled.", "تم حذف الأكواد وإلغاء التخصيصات المتأثرة."), { rethrow: true });
       return;
     }
     if (form.classList.contains("admin-influencer-form")) {
@@ -4234,36 +4388,69 @@ async function handleSubmit(event) {
       const tagError = validateTagInputAgainstLibrary(values.tags, availableTagValues(user?.tags || []));
       if (tagError) throw new Error(tagError);
       values.tags = normalizeTagInput(values.tags);
-      await mutateAndRefresh(`/api/users/${userId}/admin-update`, values, l("Influencer notes updated.", "تم تحديث ملاحظات المؤثر."));
+      await mutateAndRefresh(`/api/users/${userId}/admin-update`, values, l("Influencer notes updated.", "تم تحديث ملاحظات المؤثر."), { rethrow: true });
       return;
     }
     if (form.classList.contains("manual-password-form")) {
       const userId = form.dataset.userId;
       const values = formDataToObject(new FormData(form));
+      const passwordError = validatePasswordStrength(values.password);
+      if (passwordError) {
+        setFieldError(form, "password", passwordError);
+        reportFormValidity(form);
+        throw new Error(passwordError);
+      }
       state.passwordEditorUserId = null;
-      await mutateAndRefresh(`/api/users/${userId}/set-password`, values, l("Password updated.", "تم تحديث كلمة المرور."));
+      await mutateAndRefresh(`/api/users/${userId}/set-password`, values, l("Password updated.", "تم تحديث كلمة المرور."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.id === "profileForm") {
       const formData = new FormData(form);
       const mobileError = validateKuwaitMobile(formData.get("mobile"));
-      if (mobileError) throw new Error(mobileError);
-      if (!String(formData.get("fullName") || "").trim()) throw new Error(l("Full name is required.", "الاسم الكامل مطلوب."));
-      if (!formData.get("gender")) throw new Error(l("Gender is required.", "الجنس مطلوب."));
-      if (state.currentUser.role === "influencer") {
-        if (!formData.get("mobile")) throw new Error(l("Mobile number is required.", "رقم الهاتف مطلوب."));
-        if (!formData.get("cityId")) throw new Error(l("City is required.", "المدينة مطلوبة."));
-        if (!String(formData.get("instagram") || "").trim()) throw new Error(l("Instagram is required.", "حساب إنستغرام مطلوب."));
+      if (mobileError) {
+        setFieldError(form, "mobile", mobileError);
+        reportFormValidity(form);
+        throw new Error(mobileError);
       }
-      await mutateAndRefresh("/api/profile/update", formData, l("Profile updated.", "تم تحديث الملف."));
+      if (state.currentUser.role === "influencer") {
+        if (!formData.get("mobile")) {
+          const message = l("Mobile number is required.", "رقم الهاتف مطلوب.");
+          setFieldError(form, "mobile", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+        if (!formData.get("cityId")) {
+          const message = l("City is required.", "المدينة مطلوبة.");
+          setFieldError(form, "cityId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+        if (!String(formData.get("instagram") || "").trim()) {
+          const message = l("Instagram is required.", "حساب إنستغرام مطلوب.");
+          setFieldError(form, "instagram", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+      }
+      await mutateAndRefresh("/api/profile/update", formData, l("Profile updated.", "تم تحديث الملف."), { rethrow: true });
       return;
     }
     if (form.id === "createManagerForm") {
       const values = formDataToObject(new FormData(form));
+      const passwordError = validatePasswordStrength(values.password);
+      if (passwordError) {
+        setFieldError(form, "password", passwordError);
+        reportFormValidity(form);
+        throw new Error(passwordError);
+      }
       const mobileError = validateKuwaitMobile(values.mobile);
-      if (mobileError) throw new Error(mobileError);
-      await mutateAndRefresh("/api/managers", values, l("Campaign manager created.", "تم إنشاء مدير الحملات."));
+      if (mobileError) {
+        setFieldError(form, "mobile", mobileError);
+        reportFormValidity(form);
+        throw new Error(mobileError);
+      }
+      await mutateAndRefresh("/api/managers", values, l("Campaign manager created.", "تم إنشاء مدير الحملات."), { rethrow: true });
       form.reset();
       return;
     }
@@ -4271,35 +4458,39 @@ async function handleSubmit(event) {
       const managerId = form.dataset.managerId;
       const values = formDataToObject(new FormData(form));
       const mobileError = validateKuwaitMobile(values.mobile);
-      if (mobileError) throw new Error(mobileError);
-      await mutateAndRefresh(`/api/managers/${managerId}/update`, values, l("Campaign manager updated.", "تم تحديث مدير الحملات."));
+      if (mobileError) {
+        setFieldError(form, "mobile", mobileError);
+        reportFormValidity(form);
+        throw new Error(mobileError);
+      }
+      await mutateAndRefresh(`/api/managers/${managerId}/update`, values, l("Campaign manager updated.", "تم تحديث مدير الحملات."), { rethrow: true });
       return;
     }
     if (form.id === "createCityForm") {
-      await mutateAndRefresh("/api/cities", formDataToObject(new FormData(form)), l("City added.", "تمت إضافة المدينة."));
+      await mutateAndRefresh("/api/cities", formDataToObject(new FormData(form)), l("City added.", "تمت إضافة المدينة."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.classList.contains("update-city-form")) {
-      await mutateAndRefresh(`/api/cities/${form.dataset.cityId}/update`, formDataToObject(new FormData(form)), l("City updated.", "تم تحديث المدينة."));
+      await mutateAndRefresh(`/api/cities/${form.dataset.cityId}/update`, formDataToObject(new FormData(form)), l("City updated.", "تم تحديث المدينة."), { rethrow: true });
       return;
     }
     if (form.id === "createCategoryForm") {
-      await mutateAndRefresh("/api/categories", formDataToObject(new FormData(form)), l("Category added.", "تمت إضافة الفئة."));
+      await mutateAndRefresh("/api/categories", formDataToObject(new FormData(form)), l("Category added.", "تمت إضافة الفئة."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.classList.contains("update-category-form")) {
-      await mutateAndRefresh(`/api/categories/${form.dataset.categoryId}/update`, formDataToObject(new FormData(form)), l("Category updated.", "تم تحديث الفئة."));
+      await mutateAndRefresh(`/api/categories/${form.dataset.categoryId}/update`, formDataToObject(new FormData(form)), l("Category updated.", "تم تحديث الفئة."), { rethrow: true });
       return;
     }
     if (form.id === "createPlatformForm") {
-      await mutateAndRefresh("/api/platforms", formDataToObject(new FormData(form)), l("Platform added.", "تمت إضافة المنصة."));
+      await mutateAndRefresh("/api/platforms", formDataToObject(new FormData(form)), l("Platform added.", "تمت إضافة المنصة."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.classList.contains("update-platform-form")) {
-      await mutateAndRefresh(`/api/platforms/${form.dataset.platformId}/update`, formDataToObject(new FormData(form)), l("Platform updated.", "تم تحديث المنصة."));
+      await mutateAndRefresh(`/api/platforms/${form.dataset.platformId}/update`, formDataToObject(new FormData(form)), l("Platform updated.", "تم تحديث المنصة."), { rethrow: true });
       return;
     }
     if (form.id === "createTagForm") {
@@ -4307,7 +4498,7 @@ async function handleSubmit(event) {
       const tagError = validateSingleTagToken(values.value);
       if (tagError) throw new Error(tagError);
       values.value = sanitizeTagToken(values.value);
-      await mutateAndRefresh("/api/tags", values, l("Tag added.", "تمت إضافة العلامة."));
+      await mutateAndRefresh("/api/tags", values, l("Tag added.", "تمت إضافة العلامة."), { rethrow: true });
       form.reset();
       return;
     }
@@ -4316,37 +4507,42 @@ async function handleSubmit(event) {
       const tagError = validateSingleTagToken(values.value);
       if (tagError) throw new Error(tagError);
       values.value = sanitizeTagToken(values.value);
-      await mutateAndRefresh(`/api/tags/${form.dataset.tagId}/update`, values, l("Tag updated.", "تم تحديث العلامة."));
+      await mutateAndRefresh(`/api/tags/${form.dataset.tagId}/update`, values, l("Tag updated.", "تم تحديث العلامة."), { rethrow: true });
       return;
     }
     if (form.id === "createBranchForm") {
-      await mutateAndRefresh("/api/branches", new FormData(form), l("Branch created.", "تم إنشاء الفرع."));
+      await mutateAndRefresh("/api/branches", new FormData(form), l("Branch created.", "تم إنشاء الفرع."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.id === "editBranchForm") {
       const branchId = new FormData(form).get("branchId");
-      await mutateAndRefresh(`/api/branches/${branchId}/update`, new FormData(form), l("Branch updated.", "تم تحديث الفرع."));
+      await mutateAndRefresh(`/api/branches/${branchId}/update`, new FormData(form), l("Branch updated.", "تم تحديث الفرع."), { rethrow: true });
       return;
     }
     if (form.classList.contains("submission-form")) {
       const formData = new FormData(form);
       const participantId = form.dataset.participantId;
-      await mutateAndRefresh(`/api/participants/${participantId}/submission`, formData, l("Proof submitted.", "تم إرسال الإثبات."));
+      await mutateAndRefresh(`/api/participants/${participantId}/submission`, formData, l("Proof submitted.", "تم إرسال الإثبات."), { rethrow: true });
       return;
     }
     if (form.classList.contains("manual-reserve-form")) {
       const codeId = form.dataset.codeId;
       state.manualReserveCodeId = null;
-      await mutateAndRefresh(`/api/codes/${codeId}/manual-reserve`, formDataToObject(new FormData(form)), l("Offline reservation added.", "تمت إضافة الحجز الخارجي."));
+      await mutateAndRefresh(`/api/codes/${codeId}/manual-reserve`, formDataToObject(new FormData(form)), l("Offline reservation added.", "تمت إضافة الحجز الخارجي."), { rethrow: true });
       return;
     }
   } catch (error) {
+    applyApiErrorToForm(form, error.message);
+    syncInvalidFields(form);
     flash(error.message, "error");
   }
 }
 
 function handleChange(event) {
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
+    clearFieldError(event.target);
+  }
   if (event.target.matches("[data-action='change-locale']")) {
     saveLocale(event.target.value);
     render();
@@ -4387,6 +4583,9 @@ function handleChange(event) {
 }
 
 function handleInput(event) {
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
+    clearFieldError(event.target);
+  }
   if (event.target.matches("[data-tag-editor]")) {
     event.target.value = sanitizeTagToken(event.target.value);
     return;
@@ -4473,7 +4672,7 @@ function campaignFormPayload(form) {
   };
 }
 
-async function mutateAndRefresh(url, payload, successMessage) {
+async function mutateAndRefresh(url, payload, successMessage, options = {}) {
   try {
     await api(url, {
       method: "POST",
@@ -4486,6 +4685,7 @@ async function mutateAndRefresh(url, payload, successMessage) {
     }
     flash(successMessage, "success");
   } catch (error) {
+    if (options.rethrow) throw error;
     flash(error.message, "error");
   }
 }

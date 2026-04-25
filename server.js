@@ -726,106 +726,327 @@ function serializeParticipant(store, participant) {
 
 function codeStatsForCampaign(store, campaignId) {
   const codes = store.campaignCodes.filter((code) => code.campaignId === Number(campaignId));
-  return {
+  const byStatus = {
     total: codes.length,
-    available: codes.filter((code) => code.status === "available").length,
-    reserved: codes.filter((code) => code.status === "reserved").length,
-    blocked: codes.filter((code) => code.status === "blocked").length,
-    used: codes.filter((code) => code.status === "used").length,
+    available: 0,
+    reserved: 0,
+    used: 0,
+    blocked: 0,
+    deleted: 0,
   };
-}
-
-function participantNeedsProof(status) {
-  return ["confirmed"].includes(status);
-}
-
-function validStatusesForInfluencer() {
-  return ["active", "pending", "rejected", "suspended"];
-}
-
-function normalizeCampaignStatus(value) {
-  const normalized = text(value).toLowerCase();
-  if (["draft", "live", "completed", "deactivated"].includes(normalized)) return normalized;
-  if (["active", "published"].includes(normalized)) return "live";
-  return "draft";
-}
-
-function campaignPayload(source, current = {}) {
-  const branchMode = source.branchMode === "selected" ? "selected" : "all";
-  const branchIds = branchMode === "selected" ? parseNumberList(source.branchIds) : [];
-  return {
-    titleEn: text(source.titleEn || current.titleEn),
-    titleAr: text(source.titleAr || current.titleAr),
-    type: text(source.type || current.type || "shop_visit"),
-    status: normalizeCampaignStatus(source.status || current.status),
-    audience: text(source.audience || current.audience),
-    audienceAr: text(source.audienceAr || current.audienceAr),
-    descriptionEn: text(source.descriptionEn || current.descriptionEn),
-    descriptionAr: text(source.descriptionAr || current.descriptionAr),
-    offerDescription: text(source.offerDescription || current.offerDescription),
-    offerUsageCount: Math.max(1, Number(source.offerUsageCount ?? current.offerUsageCount) || 1),
-    startDate: text(source.startDate || current.startDate),
-    endDate: text(source.endDate || current.endDate),
-    visitDeadline: text(source.visitDeadline || current.visitDeadline),
-    submissionDeadline: text(source.submissionDeadline || current.submissionDeadline),
-    branchMode,
-    branchIds,
-    targetCityIds: parseNumberList(source.targetCityIds ?? current.targetCityIds),
-    targetCategoryIds: parseNumberList(source.targetCategoryIds ?? current.targetCategoryIds),
-    targetTags: parseTags(source.targetTags ?? current.targetTags),
-  };
-}
-
-function validateCampaignTimeline(payload) {
-  const startDate = new Date(payload.startDate);
-  const endDate = new Date(payload.endDate);
-  const visitDeadline = new Date(payload.visitDeadline);
-  const submissionDeadline = new Date(payload.submissionDeadline);
-  if ([startDate, endDate, visitDeadline, submissionDeadline].some((date) => Number.isNaN(date.getTime()))) {
-    return "Please choose valid campaign dates.";
+  for (const code of codes) {
+    if (code.status in byStatus) byStatus[code.status] += 1;
   }
-  if (startDate > endDate) return "Start date must be on or before end date.";
-  if (endDate > visitDeadline) return "End date must be on or before visit deadline.";
-  if (visitDeadline > submissionDeadline) return "Visit deadline must be on or before submission deadline.";
-  return "";
+  return byStatus;
 }
 
-function eligibleCampaignsFor(store, influencer) {
+function serializeCampaign(store, campaign) {
+  const createdBy = userById(store, campaign.createdBy);
+  const updatedBy = userById(store, campaign.updatedBy);
+  return {
+    ...campaign,
+    codeStats: codeStatsForCampaign(store, campaign.id),
+    createdByName: createdBy?.fullName || "",
+    updatedByName: updatedBy?.fullName || "",
+    branchNamesEn:
+      campaign.branchMode === "all"
+        ? ["All branches"]
+        : campaign.branchIds.map((branchId) => branchById(store, branchId)?.nameEn || "").filter(Boolean),
+    branchNamesAr:
+      campaign.branchMode === "all"
+        ? ["جميع الأفرع"]
+        : campaign.branchIds.map((branchId) => branchById(store, branchId)?.nameAr || "").filter(Boolean),
+  };
+}
+
+function influencerSummary(store, influencer) {
+  const participations = store.participants.filter((participant) => participant.influencerId === influencer.id);
+  const joined = participations.filter((participant) => participant.status !== "canceled").length;
+  const visited = participations.filter((participant) =>
+    ["confirmed", "visited", "submitted", "completed"].includes(participant.status)
+  ).length;
+  const submitted = participations.filter((participant) =>
+    ["submitted", "completed"].includes(participant.status)
+  ).length;
+  const activePendingProof = participations.filter((participant) =>
+    ["confirmed", "visited"].includes(participant.status)
+  ).length;
+  const lastActivityDate = participations
+    .map((participant) => participant.submittedAt || participant.visitedAt || participant.joinedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
+
+  return {
+    influencerId: influencer.id,
+    fullName: influencer.fullName,
+    cityId: influencer.cityId,
+    categoryId: influencer.categoryId,
+    cityNameEn: cityById(store, influencer.cityId)?.nameEn || "",
+    categoryNameEn: categoryById(store, influencer.categoryId)?.nameEn || "",
+    tags: influencer.tags || [],
+    joined,
+    visited,
+    submitted,
+    pendingProof: activePendingProof,
+    completionRate: joined ? Math.round((submitted / joined) * 100) : 0,
+    lastActivityDate,
+  };
+}
+
+function reportBundleForCampaigns(store, campaigns) {
+  const campaignRows = campaigns.map((campaign) => {
+    const participants = store.participants.filter((participant) => participant.campaignId === campaign.id);
+    const codeStats = codeStatsForCampaign(store, campaign.id);
+    const joined = participants.filter((participant) => participant.status !== "canceled").length;
+    const visited = participants.filter((participant) =>
+      ["confirmed", "visited", "submitted", "completed"].includes(participant.status)
+    ).length;
+    const submitted = participants.filter((participant) =>
+      ["submitted", "completed"].includes(participant.status)
+    ).length;
+    const canceled = participants.filter((participant) => participant.status === "canceled").length;
+
+    return {
+      campaignId: campaign.id,
+      titleEn: campaign.titleEn,
+      titleAr: campaign.titleAr,
+      status: campaign.status,
+      joined,
+      visited,
+      submitted,
+      canceled,
+      totalCodes: codeStats.total,
+      availableCodes: codeStats.available,
+      reservedCodes: codeStats.reserved,
+      usedCodes: codeStats.used,
+      blockedCodes: codeStats.blocked,
+      deletedCodes: codeStats.deleted,
+      visitRate: joined ? Math.round((visited / joined) * 100) : 0,
+      submissionRate: joined ? Math.round((submitted / joined) * 100) : 0,
+      completionRate: joined ? Math.round((submitted / joined) * 100) : 0,
+      visitDeadline: campaign.visitDeadline,
+      submissionDeadline: campaign.submissionDeadline,
+    };
+  });
+
+  const influencerRows = store.users
+    .filter((user) => user.role === "influencer")
+    .map((user) => influencerSummary(store, user));
+
+  const visibleCampaignIds = new Set(campaigns.map((campaign) => campaign.id));
+  const submissionRows = store.participants
+    .filter((participant) => visibleCampaignIds.has(participant.campaignId) && (participant.socialLink || participant.feedback))
+    .map((participant) => {
+      const campaign = campaignById(store, participant.campaignId);
+      const influencer = userById(store, participant.influencerId);
+      return {
+        participantId: participant.id,
+        campaignId: participant.campaignId,
+        campaignTitleEn: campaign?.titleEn || "",
+        campaignTitleAr: campaign?.titleAr || "",
+        influencerName: influencer?.fullName || "",
+        status: participant.status,
+        socialLink: participant.socialLink,
+        feedback: participant.feedback,
+        hasImage: Boolean(participant.imagePath),
+        submittedAt: participant.submittedAt,
+      };
+    });
+
+  const codeRows = store.campaignCodes
+    .filter((code) => visibleCampaignIds.has(code.campaignId))
+    .map((code) => {
+      const serialized = serializeCampaignCode(store, code);
+      return {
+        campaignId: code.campaignId,
+        campaignTitleEn: campaignById(store, code.campaignId)?.titleEn || "",
+        codeValue: code.codeValue,
+        usageCount: campaignById(store, code.campaignId)?.offerUsageCount || code.usageCount,
+        offerText: campaignById(store, code.campaignId)?.offerDescription || code.offerText,
+        status: code.status,
+        reservedAt: code.reservedAt,
+        usedAt: code.usedAt,
+        blockedAt: code.blockedAt || "",
+        deletedAt: code.deletedAt || "",
+        assignedInfluencer: serialized.reservedByInfluencerName,
+        reservationSource: serialized.reservationSource,
+        reservedByPlatform: serialized.reservedByPlatform,
+      };
+    });
+
+  return {
+    summary: {
+      campaignCount: campaignRows.length,
+      joinedCount: campaignRows.reduce((sum, row) => sum + row.joined, 0),
+      visitedCount: campaignRows.reduce((sum, row) => sum + row.visited, 0),
+      submittedCount: campaignRows.reduce((sum, row) => sum + row.submitted, 0),
+      totalCodes: campaignRows.reduce((sum, row) => sum + row.totalCodes, 0),
+      availableCodes: campaignRows.reduce((sum, row) => sum + row.availableCodes, 0),
+      reservedCodes: campaignRows.reduce((sum, row) => sum + row.reservedCodes, 0),
+      usedCodes: campaignRows.reduce((sum, row) => sum + row.usedCodes, 0),
+      blockedCodes: campaignRows.reduce((sum, row) => sum + row.blockedCodes, 0),
+      deletedCodes: campaignRows.reduce((sum, row) => sum + row.deletedCodes, 0),
+    },
+    campaigns: campaignRows,
+    influencers: influencerRows,
+    submissions: submissionRows,
+    codes: codeRows,
+  };
+}
+
+function activeManagerScopeCampaigns(store, user) {
+  if (!user) return [];
+  if (["admin", "campaign_manager"].includes(user.role)) return store.campaigns;
+  const participantCampaignIds = new Set(
+    store.participants.filter((participant) => participant.influencerId === user.id).map((participant) => participant.campaignId)
+  );
+  return store.campaigns.filter((campaign) => participantCampaignIds.has(campaign.id));
+}
+
+function campaignMatchesInfluencer(store, campaign, influencer) {
+  if (!["live"].includes(campaign.status)) return false;
+  if (campaign.targetCityIds.length && !campaign.targetCityIds.includes(influencer.cityId)) return false;
+  if (campaign.targetCategoryIds.length && !campaign.targetCategoryIds.includes(influencer.categoryId)) return false;
+  if (campaign.targetTags.length) {
+    const influencerTags = new Set((influencer.tags || []).map((tag) => tag.toLowerCase()));
+    const matched = campaign.targetTags.some((tag) => influencerTags.has(tag.toLowerCase()));
+    if (!matched) return false;
+  }
+  return true;
+}
+
+function eligibleCampaignsFor(store, user) {
+  const joinedActiveIds = new Set(
+    store.participants
+      .filter((participant) => participant.influencerId === user.id && participant.status !== "canceled")
+      .map((participant) => participant.campaignId)
+  );
+
   return store.campaigns.filter((campaign) => {
-    if (campaign.status !== "live") return false;
-    if (influencer.status !== "active") return false;
-    if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(influencer.cityId)) return false;
-    if ((campaign.targetCategoryIds || []).length && !(campaign.targetCategoryIds || []).includes(influencer.categoryId)) return false;
-    if ((campaign.targetTags || []).length) {
-      const influencerTags = new Set((influencer.tags || []).map((tag) => normalizeTag(tag)));
-      const matched = (campaign.targetTags || []).some((tag) => influencerTags.has(normalizeTag(tag)));
-      if (!matched) return false;
-    }
-    return !store.participants.some(
-      (participant) => participant.campaignId === campaign.id && participant.influencerId === influencer.id && participant.status !== "canceled"
-    );
+    if (!campaignMatchesInfluencer(store, campaign, user)) return false;
+    if (joinedActiveIds.has(campaign.id)) return false;
+    if (codeStatsForCampaign(store, campaign.id).available <= 0) return false;
+    return true;
   });
 }
 
-function buildBootstrap(store, user) {
-  const currentUser = sanitizeUser(user);
-  const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
-  const participants = store.participants.map((participant) => serializeParticipant(store, participant));
-  const reports = buildReports(store);
+function generateNotifications(store, user) {
+  const notifications = [];
+  const now = new Date();
 
-  return {
-    currentUser,
-    users: store.users.map((item) => sanitizeUser(item)),
-    cities: store.cities.slice().sort((left, right) => left.nameEn.localeCompare(right.nameEn)),
-    categories: store.categories.slice().sort((left, right) => left.nameEn.localeCompare(right.nameEn)),
-    platforms: store.platforms.slice().sort((left, right) => left.nameEn.localeCompare(right.nameEn)),
-    tags: store.tags.slice().sort((left, right) => left.value.localeCompare(right.value)),
+  if (["admin", "campaign_manager"].includes(user.role)) {
+    const pendingApprovals = store.users.filter((item) => item.role === "influencer" && item.status === "pending").length;
+    if (pendingApprovals) {
+      notifications.push({
+        id: `pending-${pendingApprovals}`,
+        tone: "warning",
+        title: "Pending influencer approvals",
+        body: `${pendingApprovals} influencer sign-up request${pendingApprovals === 1 ? "" : "s"} need review.`,
+      });
+    }
+
+    const pendingProof = store.participants.filter(
+      (participant) => participant.source !== "offline" && ["confirmed", "visited"].includes(participant.status)
+    ).length;
+    if (pendingProof) {
+      notifications.push({
+        id: `proof-${pendingProof}`,
+        tone: "info",
+        title: "Pending proof submissions",
+        body: `${pendingProof} platform influencer${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
+      });
+    }
+  }
+
+  if (user.role === "influencer") {
+    const pendingProof = store.participants.filter(
+      (participant) => participant.influencerId === user.id && ["confirmed", "visited"].includes(participant.status)
+    );
+    if (pendingProof.length) {
+      notifications.push({
+        id: `my-proof-${pendingProof.length}`,
+        tone: "warning",
+        title: "Visit proof pending",
+        body: `${pendingProof.length} campaign${pendingProof.length === 1 ? "" : "s"} still need proof submission.`,
+      });
+    }
+
+    const canceled = store.participants.filter(
+      (participant) => participant.influencerId === user.id && participant.status === "canceled"
+    );
+    if (canceled.length) {
+      notifications.push({
+        id: `my-canceled-${canceled.length}`,
+        tone: "error",
+        title: "Canceled campaign assignments",
+        body: `${canceled.length} joined campaign${canceled.length === 1 ? " was" : "s were"} canceled.`,
+      });
+    }
+  }
+
+  const upcomingDeadlines = activeManagerScopeCampaigns(store, user).filter((campaign) => {
+    if (!campaign.visitDeadline) return false;
+    const days = (new Date(campaign.visitDeadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    return days >= 0 && days <= 3 && ["live"].includes(campaign.status);
+  });
+
+  if (upcomingDeadlines.length) {
+    notifications.push({
+      id: `deadline-${upcomingDeadlines.length}`,
+      tone: "info",
+      title: "Upcoming visit deadlines",
+      body: `${upcomingDeadlines.length} campaign${upcomingDeadlines.length === 1 ? "" : "s"} have visit deadlines within 3 days.`,
+    });
+  }
+
+  return notifications;
+}
+
+function buildBootstrap(store, user) {
+  const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
+  const reports = reportBundleForCampaigns(store, store.campaigns);
+  const common = {
+    currentUser: sanitizeUser(user),
+    cities: store.cities,
+    categories: store.categories,
+    platforms: store.platforms,
+    tags: store.tags,
     branches: store.branches.map((branch) => serializeBranch(store, branch)),
     campaigns,
-    participants,
-    reports,
-    eligibleCampaignIds: user.role === "influencer" ? eligibleCampaignsFor(store, user).map((campaign) => campaign.id) : [],
     notifications: generateNotifications(store, user),
+  };
+
+  if (["admin", "campaign_manager"].includes(user.role)) {
+    return {
+      ...common,
+      users: store.users.map(sanitizeUser),
+      participants: store.participants.map((participant) => serializeParticipant(store, participant)),
+      reports,
+    };
+  }
+
+  const myParticipants = store.participants
+    .filter((participant) => participant.influencerId === user.id)
+    .map((participant) => serializeParticipant(store, participant));
+
+  return {
+    ...common,
+    eligibleCampaignIds: eligibleCampaignsFor(store, user).map((campaign) => campaign.id),
+    participants: myParticipants,
+    reports: {
+      summary: influencerSummary(store, user),
+      campaigns: myParticipants,
+      influencers: [],
+      submissions: myParticipants.filter((participant) => participant.socialLink || participant.feedback),
+      codes: myParticipants.map((participant) => ({
+        campaignTitleEn: campaignById(store, participant.campaignId)?.titleEn || "",
+        codeValue: participant.assignedCodeValue,
+        usageCount: campaignById(store, participant.campaignId)?.offerUsageCount || participant.assignedCodeUsageCount,
+        offerText: campaignById(store, participant.campaignId)?.offerDescription || participant.assignedCodeOfferText,
+        status: participant.status,
+      })),
+    },
   };
 }
 
@@ -838,186 +1059,132 @@ function publicMetadata(store) {
   };
 }
 
-function serializeCampaign(store, campaign) {
-  const codeStats = codeStatsForCampaign(store, campaign.id);
-  const participants = store.participants
-    .filter((participant) => participant.campaignId === campaign.id)
-    .map((participant) => serializeParticipant(store, participant));
+function campaignPayload(body, existingCampaign = null) {
+  const normalizedStatus = ["active", "published"].includes(body.status)
+    ? "live"
+    : ["closed", "archived"].includes(body.status)
+      ? "completed"
+      : body.status;
+  const targetTags = parseTags(body.targetTags ?? existingCampaign?.targetTags);
   return {
-    ...campaign,
-    codeStats,
-    participants,
+    titleEn: text(body.titleEn ?? existingCampaign?.titleEn),
+    titleAr: text(body.titleAr ?? existingCampaign?.titleAr),
+    descriptionEn: text(body.descriptionEn ?? existingCampaign?.descriptionEn),
+    descriptionAr: text(body.descriptionAr ?? existingCampaign?.descriptionAr),
+    type: body.type === "product_trial" ? "product_trial" : "shop_visit",
+    status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
+      ? normalizedStatus
+      : existingCampaign?.status || "draft",
+    audience: text(body.audience ?? existingCampaign?.audience),
+    audienceAr: text(body.audienceAr ?? existingCampaign?.audienceAr ?? body.audience),
+    offerDescription: text(body.offerDescription ?? existingCampaign?.offerDescription),
+    offerUsageCount: Math.max(1, Number(body.offerUsageCount ?? existingCampaign?.offerUsageCount) || 1),
+    startDate: text(body.startDate ?? existingCampaign?.startDate),
+    endDate: text(body.endDate ?? existingCampaign?.endDate),
+    visitDeadline: text(body.visitDeadline ?? existingCampaign?.visitDeadline),
+    submissionDeadline: text(body.submissionDeadline ?? existingCampaign?.submissionDeadline),
+    branchMode: body.branchMode === "selected" ? "selected" : "all",
+    branchIds: body.branchMode === "selected" ? parseNumberList(body.branchIds) : [],
+    targetCityIds: parseNumberList(body.targetCityIds),
+    targetCategoryIds: parseNumberList(body.targetCategoryIds),
+    targetTags,
   };
 }
 
-function buildInfluencerPerformance(store, influencer) {
-  const rows = store.participants.filter((participant) => participant.influencerId === influencer.id);
-  const joined = rows.filter((participant) => ["confirmed", "visited", "submitted", "completed"].includes(participant.status)).length;
-  const submitted = rows.filter((participant) => ["submitted", "completed"].includes(participant.status)).length;
-  const pending = rows.filter((participant) => participantNeedsProof(participant.status)).length;
-  const lastActivityDate = rows
-    .map((participant) => participant.submittedAt || participant.visitedAt || participant.joinedAt)
-    .filter(Boolean)
-    .sort()
-    .at(-1) || "";
-  return {
-    joined,
-    submitted,
-    pending,
-    completionRate: joined ? Math.round((submitted / joined) * 100) : 0,
-    lastActivityDate,
-  };
+function validateCampaignTimeline(payload) {
+  const { startDate, endDate, visitDeadline, submissionDeadline } = payload;
+  if (!startDate || !endDate || !visitDeadline || !submissionDeadline) return null;
+  if (startDate > endDate) return "Start date must be on or before end date.";
+  if (endDate > visitDeadline) return "Visit deadline must be the same as or later than the end date.";
+  if (visitDeadline > submissionDeadline) return "Submission deadline must be the same as or later than the visit deadline.";
+  return null;
 }
 
-function buildReports(store) {
-  const codes = store.campaignCodes.map((code) => ({
-    ...serializeCampaignCode(store, code),
-    assignmentType:
-      code.reservedByParticipantId && participantById(store, code.reservedByParticipantId)?.source === "offline"
-        ? "offline"
-        : code.reservedByParticipantId
-          ? "online"
-          : "unassigned",
-  }));
+function parseCsvRow(line) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
 
-  const campaigns = store.campaigns.map((campaign) => {
-    const participants = store.participants.filter((participant) => participant.campaignId === campaign.id);
-    const joined = participants.filter((participant) => ["confirmed", "visited", "submitted", "completed"].includes(participant.status)).length;
-    const submitted = participants.filter((participant) => ["submitted", "completed"].includes(participant.status)).length;
-    const codeStats = codeStatsForCampaign(store, campaign.id);
-    return {
-      campaignId: campaign.id,
-      titleEn: campaign.titleEn,
-      titleAr: campaign.titleAr,
-      status: campaign.status,
-      codesTotal: codeStats.total,
-      availableCodes: codeStats.available,
-      reservedCodes: codeStats.reserved,
-      blockedCodes: codeStats.blocked,
-      usedCodes: codeStats.used,
-      joined,
-      submitted,
-      canceled: participants.filter((participant) => participant.status === "canceled").length,
-      submissionRate: joined ? Math.round((submitted / joined) * 100) : 0,
-      completionRate: joined ? Math.round((submitted / joined) * 100) : 0,
-      createdBy: campaign.createdBy,
-      createdAt: campaign.createdAt,
-      startDate: campaign.startDate,
-      endDate: campaign.endDate,
-      visitDeadline: campaign.visitDeadline,
-      submissionDeadline: campaign.submissionDeadline,
-      branchMode: campaign.branchMode,
-      targetCityIds: campaign.targetCityIds || [],
-      targetCategoryIds: campaign.targetCategoryIds || [],
-      targetTags: campaign.targetTags || [],
-    };
-  });
-
-  const submissions = store.participants
-    .filter((participant) => participant.socialLink)
-    .map((participant) => ({
-      participantId: participant.id,
-      campaignId: participant.campaignId,
-      influencerId: participant.influencerId,
-      campaignTitleEn: campaignById(store, participant.campaignId)?.titleEn || "",
-      campaignTitleAr: campaignById(store, participant.campaignId)?.titleAr || "",
-      influencerName: userById(store, participant.influencerId)?.fullName || participant.offlineName || "",
-      platform: participant.platform,
-      socialLink: participant.socialLink,
-      feedback: participant.feedback,
-      submittedAt: participant.submittedAt,
-    }));
-
-  const influencerPerformance = store.users
-    .filter((user) => user.role === "influencer")
-    .map((influencer) => ({
-      influencerId: influencer.id,
-      fullName: influencer.fullName,
-      cityId: influencer.cityId,
-      categoryId: influencer.categoryId,
-      tags: influencer.tags || [],
-      status: influencer.status,
-      preferredPlatform: influencer.preferredPlatform || "",
-      signupDate: influencer.createdAt || "",
-      ...buildInfluencerPerformance(store, influencer),
-    }));
-
-  const summary = {
-    campaignCount: campaigns.length,
-    liveCampaigns: campaigns.filter((campaign) => campaign.status === "live").length,
-    draftCampaigns: campaigns.filter((campaign) => campaign.status === "draft").length,
-    completedCampaigns: campaigns.filter((campaign) => campaign.status === "completed").length,
-    deactivatedCampaigns: campaigns.filter((campaign) => campaign.status === "deactivated").length,
-    totalCodes: codes.length,
-    reservedCodes: codes.filter((code) => code.status === "reserved").length,
-    availableCodes: codes.filter((code) => code.status === "available").length,
-    blockedCodes: codes.filter((code) => code.status === "blocked").length,
-    usedCodes: codes.filter((code) => code.status === "used").length,
-    joinedCount: campaigns.reduce((sum, row) => sum + row.joined, 0),
-    submittedCount: campaigns.reduce((sum, row) => sum + row.submitted, 0),
-    influencerCount: influencerPerformance.length,
-    activeInfluencers: influencerPerformance.filter((row) => row.status === "active").length,
-    pendingApprovals: influencerPerformance.filter((row) => row.status === "pending").length,
-  };
-
-  return { summary, campaigns, codes, submissions, influencerPerformance };
-}
-
-function managerName(userId) {
-  if (!userId) return "";
-  return text(userById(store, userId)?.fullName || "");
-}
-
-function generateNotifications(store, user) {
-  const notifications = [];
-
-  if (user.role === "influencer") {
-    const eligible = eligibleCampaignsFor(store, user).slice(0, 2);
-    for (const campaign of eligible) {
-      notifications.push({
-        title: "Campaign available",
-        body: `${campaign.titleEn} is available for your profile.`,
-      });
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
     }
-
-    const pendingProof = store.participants
-      .filter((participant) => participant.influencerId === user.id && participantNeedsProof(participant.status))
-      .slice(0, 2);
-    for (const participant of pendingProof) {
-      const campaign = campaignById(store, participant.campaignId);
-      notifications.push({
-        title: "Proof pending",
-        body: `Submit your social link for ${campaign?.titleEn || "this campaign"}.`,
-      });
+    if (character === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+      continue;
     }
-
-    return notifications;
+    current += character;
   }
 
-  if (["admin", "campaign_manager"].includes(user.role)) {
-    const pending = store.participants.filter(
-      (participant) => participant.source !== "offline" && participantNeedsProof(participant.status)
-    );
-    if (pending.length) {
-      notifications.push({
-        title: "Pending proof",
-        body: `${pending.length} platform influencers still need proof submission across live campaigns.`,
-      });
-    }
-
-    const approvals = store.users.filter((candidate) => candidate.role === "influencer" && candidate.status === "pending");
-    if (approvals.length) {
-      notifications.push({
-        title: "Approvals waiting",
-        body: `${approvals.length} influencer sign-ups are ready for review.`,
-      });
-    }
-  }
-
-  return notifications;
+  values.push(current);
+  return values.map((value) => text(value));
 }
 
-function rememberPasswordReset(store, userId, createdByUserId = null) {
+function normalizeHeader(value) {
+  return text(value).toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function extractCodesFromCsv(textValue) {
+  const lines = textValue.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return [];
+
+  const rows = lines.map(parseCsvRow).filter((row) => row.some(Boolean));
+  if (!rows.length) return [];
+
+  const codeHeaders = new Set(["code", "poscode", "campaigncode"]);
+  const usageHeaders = new Set(["usage", "usages", "usagecount", "numberofusage", "count", "quantity"]);
+  const offerHeaders = new Set(["offer", "offertext", "offering", "product", "description", "amount"]);
+
+  const headerRow = rows[0].map(normalizeHeader);
+  const codeIndex = headerRow.findIndex((header) => codeHeaders.has(header));
+  const usageIndex = headerRow.findIndex((header) => usageHeaders.has(header));
+  const offerIndex = headerRow.findIndex((header) => offerHeaders.has(header));
+  const hasHeader = codeIndex !== -1 || usageIndex !== -1 || offerIndex !== -1;
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+
+  const seen = new Set();
+  const codes = [];
+
+  for (const row of dataRows) {
+    const rawCode = hasHeader ? row[codeIndex] : row[0];
+    const codeValue = normalizeCode(rawCode);
+    if (!codeValue || seen.has(codeValue)) continue;
+
+    const rawUsage = hasHeader ? row[usageIndex] : row[1];
+    const usageCount = Math.max(1, Number(rawUsage) || 1);
+    const rawOffer = hasHeader ? row[offerIndex] : row[2];
+    const offerText = text(rawOffer);
+
+    seen.add(codeValue);
+    codes.push({ codeValue, usageCount, offerText });
+  }
+
+  return codes;
+}
+
+function cancelParticipant(store, participant, reason, codeStatus = "blocked") {
+  participant.status = "canceled";
+  participant.canceledReason = reason;
+  const code = assignedCodeForParticipant(store, participant);
+  if (code && codeStatus === "blocked") {
+    code.status = "blocked";
+    code.blockedAt = new Date().toISOString();
+  }
+  if (code && codeStatus === "deleted") {
+    code.status = "deleted";
+    code.deletedAt = new Date().toISOString();
+  }
+}
+
+function rememberPasswordReset(store, userId, createdByUserId) {
   const token = randomToken();
   const record = {
     id: store.nextIds.passwordReset++,
@@ -1028,7 +1195,6 @@ function rememberPasswordReset(store, userId, createdByUserId = null) {
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
     usedAt: null,
   };
-
   store.passwordResets.unshift(record);
   return {
     token,
@@ -1183,11 +1349,11 @@ async function handleUserStatus(req, res, store, actor, userId) {
   const body = jsonOrForm(await readBody(req), req);
   const user = userById(store, userId);
   if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Influencer not found." });
-  if (!validStatusesForInfluencer().includes(body.status)) {
+  if (!["active", "pending", "rejected", "suspended"].includes(body.status)) {
     return sendJson(res, 422, { error: "Invalid status." });
   }
   user.status = body.status;
-  if (body.status === "active") user.approvedByUserId = actor.id;
+  user.approvedByUserId = body.status === "active" ? actor.id : user.approvedByUserId;
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -1197,6 +1363,7 @@ async function handleAdminUpdateInfluencer(req, res, store, actor, userId) {
   const body = jsonOrForm(await readBody(req), req);
   const user = userById(store, userId);
   if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Influencer not found." });
+
   const tags = parseTags(body.tags);
   if (invalidTags(tags).length) {
     return sendJson(res, 422, { error: "Tags must be comma-separated, lowercase, and use only letters, numbers, or hyphens." });
@@ -1339,6 +1506,17 @@ async function handleCreateManager(req, res, store, actor) {
     preferredLanguage: text(body.preferredLanguage || "en"),
     mobile: normalizeKuwaitMobile(body.mobile),
     gender: "",
+    dateOfBirth: "",
+    instagram: "",
+    tiktok: "",
+    snapchat: "",
+    followers: { instagram: 0, tiktok: 0, snapchat: 0 },
+    preferredPlatform: "",
+    tags: [],
+    notes: [],
+    avatarName: "",
+    avatarPath: "",
+    createdAt: new Date().toISOString(),
     lastLogin: "",
     approvedByUserId: actor.id,
   });
@@ -1377,23 +1555,22 @@ async function handleCreateCity(req, res, store, actor) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
   if (!text(body.nameEn)) return sendJson(res, 422, { error: "City English name is required." });
-  const city = {
+  store.cities.push({
     id: store.nextIds.city++,
     nameEn: text(body.nameEn),
     nameAr: text(body.nameAr || body.nameEn),
     status: body.status === "inactive" ? "inactive" : "active",
     createdAt: new Date().toISOString(),
-  };
-  store.cities.push(city);
+  });
   await writeStore(store);
   return sendJson(res, 201, { ok: true });
 }
 
 async function handleUpdateCity(req, res, store, actor, cityId) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const body = jsonOrForm(await readBody(req), req);
   const city = cityById(store, cityId);
   if (!city) return sendJson(res, 404, { error: "City not found." });
+  const body = jsonOrForm(await readBody(req), req);
   city.nameEn = text(body.nameEn || city.nameEn);
   city.nameAr = text(body.nameAr || city.nameAr);
   city.status = body.status === "inactive" ? "inactive" : "active";
@@ -1414,23 +1591,22 @@ async function handleCreateCategory(req, res, store, actor) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
   if (!text(body.nameEn)) return sendJson(res, 422, { error: "Category English name is required." });
-  const category = {
+  store.categories.push({
     id: store.nextIds.category++,
     nameEn: text(body.nameEn),
     nameAr: text(body.nameAr || body.nameEn),
     status: body.status === "inactive" ? "inactive" : "active",
     createdAt: new Date().toISOString(),
-  };
-  store.categories.push(category);
+  });
   await writeStore(store);
   return sendJson(res, 201, { ok: true });
 }
 
 async function handleUpdateCategory(req, res, store, actor, categoryId) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const body = jsonOrForm(await readBody(req), req);
   const category = categoryById(store, categoryId);
   if (!category) return sendJson(res, 404, { error: "Category not found." });
+  const body = jsonOrForm(await readBody(req), req);
   category.nameEn = text(body.nameEn || category.nameEn);
   category.nameAr = text(body.nameAr || category.nameAr);
   category.status = body.status === "inactive" ? "inactive" : "active";
@@ -1451,23 +1627,22 @@ async function handleCreatePlatform(req, res, store, actor) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
   if (!text(body.nameEn)) return sendJson(res, 422, { error: "Platform English name is required." });
-  const platform = {
+  store.platforms.push({
     id: store.nextIds.platform++,
     nameEn: text(body.nameEn),
     nameAr: text(body.nameAr || body.nameEn),
     status: body.status === "inactive" ? "inactive" : "active",
     createdAt: new Date().toISOString(),
-  };
-  store.platforms.push(platform);
+  });
   await writeStore(store);
   return sendJson(res, 201, { ok: true });
 }
 
 async function handleUpdatePlatform(req, res, store, actor, platformId) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const body = jsonOrForm(await readBody(req), req);
   const platform = platformById(store, platformId);
   if (!platform) return sendJson(res, 404, { error: "Platform not found." });
+  const body = jsonOrForm(await readBody(req), req);
   platform.nameEn = text(body.nameEn || platform.nameEn);
   platform.nameAr = text(body.nameAr || platform.nameAr);
   platform.status = body.status === "inactive" ? "inactive" : "active";
@@ -1492,7 +1667,7 @@ async function handleCreateTag(req, res, store, actor) {
   if (invalidTags([value]).length) {
     return sendJson(res, 422, { error: "Tags must use only lowercase letters, numbers, or hyphens." });
   }
-  if (store.tags.some((tag) => tag.value === value)) {
+  if (store.tags.some((tag) => normalizeTag(tag.value) === value)) {
     return sendJson(res, 409, { error: "This tag already exists." });
   }
   store.tags.push({
@@ -1507,30 +1682,32 @@ async function handleCreateTag(req, res, store, actor) {
 
 async function handleUpdateTag(req, res, store, actor, tagId) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const body = jsonOrForm(await readBody(req), req);
   const tag = tagById(store, tagId);
   if (!tag) return sendJson(res, 404, { error: "Tag not found." });
-  const value = normalizeTag(body.value);
+  const body = jsonOrForm(await readBody(req), req);
+  const previousValue = normalizeTag(tag.value);
+  const value = normalizeTag(body.value || tag.value);
   if (!value) return sendJson(res, 422, { error: "Tag value is required." });
   if (invalidTags([value]).length) {
     return sendJson(res, 422, { error: "Tags must use only lowercase letters, numbers, or hyphens." });
   }
-  if (store.tags.some((item) => item.id !== tag.id && item.value === value)) {
+  if (store.tags.some((row) => row.id !== tag.id && normalizeTag(row.value) === value)) {
     return sendJson(res, 409, { error: "This tag already exists." });
   }
-  const previousValue = tag.value;
+  if (previousValue && previousValue !== value) {
+    for (const user of store.users) {
+      if (user.tags?.includes(previousValue)) {
+        user.tags = user.tags.map((item) => (item === previousValue ? value : item));
+      }
+    }
+    for (const campaign of store.campaigns) {
+      if (campaign.targetTags?.includes(previousValue)) {
+        campaign.targetTags = campaign.targetTags.map((item) => (item === previousValue ? value : item));
+      }
+    }
+  }
   tag.value = value;
   tag.status = body.status === "inactive" ? "inactive" : "active";
-  for (const user of store.users) {
-    if (Array.isArray(user.tags)) {
-      user.tags = user.tags.map((item) => normalizeTag(item) === previousValue ? value : normalizeTag(item));
-    }
-  }
-  for (const campaign of store.campaigns) {
-    if (Array.isArray(campaign.targetTags)) {
-      campaign.targetTags = campaign.targetTags.map((item) => normalizeTag(item) === previousValue ? value : normalizeTag(item));
-    }
-  }
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -1547,7 +1724,10 @@ async function handleDeleteTag(req, res, store, actor, tagId) {
 async function handleCreateBranch(req, res, store, actor) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
   const rawBody = await readBody(req);
-  const parsed = parseMultipart(rawBody, req.headers["content-type"] || "");
+  const contentType = req.headers["content-type"] || "";
+  const parsed = contentType.includes("multipart/form-data")
+    ? parseMultipart(rawBody, contentType)
+    : { fields: jsonOrForm(rawBody, req), files: {} };
   const body = parsed.fields;
   if (!text(body.nameEn) || !Number(body.cityId)) {
     return sendJson(res, 422, { error: "Branch name and city are required." });
@@ -1557,9 +1737,6 @@ async function handleCreateBranch(req, res, store, actor) {
     nameEn: text(body.nameEn),
     nameAr: text(body.nameAr || body.nameEn),
     cityId: Number(body.cityId),
-    city: cityById(store, body.cityId)?.nameEn || "",
-    areaEn: "",
-    areaAr: "",
     addressEn: text(body.addressEn),
     addressAr: text(body.addressAr || body.addressEn),
     mapLink: text(body.mapLink),
@@ -1581,11 +1758,14 @@ async function handleCreateBranch(req, res, store, actor) {
 
 async function handleUpdateBranch(req, res, store, actor, branchId) {
   if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const rawBody = await readBody(req);
-  const parsed = parseMultipart(rawBody, req.headers["content-type"] || "");
-  const body = parsed.fields;
   const branch = branchById(store, branchId);
   if (!branch) return sendJson(res, 404, { error: "Branch not found." });
+  const rawBody = await readBody(req);
+  const contentType = req.headers["content-type"] || "";
+  const parsed = contentType.includes("multipart/form-data")
+    ? parseMultipart(rawBody, contentType)
+    : { fields: jsonOrForm(rawBody, req), files: {} };
+  const body = parsed.fields;
   branch.nameEn = text(body.nameEn || branch.nameEn);
   branch.nameAr = text(body.nameAr || branch.nameAr);
   branch.cityId = Number(body.cityId) || branch.cityId;
