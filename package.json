@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && node --check client.js",
-    "seed:demo": "node scripts/seed-demo-data.js"
+    "seed:demo": "node scripts/seed-demo-data.js",
+    "smoke": "node scripts/smoke-test.js"
   },
   "engines": {
     "node": ">=18"

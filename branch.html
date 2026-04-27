@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PICK Branch Visit Confirm</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .branch-shell { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+      .branch-topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+      .branch-card { background: #fff; border: 1px solid rgba(15, 23, 42, 0.12); border-radius: 20px; padding: 24px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08); }
+      .branch-receipt { margin-top: 20px; border-top: 1px solid rgba(15, 23, 42, 0.12); padding-top: 20px; }
+      .branch-receipt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+      .branch-receipt-item { background: rgba(248, 250, 252, 0.9); border-radius: 14px; padding: 12px 14px; }
+      .branch-receipt-item strong { display: block; margin-bottom: 6px; }
+      .branch-note { color: #475569; font-size: 0.95rem; }
+      .branch-language { min-width: 120px; }
+      .branch-shell[dir="rtl"] .branch-topbar { flex-direction: row-reverse; }
+    </style>
+  </head>
+  <body>
+    <div id="branchApp" class="branch-shell">
+      <div class="branch-topbar">
+        <div>
+          <h1 id="pageTitle">Branch visit confirmation</h1>
+          <p id="pageSubtitle" class="branch-note">Confirm a campaign code at the cashier and issue a visit receipt instantly.</p>
+        </div>
+        <select id="languageToggle" class="branch-language">
+          <option value="en">English</option>
+          <option value="ar">العربية</option>
+        </select>
+      </div>
+
+      <section class="branch-card">
+        <form id="confirmForm" class="form-grid">
+          <label class="field">
+            <span id="codeLabel">Campaign code</span>
+            <input id="codeInput" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required />
+          </label>
+          <label class="field">
+            <span id="pinLabel">Branch PIN</span>
+            <input id="pinInput" name="pin" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required />
+          </label>
+          <button id="submitButton" type="submit">Confirm visit</button>
+        </form>
+        <div id="message" style="margin-top: 16px;"></div>
+        <div id="receipt" class="branch-receipt" hidden></div>
+      </section>
+    </div>
+
+    <script>
+      const copy = {
+        en: {
+          title: "Branch visit confirmation",
+          subtitle: "Confirm a campaign code at the cashier and issue a visit receipt instantly.",
+          code: "Campaign code",
+          pin: "Branch PIN",
+          submit: "Confirm visit",
+          working: "Confirming…",
+          success: "Visit confirmed successfully.",
+          another: "Confirm another",
+          missing: "Code and PIN are required.",
+          campaign: "Campaign",
+          offer: "Offer",
+          branch: "Branch",
+          influencer: "Influencer",
+          codeValue: "Code",
+          time: "Time",
+        },
+        ar: {
+          title: "تأكيد زيارة الفرع",
+          subtitle: "أكد كود الحملة عند الكاشير واطبع إيصال الزيارة فوراً.",
+          code: "كود الحملة",
+          pin: "رمز الفرع",
+          submit: "تأكيد الزيارة",
+          working: "جارٍ التأكيد…",
+          success: "تم تأكيد الزيارة بنجاح.",
+          another: "تأكيد عملية أخرى",
+          missing: "الكود ورمز الفرع مطلوبان.",
+          campaign: "الحملة",
+          offer: "العرض",
+          branch: "الفرع",
+          influencer: "المؤثر",
+          codeValue: "الكود",
+          time: "الوقت",
+        },
+      };
+
+      let locale = "en";
+      let receiptTimer = null;
+
+      const pageTitle = document.getElementById("pageTitle");
+      const pageSubtitle = document.getElementById("pageSubtitle");
+      const codeLabel = document.getElementById("codeLabel");
+      const pinLabel = document.getElementById("pinLabel");
+      const submitButton = document.getElementById("submitButton");
+      const codeInput = document.getElementById("codeInput");
+      const pinInput = document.getElementById("pinInput");
+      const message = document.getElementById("message");
+      const receipt = document.getElementById("receipt");
+      const languageToggle = document.getElementById("languageToggle");
+
+      function t(key) {
+        return copy[locale][key] || copy.en[key] || key;
+      }
+
+      function renderCopy() {
+        document.documentElement.lang = locale;
+        document.documentElement.dir = locale === "ar" ? "rtl" : "ltr";
+        document.getElementById("branchApp").dir = locale === "ar" ? "rtl" : "ltr";
+        pageTitle.textContent = t("title");
+        pageSubtitle.textContent = t("subtitle");
+        codeLabel.textContent = t("code");
+        pinLabel.textContent = t("pin");
+        submitButton.textContent = t("submit");
+      }
+
+      function showMessage(text, tone = "info") {
+        message.innerHTML = `<div class="flash-banner flash-${tone}"><span>${text}</span></div>`;
+      }
+
+      function clearReceipt() {
+        receipt.hidden = true;
+        receipt.innerHTML = "";
+        if (receiptTimer) window.clearTimeout(receiptTimer);
+        receiptTimer = null;
+      }
+
+      function renderReceipt(payload) {
+        clearReceipt();
+        const branchName = locale === "ar" ? payload.branchNameAr || payload.branchNameEn : payload.branchNameEn || payload.branchNameAr;
+        const campaignTitle = locale === "ar" ? payload.campaignTitleAr || payload.campaignTitleEn : payload.campaignTitleEn || payload.campaignTitleAr;
+        receipt.hidden = false;
+        receipt.innerHTML = `
+          <div class="row" style="margin-bottom: 12px;">
+            <strong>${t("success")}</strong>
+            <button type="button" class="secondary" id="confirmAnother">${t("another")}</button>
+          </div>
+          <div class="branch-receipt-grid">
+            <div class="branch-receipt-item"><strong>${t("campaign")}</strong><span>${campaignTitle || "-"}</span></div>
+            <div class="branch-receipt-item"><strong>${t("offer")}</strong><span>${payload.offerDescription || "-"}</span></div>
+            <div class="branch-receipt-item"><strong>${t("branch")}</strong><span>${branchName || "-"}</span></div>
+            <div class="branch-receipt-item"><strong>${t("influencer")}</strong><span>${payload.influencerName || "-"}</span></div>
+            <div class="branch-receipt-item"><strong>${t("codeValue")}</strong><span>${payload.codeValue || "-"}</span></div>
+            <div class="branch-receipt-item"><strong>${t("time")}</strong><span>${new Date(payload.confirmedAt).toLocaleString(locale === "ar" ? "ar-KW" : "en-GB")}</span></div>
+          </div>
+        `;
+        document.getElementById("confirmAnother")?.addEventListener("click", () => {
+          clearReceipt();
+          message.innerHTML = "";
+          codeInput.value = "";
+          codeInput.focus();
+        });
+        receiptTimer = window.setTimeout(() => {
+          clearReceipt();
+          message.innerHTML = "";
+        }, 60000);
+      }
+
+      languageToggle.addEventListener("change", (event) => {
+        locale = event.target.value;
+        renderCopy();
+      });
+
+      document.getElementById("confirmForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const code = codeInput.value.trim().toUpperCase();
+        const pin = pinInput.value.trim();
+        if (!code || !pin) {
+          showMessage(t("missing"), "error");
+          return;
+        }
+        submitButton.disabled = true;
+        submitButton.textContent = t("working");
+        try {
+          const response = await fetch("/api/visits/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, pin }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload.error || "Request failed.");
+          }
+          showMessage(t("success"), "success");
+          renderReceipt(payload.receipt || {});
+          codeInput.value = "";
+          codeInput.focus();
+        } catch (error) {
+          clearReceipt();
+          showMessage(error.message, "error");
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = t("submit");
+        }
+      });
+
+      codeInput.addEventListener("input", () => {
+        codeInput.value = codeInput.value.toUpperCase();
+      });
+
+      pinInput.addEventListener("input", () => {
+        pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 6);
+      });
+
+      renderCopy();
+      codeInput.focus();
+    </script>
+  </body>
+</html>

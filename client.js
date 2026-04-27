@@ -74,6 +74,8 @@ const state = {
     status: "",
   },
   reportFilters: defaultReportFilters(),
+  campaignSearch: "",
+  apiInflightCount: 0,
   passwordEditorUserId: null,
   masterDataEditor: {
     type: "",
@@ -124,6 +126,13 @@ function saveLocale(locale) {
 
 function l(english, arabic) {
   return state.locale === "ar" ? arabic : english;
+}
+
+function localizedCopy(value) {
+  if (value && typeof value === "object" && ("en" in value || "ar" in value)) {
+    return state.locale === "ar" ? value.ar || value.en || "" : value.en || value.ar || "";
+  }
+  return String(value || "");
 }
 
 function captureFocusedField() {
@@ -241,7 +250,7 @@ function flash(message, tone = "info") {
   flash._timeout = window.setTimeout(() => {
     state.flash = null;
     syncFlashLayer();
-  }, 11000);
+  }, tone === "error" ? 9000 : 4000);
 }
 
 function fieldWrapper(field) {
@@ -337,6 +346,12 @@ function syncFlashLayer() {
   layer.innerHTML = renderFlash();
 }
 
+function syncLoadingBar() {
+  const bar = app.querySelector("[data-global-loading-bar]");
+  if (!bar) return;
+  bar.classList.toggle("is-active", state.apiInflightCount > 0);
+}
+
 function formatDate(value) {
   if (!value) return "-";
   try {
@@ -406,9 +421,66 @@ function renderKuwaitMobileField(name, value = "", required = false) {
   return `
     <div class="phone-input-row">
       <span class="phone-prefix">+965</span>
-      <input name="${name}" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" ${required ? "required" : ""} value="${escapeHtml(kuwaitMobileLocal(value))}" placeholder="XXXXXXXX" />
+      <input name="${name}" data-kuwait-mobile inputmode="numeric" pattern="[0-9]{8}" maxlength="8" ${required ? "required" : ""} value="${escapeHtml(kuwaitMobileLocal(value))}" placeholder="XXXXXXXX" />
     </div>
   `;
+}
+
+function renderPasswordField(name, options = {}) {
+  const {
+    required = false,
+    hint = "",
+    autocomplete = "current-password",
+    label = l("Password", "كلمة المرور"),
+    value = "",
+    minLength = null,
+  } = options;
+  return `
+    <label class="field">
+      <span>${label}${required ? ' <em class="required-mark">*</em>' : ""}</span>
+      <div class="password-field">
+        <input name="${name}" type="password" ${required ? "required" : ""} ${minLength ? `minlength="${minLength}"` : ""} autocomplete="${autocomplete}" value="${escapeHtml(value)}" />
+        <button type="button" class="password-field__toggle" data-action="toggle-password-visibility">${l("Show", "إظهار")}</button>
+      </div>
+      ${hint ? `<small class="field-help">${escapeHtml(hint)}</small>` : ""}
+    </label>
+  `;
+}
+
+function lockFormButton(form) {
+  const button = form?.querySelector("button[type='submit']");
+  if (!button) return null;
+  if (!button.dataset.originalLabel) button.dataset.originalLabel = button.textContent || "";
+  button.disabled = true;
+  button.textContent = l("Working…", "جارٍ التنفيذ…");
+  return button;
+}
+
+function unlockFormButton(button) {
+  if (!button) return;
+  button.disabled = false;
+  if (button.dataset.originalLabel) button.textContent = button.dataset.originalLabel;
+}
+
+function syncImagePreview(input) {
+  if (!input || !input.matches("input[type='file'][accept*='image']")) return;
+  let preview = input.parentElement?.querySelector(".image-preview");
+  const file = input.files?.[0];
+  if (!file) {
+    if (preview) preview.remove();
+    return;
+  }
+  if (!preview) {
+    preview = document.createElement("img");
+    preview.className = "image-preview";
+    input.insertAdjacentElement("afterend", preview);
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    preview.src = String(reader.result || "");
+    preview.alt = file.name || "preview";
+  };
+  reader.readAsDataURL(file);
 }
 
 function renderGenderSelect(name, selectedValue = "", required = false) {
@@ -497,6 +569,26 @@ function campaignMatchesInfluencer(campaign, influencer) {
   if (influencer.status !== "active") return false;
   if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(influencer.cityId)) return false;
   if ((campaign.targetCategoryIds || []).length && !(campaign.targetCategoryIds || []).includes(influencer.categoryId)) return false;
+  if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
+  const totalFollowers =
+    (Number(influencer.followers?.instagram) || 0) +
+    (Number(influencer.followers?.tiktok) || 0) +
+    (Number(influencer.followers?.snapchat) || 0);
+  if ((Number(campaign.minFollowers) || 0) > 0 && totalFollowers < Number(campaign.minFollowers)) return false;
+  if ((campaign.targetPlatformIds || []).length) {
+    const preferred = String(influencer.preferredPlatform || "").toLowerCase();
+    const platformMatched = (campaign.targetPlatformIds || []).some((platformId) => {
+      const platform = (state.data?.platforms || []).find((item) => item.id === Number(platformId));
+      const name = String(platform?.nameEn || "").toLowerCase();
+      if (!name) return false;
+      if (preferred === name) return true;
+      if (name === "instagram") return (Number(influencer.followers?.instagram) || 0) > 0;
+      if (name === "tiktok") return (Number(influencer.followers?.tiktok) || 0) > 0;
+      if (name === "snapchat") return (Number(influencer.followers?.snapchat) || 0) > 0;
+      return false;
+    });
+    if (!platformMatched) return false;
+  }
   if ((campaign.targetTags || []).length) {
     const influencerTags = new Set((influencer.tags || []).map((tag) => String(tag).toLowerCase()));
     const matched = campaign.targetTags.some((tag) => influencerTags.has(String(tag).toLowerCase()));
@@ -513,6 +605,124 @@ function notificationCards() {
   return state.data?.notifications || [];
 }
 
+function auditActionLabel(action) {
+  const labels = {
+    "auth.login": l("Signed in", "سجل الدخول"),
+    "user.status_change": l("Changed user status", "غيّر حالة المستخدم"),
+    "user.password_set": l("Set password", "عيّن كلمة المرور"),
+    "user.password_reset": l("Reset password", "أعاد تعيين كلمة المرور"),
+    "user.password_forgot_requested": l("Requested reset link", "طلب رابط إعادة التعيين"),
+    "user.reset_link_generated": l("Generated reset link", "ولّد رابط إعادة التعيين"),
+    "user.manager_created": l("Created manager", "أنشأ مديراً"),
+    "campaign.codes_uploaded": l("Uploaded codes", "رفع الأكواد"),
+    "campaign.codes_reset": l("Reset codes", "أعاد ضبط الأكواد"),
+    "campaign.joined": l("Joined campaign", "انضم إلى الحملة"),
+    "campaign.manual_reserve": l("Reserved offline code", "حجز كوداً أوفلاين"),
+    "campaign.duplicated": l("Duplicated campaign", "نسخ الحملة"),
+    "participant.removed": l("Removed participant", "أزال مشاركاً"),
+    "participant.self_canceled": l("Canceled participation", "ألغى المشاركة"),
+    "participant.submission": l("Submitted proof", "أرسل الإثبات"),
+    "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+  };
+  return labels[action] || action || l("Unknown action", "إجراء غير معروف");
+}
+
+function auditActorLabel(event) {
+  if (!event?.actorId) return l("System", "النظام");
+  return `${event.actorName || l("Unknown", "غير معروف")} · ${roleLabel(event.actorRole)}`;
+}
+
+function auditTargetLabel(event) {
+  if (!event) return l("Unknown target", "هدف غير معروف");
+  if (event.targetType === "campaign") {
+    const campaign = currentCampaigns().find((item) => item.id === Number(event.targetId));
+    return campaign ? campaignTitle(campaign) : `${l("Campaign", "حملة")} #${event.targetId}`;
+  }
+  if (event.targetType === "branch") {
+    const branch = (state.data?.branches || []).find((item) => item.id === Number(event.targetId));
+    return branch ? branchDisplayName(branch) : `${l("Branch", "فرع")} #${event.targetId}`;
+  }
+  if (event.targetType === "user") {
+    const user = (state.data?.users || []).find((item) => item.id === Number(event.targetId));
+    return user?.fullName || user?.email || `${l("User", "مستخدم")} #${event.targetId}`;
+  }
+  if (event.targetType === "participant") {
+    const participant = (state.data?.participants || []).find((item) => item.id === Number(event.targetId));
+    if (!participant) return `${l("Participant", "مشارك")} #${event.targetId}`;
+    const campaign = currentCampaigns().find((item) => item.id === Number(participant.campaignId));
+    const name = participant.influencerName || participant.offlineName || `${l("Participant", "مشارك")} #${participant.id}`;
+    return campaign ? `${name} · ${campaignTitle(campaign)}` : name;
+  }
+  return `${event.targetType || l("Target", "هدف")} #${event.targetId}`;
+}
+
+function auditMetaValue(key, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (["from", "to", "status"].includes(key)) {
+    if (["confirmed", "visited", "submitted", "completed", "canceled"].includes(String(value))) {
+      return participantStatusLabel(String(value));
+    }
+    if (["live", "draft", "completed", "deactivated"].includes(String(value))) {
+      return campaignStatusLabel(String(value));
+    }
+  }
+  return String(value);
+}
+
+function auditMetaLabel(key) {
+  const labels = {
+    from: l("From", "من"),
+    to: l("To", "إلى"),
+    email: l("Email", "البريد"),
+    added: l("Added", "تمت الإضافة"),
+    deleted: l("Deleted", "تم الحذف"),
+    participantId: l("Participant", "المشارك"),
+    codeId: l("Code", "الكود"),
+    offlineName: l("Offline name", "اسم أوفلاين"),
+    canceledParticipants: l("Canceled", "الملغاة"),
+    sourceCampaignId: l("Source", "المصدر"),
+    campaignId: l("Campaign", "الحملة"),
+  };
+  return labels[key] || key;
+}
+
+function renderAuditMeta(event) {
+  const entries = Object.entries(event?.meta || {}).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  if (!entries.length) return "";
+  return `<div class="row-wrap" style="margin-top: 10px;">${entries
+    .map(([key, value]) => `<span class="badge">${escapeHtml(`${auditMetaLabel(key)}: ${auditMetaValue(key, value)}`)}</span>`)
+    .join("")}</div>`;
+}
+
+function renderRecentActivityPanel() {
+  const events = (state.data?.auditEvents || []).slice(-25).reverse();
+  return `
+    <section class="panel">
+      <h3>${l("Recent Activity", "النشاط الأخير")}</h3>
+      <p class="panel-subtitle">${l("Recent operational actions across campaigns, users, branches, and submissions.", "آخر الإجراءات التشغيلية عبر الحملات والمستخدمين والأفرع والتسليمات.")}</p>
+      ${
+        events.length
+          ? `<div class="stack">${events
+              .map(
+                (event) => `
+                  <article class="list-card">
+                    <div class="row">
+                      <strong>${escapeHtml(auditActionLabel(event.action))}</strong>
+                      <span class="badge">${escapeHtml(formatDateTime(event.at))}</span>
+                    </div>
+                    <p class="compact">${escapeHtml(auditActorLabel(event))}</p>
+                    <p class="compact">${escapeHtml(auditTargetLabel(event))}</p>
+                    ${renderAuditMeta(event)}
+                  </article>
+                `
+              )
+              .join("")}</div>`
+          : `<div class="empty-state">${l("No recent activity yet.", "لا يوجد نشاط حديث بعد.")}</div>`
+      }
+    </section>
+  `;
+}
+
 function renderHeroStats(options = {}) {
   if (options.hideHeroStats) return "";
   if (options.showNotifications === true && notificationCards().length) {
@@ -521,8 +731,8 @@ function renderHeroStats(options = {}) {
       .map(
         (item) => `
           <article class="hero-stat">
-            <span class="eyebrow">${escapeHtml(item.title)}</span>
-            <strong>${escapeHtml(item.body)}</strong>
+            <span class="eyebrow">${escapeHtml(localizedCopy(item.title))}</span>
+            <strong>${escapeHtml(localizedCopy(item.body))}</strong>
           </article>
         `
       )
@@ -1233,17 +1443,24 @@ function navSelected(pageKey) {
 }
 
 async function api(url, options = {}) {
-  const response = await fetch(url, {
-    credentials: "same-origin",
-    headers:
-      options.body instanceof FormData
-        ? {}
-        : { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Request failed.");
-  return payload;
+  state.apiInflightCount += 1;
+  syncLoadingBar();
+  try {
+    const response = await fetch(url, {
+      credentials: "same-origin",
+      headers:
+        options.body instanceof FormData
+          ? {}
+          : { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Request failed.");
+    return payload;
+  } finally {
+    state.apiInflightCount = Math.max(0, state.apiInflightCount - 1);
+    syncLoadingBar();
+  }
 }
 
 async function loadBootstrap() {
@@ -1272,6 +1489,7 @@ function renderAuth() {
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
+    <div id="global-loading-bar" data-global-loading-bar class="${state.apiInflightCount > 0 ? "is-active" : ""}"></div>
     <div class="flash-layer" data-flash-layer></div>
     <section class="login-shell">
       <article class="login-card">
@@ -1311,7 +1529,7 @@ function renderLoginForm() {
   return `
     <form id="loginForm" class="form-grid">
       <label class="field"><span>${l("Email", "البريد الإلكتروني")}</span><input name="email" type="email" required /></label>
-      <label class="field"><span>${l("Password", "كلمة المرور")}</span><input name="password" type="password" required /></label>
+      ${renderPasswordField("password", { required: true, autocomplete: "current-password", hint: "", label: l("Password", "كلمة المرور") })}
       <button type="submit">${l("Sign In", "تسجيل الدخول")}</button>
     </form>
   `;
@@ -1322,15 +1540,19 @@ function renderSignupForm() {
     <form id="signupForm" class="form-grid two-col">
       <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required /></label>
       <label class="field"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required /></label>
-      <label class="field"><span>${l("Password", "كلمة المرور")} <em class="required-mark">*</em></span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), minLength: 8 })}
       <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", "", true)}</label>
       <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", "", true)}</label>
       <label class="field"><span>${l("City", "المدينة")} <em class="required-mark">*</em></span>${renderCitySelect("cityId", "", false, true)}</label>
       <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", "")}</label>
       <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required /></label>
+      <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="0" /></label>
       <label class="field"><span>TikTok</span><input name="tiktok" /></label>
+      <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" min="0" value="0" /></label>
       <label class="field"><span>Snapchat</span><input name="snapchat" /></label>
+      <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" min="0" value="0" /></label>
       <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", "")}</label>
+      <p class="compact field-span-full">${l("Follower counts help us match you with relevant campaigns. You can update them later in your profile.", "أعداد المتابعين تساعدنا على مطابقتك مع الحملات المناسبة. يمكنك تحديثها لاحقاً من ملفك الشخصي.")}</p>
       <button type="submit" style="grid-column: 1 / -1;">${l("Create influencer request", "إرسال طلب التسجيل")}</button>
     </form>
   `;
@@ -1339,8 +1561,9 @@ function renderSignupForm() {
 function renderForgotPasswordForm() {
   return `
     <form id="forgotPasswordForm" class="form-grid">
+      <p class="compact">${l("Enter your email. If an account exists, an admin will share the reset link with you.", "أدخل بريدك الإلكتروني. إذا كان الحساب موجوداً، فسيشاركك المسؤول رابط إعادة التعيين.")}</p>
       <label class="field"><span>${l("Email", "البريد الإلكتروني")}</span><input name="email" type="email" required /></label>
-      <button type="submit">${l("Generate reset link", "توليد رابط إعادة التعيين")}</button>
+      <button type="submit">${l("Send reset request", "إرسال طلب إعادة التعيين")}</button>
     </form>
   `;
 }
@@ -1348,7 +1571,7 @@ function renderForgotPasswordForm() {
 function renderResetPasswordForm() {
   return `
     <form id="resetPasswordForm" class="form-grid">
-      <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("New password", "كلمة المرور الجديدة"), minLength: 8 })}
       <button type="submit">${l("Reset password", "إعادة تعيين كلمة المرور")}</button>
     </form>
   `;
@@ -1388,6 +1611,7 @@ function renderShell() {
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
+    <div id="global-loading-bar" data-global-loading-bar class="${state.apiInflightCount > 0 ? "is-active" : ""}"></div>
     <div class="flash-layer" data-flash-layer></div>
     <div class="app-shell">
       <aside class="sidebar">
@@ -1493,27 +1717,44 @@ function statusTone(status) {
 }
 
 function statusCardTone(status) {
-  if (["submitted", "completed"].includes(status)) return "status-strip-success";
-  if (["confirmed", "visited", "offline_reserved"].includes(status)) return "status-strip-warning";
+  if (["completed"].includes(status)) return "status-strip-success";
+  if (["visited", "submitted", "offline_reserved"].includes(status)) return "status-strip-warning";
+  if (["confirmed"].includes(status)) return "status-strip-warning";
   if (["canceled", "rejected", "suspended"].includes(status)) return "status-strip-danger";
   return "";
 }
 
 function participantNeedsProof(status) {
-  return ["confirmed", "visited"].includes(status);
+  return status === "visited";
+}
+
+function participantNeedsVisit(status) {
+  return ["confirmed", "offline_reserved"].includes(status);
+}
+
+function participantCanSubmit(participant) {
+  if (!participant) return false;
+  if (participant.status === "visited") return true;
+  if (participant.status === "submitted" && participant.submittedAt) {
+    return Date.now() - new Date(participant.submittedAt).getTime() <= 24 * 60 * 60 * 1000;
+  }
+  return false;
 }
 
 function participantPriority(participant) {
-  if (participantNeedsProof(participant.status)) return 0;
-  if (["submitted", "completed"].includes(participant.status)) return 1;
+  if (participantNeedsVisit(participant.status)) return 0;
+  if (participantNeedsProof(participant.status)) return 1;
+  if (["submitted", "completed"].includes(participant.status)) return 2;
   if (participant.status === "canceled") return 2;
   return 3;
 }
 
 function participantStatusLabel(status) {
   if (status === "offline_reserved") return l("Offline reservation", "حجز خارجي");
-  if (participantNeedsProof(status)) return l("Pending proof submission", "بانتظار إرسال الإثبات");
-  if (["submitted", "completed"].includes(status)) return l("Proof submitted", "تم إرسال الإثبات");
+  if (status === "confirmed") return l("Awaiting branch visit", "بانتظار زيارة الفرع");
+  if (status === "visited") return l("Pending proof submission", "بانتظار إرسال الإثبات");
+  if (status === "submitted") return l("Proof submitted", "تم إرسال الإثبات");
+  if (status === "completed") return l("Completed", "مكتمل");
   if (status === "canceled") return l("Campaign canceled", "تم إلغاء الحملة");
   return status;
 }
@@ -1551,6 +1792,17 @@ function renderCodeDetails(codeValue, usageCount, offerText, title = l("Assigned
       </div>
     </div>
   `;
+}
+
+function renderParticipantImages(images) {
+  const rows = (images || []).filter((image) => image?.path);
+  if (!rows.length) return "";
+  return rows
+    .map(
+      (image) =>
+        `<a class="badge" href="${image.path}" target="_blank" rel="noreferrer">${escapeHtml(image.name || l("Open image", "عرض الصورة"))}</a>`
+    )
+    .join("");
 }
 
 function renderCampaignOffer(campaign, compact = false) {
@@ -1691,6 +1943,7 @@ function renderOperationsDashboard() {
       <h3>${l("Influencer Snapshot", "ملخص المؤثرين")}</h3>
       ${renderInfluencerTable(allInfluencers().slice(0, 6), false)}
     </section>
+    ${renderRecentActivityPanel()}
   `;
 }
 
@@ -1701,7 +1954,7 @@ function filteredInfluencers() {
     if (state.influencerFilters.categoryId && Number(state.influencerFilters.categoryId) !== user.categoryId) return false;
     if (state.influencerFilters.status && state.influencerFilters.status !== user.status) return false;
     if (!query) return true;
-    const haystack = `${user.fullName} ${user.email} ${(user.tags || []).join(" ")}`.toLowerCase();
+    const haystack = `${user.fullName} ${user.email} ${user.mobile || ""} ${user.instagram || ""} ${user.tiktok || ""} ${user.snapchat || ""} ${(user.tags || []).join(" ")}`.toLowerCase();
     return haystack.includes(query);
   });
 }
@@ -1829,7 +2082,7 @@ function renderInfluencersPage() {
                       </div>
                     </form>
                     ${state.passwordEditorUserId === user.id ? `<form class="inline-form manual-password-form" data-user-id="${user.id}" style="margin-top: 12px;">
-                      <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+                      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Set manual password", "تعيين كلمة مرور يدوية"), minLength: 8 })}
                       <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
                     </form>` : ""}
                   </article>
@@ -1906,7 +2159,13 @@ function renderInfluencerTable(influencers, includeActions = true) {
 }
 
 function renderCampaignsPage() {
-  const campaigns = currentCampaigns();
+  const allCampaigns = currentCampaigns();
+  const searchQuery = state.campaignSearch.trim().toLowerCase();
+  const campaigns = allCampaigns.filter((campaign) => {
+    if (!searchQuery) return true;
+    const haystack = `${campaign.titleEn || ""} ${campaign.titleAr || ""} ${campaign.audience || ""} ${campaign.audienceAr || ""} ${campaign.offerDescription || ""} ${campaign.descriptionEn || ""} ${campaign.descriptionAr || ""}`.toLowerCase();
+    return haystack.includes(searchQuery);
+  });
   const participants = state.data?.participants || [];
   const activeCount = campaigns.filter((campaign) => campaign.status === "live").length;
   const completedCount = campaigns.filter((campaign) => campaign.status === "completed").length;
@@ -1969,6 +2228,13 @@ function renderCampaignsPage() {
     <section class="content-grid">
       <section class="panel panel-wide">
         <h3>${l("Campaign List", "قائمة الحملات")}</h3>
+        <div class="row report-toolbar-head" style="margin-bottom: 14px;">
+          <label class="field" style="flex: 1;">
+            <span>${l("Search campaigns", "البحث في الحملات")}</span>
+            <input class="search-input" name="campaignSearch" value="${escapeHtml(state.campaignSearch)}" placeholder="${escapeHtml(l("Search title, audience, offer, description", "ابحث في العنوان أو الجمهور أو العرض أو الوصف"))}" />
+          </label>
+          <span class="badge">${campaigns.length} ${l("of", "من")} ${allCampaigns.length} ${escapeHtml(l("campaigns", "حملة"))}</span>
+        </div>
         <div class="stack">
           ${campaigns.length
             ? campaigns
@@ -1991,6 +2257,7 @@ function renderCampaignsPage() {
                       <div class="row-wrap" style="margin-top: 14px;">
                         <button class="secondary" data-action="view-campaign" data-campaign-id="${campaign.id}">${l("View Campaign", "عرض الحملة")}</button>
                         <button data-action="edit-campaign" data-campaign-id="${campaign.id}">${l("Edit Campaign", "تعديل الحملة")}</button>
+                        <button class="secondary" data-action="duplicate-campaign" data-campaign-id="${campaign.id}">${l("Duplicate", "نسخ")}</button>
                       </div>
                     </article>
                   `
@@ -2012,6 +2279,7 @@ function renderCampaignForm(campaign) {
   const targetCityIds = new Set(campaign?.targetCityIds || []);
   const targetCategoryIds = new Set(campaign?.targetCategoryIds || []);
   const targetTags = new Set(campaign?.targetTags || []);
+  const targetPlatformIds = new Set((campaign?.targetPlatformIds || []).map(Number));
   const tagOptions = (state.data?.tags || [])
     .filter((tag) => tag.status === "active" || targetTags.has(tag.value))
     .sort((left, right) => compareValues(left.value, right.value));
@@ -2081,6 +2349,10 @@ function renderCampaignForm(campaign) {
         <div class="form-grid">
           <div class="field checkbox-field field-span-full">
             <span>${l("Target cities (leave empty for all)", "المدن المستهدفة واتركها فارغة للجميع")}</span>
+            <div class="row-wrap" style="margin-bottom: 10px;">
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCityIds" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCityIds" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+            </div>
             <div class="option-grid">
               ${state.data.cities
                 .filter((city) => city.status === "active")
@@ -2097,6 +2369,10 @@ function renderCampaignForm(campaign) {
           </div>
           <div class="field checkbox-field field-span-full">
             <span>${l("Target categories (leave empty for all)", "الفئات المستهدفة واتركها فارغة للجميع")}</span>
+            <div class="row-wrap" style="margin-bottom: 10px;">
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCategoryIds" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCategoryIds" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+            </div>
             <div class="option-grid">
               ${state.data.categories
                 .filter((category) => category.status === "active")
@@ -2113,6 +2389,10 @@ function renderCampaignForm(campaign) {
           </div>
           <div class="field checkbox-field field-span-full">
             <span>${l("Target tags (leave empty for all)", "علامات الاستهداف واتركها فارغة للجميع")}</span>
+            <div class="row-wrap" style="margin-bottom: 10px;">
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetTags" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetTags" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+            </div>
             <div class="option-grid">
               ${tagOptions.length
                 ? tagOptions.map((tag) => `
@@ -2122,6 +2402,35 @@ function renderCampaignForm(campaign) {
                     </label>
                   `).join("")
                 : `<span class="compact">${escapeHtml(l("No admin tags yet. Add them from Master Data first.", "لا توجد علامات معتمدة بعد. أضفها أولاً من البيانات الأساسية."))}</span>`}
+            </div>
+          </div>
+          <label class="field"><span>${l("Target gender", "الجنس المستهدف")}</span>
+            <select name="targetGender">
+              <option value="" ${!campaign?.targetGender ? "selected" : ""}>${l("All", "الكل")}</option>
+              <option value="male" ${campaign?.targetGender === "male" ? "selected" : ""}>${l("Male", "ذكر")}</option>
+              <option value="female" ${campaign?.targetGender === "female" ? "selected" : ""}>${l("Female", "أنثى")}</option>
+            </select>
+          </label>
+          <label class="field"><span>${l("Minimum followers", "الحد الأدنى للمتابعين")}</span><input name="minFollowers" type="number" min="0" value="${escapeHtml(campaign?.minFollowers || 0)}" /></label>
+          <label class="field"><span>${l("Participant cap", "حد المشاركين")}</span><input name="participantCap" type="number" min="0" value="${escapeHtml(campaign?.participantCap || 0)}" /></label>
+          <div class="field checkbox-field field-span-full">
+            <span>${l("Target platforms (leave empty for all)", "المنصات المستهدفة واتركها فارغة للجميع")}</span>
+            <div class="row-wrap" style="margin-bottom: 10px;">
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetPlatformIds" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetPlatformIds" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+            </div>
+            <div class="option-grid">
+              ${(state.data?.platforms || [])
+                .filter((platform) => platform.status === "active")
+                .map(
+                  (platform) => `
+                    <label class="option-pill">
+                      <input type="checkbox" name="targetPlatformIds" value="${platform.id}" ${targetPlatformIds.has(platform.id) ? "checked" : ""} />
+                      <span>${escapeHtml(state.locale === "ar" ? platform.nameAr : platform.nameEn)}</span>
+                    </label>
+                  `
+                )
+                .join("")}
             </div>
           </div>
           <p class="compact">${l("A matching influencer needs at least one of the selected tags.", "يكفي أن يطابق المؤثر علامة واحدة على الأقل من العلامات المحددة.")}</p>
@@ -2225,6 +2534,8 @@ function renderCampaignEditPage() {
           <input type="hidden" name="campaignId" value="${campaign.id}" />
           <label class="field"><span>CSV</span><input type="file" name="codesFile" accept=".csv,text/csv" required /></label>
           <p class="compact">${l("CSV should include the campaign codes. Offer details are controlled in the campaign form.", "يجب أن يتضمن ملف CSV أكواد الحملة فقط. تفاصيل العرض يتم التحكم بها من نموذج الحملة.")}</p>
+          <pre class="compact">code,usage,offer\nPICK-001,1,Free coffee</pre>
+          <div class="row-wrap"><button type="button" class="secondary button-small" data-action="download-sample-csv">${l("Download sample CSV", "تحميل نموذج CSV")}</button></div>
           <button type="submit">${l("Upload codes", "رفع الأكواد")}</button>
         </form>
         <form id="resetCodesForm" class="form-grid" style="margin-top: 10px;">
@@ -2333,8 +2644,11 @@ function renderCampaignViewPage() {
         </div>
         ${renderCampaignOffer(campaign)}
         <article class="note-card">
-          <strong>${l("WhatsApp post text", "نص واتساب")}</strong>
-          <p>${escapeHtml(generateCampaignShareText(campaign))}</p>
+          <div class="row">
+            <strong>${l("WhatsApp post text", "نص واتساب")}</strong>
+            <button type="button" class="secondary button-small" data-action="copy-whatsapp-text" data-campaign-id="${campaign.id}">${l("Copy WhatsApp text", "نسخ نص واتساب")}</button>
+          </div>
+          <pre class="compact" style="white-space: pre-wrap; margin-top: 12px;">${escapeHtml(generateCampaignShareText(campaign))}</pre>
         </article>
         <article class="note-card" style="margin-top: 14px;">
           <strong>${l("Email-ready reminder", "نص بريد للتذكير")}</strong>
@@ -2343,6 +2657,7 @@ function renderCampaignViewPage() {
         <div class="row-wrap" style="margin-top: 16px;">
           <button class="secondary" data-action="back-to-campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
           <button data-action="edit-campaign" data-campaign-id="${campaign.id}">${l("Edit campaign", "تعديل الحملة")}</button>
+          <button class="secondary" data-action="duplicate-campaign" data-campaign-id="${campaign.id}">${l("Duplicate", "نسخ")}</button>
         </div>
       </section>
       <section class="panel">
@@ -2434,7 +2749,7 @@ function renderCampaignViewPage() {
                       : ""}
                     ${participant.socialLink ? `<p><a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a></p>` : ""}
                     ${participant.feedback ? `<p>${escapeHtml(participant.feedback)}</p>` : ""}
-                    ${participant.imagePath ? `<p><a href="${participant.imagePath}" target="_blank" rel="noreferrer">${escapeHtml(participant.imageName || l("Open image", "عرض الصورة"))}</a></p>` : ""}
+                    <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
                     ${participant.status !== "canceled" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="remove-participant" data-participant-id="${participant.id}">${l("Remove influencer from campaign", "إزالة المؤثر من الحملة")}</button></div>` : ""}
                   </article>
                 `
@@ -2468,6 +2783,15 @@ function renderBranchForm(branch) {
       </label>
       <label class="field"><span>Address (EN)</span><input name="addressEn" value="${escapeHtml(branch?.addressEn || "")}" /></label>
       <label class="field"><span>Address (AR)</span><input name="addressAr" value="${escapeHtml(branch?.addressAr || "")}" /></label>
+      <label class="field"><span>${l("Daily visit cap", "الحد اليومي للزيارات")}</span><input name="maxVisitsPerDay" type="number" min="0" value="${escapeHtml(branch?.maxVisitsPerDay || 0)}" /></label>
+      <div class="field">
+        <span>${l("Cashier PIN", "رمز الكاشير")}</span>
+        <div class="row-wrap">
+          <span class="badge">${escapeHtml(branch?.pin || l("Auto-generated after save", "يُنشأ تلقائياً بعد الحفظ"))}</span>
+          ${branch?.pin ? `<button type="button" class="secondary button-small" data-action="copy-branch-pin" data-pin="${escapeHtml(branch.pin)}">${l("Copy", "نسخ")}</button>` : ""}
+          ${branch ? `<button type="button" class="secondary button-small" data-action="rotate-branch-pin" data-branch-id="${branch.id}">${l("Rotate PIN", "تدوير الرمز")}</button>` : ""}
+        </div>
+      </div>
       <label class="field field-span-full"><span>${l("Google Maps link", "رابط جوجل ماب")}</span><input name="mapLink" type="url" value="${escapeHtml(branch?.mapLink || "")}" /></label>
       <label class="field field-span-full"><span>${l("Branch image", "صورة الفرع")}</span><input name="image" type="file" accept="image/*" /></label>
       <button type="submit">${branch ? l("Save branch", "حفظ الفرع") : l("Create branch", "إنشاء الفرع")}</button>
@@ -2518,6 +2842,15 @@ function renderBranchesPage() {
             },
             { label: l("City", "المدينة"), render: (row) => cityName(row.cityId) || "-" },
             { label: l("Address", "العنوان"), render: (row) => (state.locale === "ar" ? row.addressAr : row.addressEn) || row.addressEn || "-" },
+            {
+              label: l("Cashier PIN", "رمز الكاشير"),
+              render: (row) =>
+                row.pin
+                  ? `<div class="row-wrap"><span class="badge">${escapeHtml(row.pin)}</span><button type="button" class="secondary button-small" data-action="copy-branch-pin" data-pin="${escapeHtml(row.pin)}">${l("Copy", "نسخ")}</button></div>`
+                  : "-",
+              html: true,
+            },
+            { label: l("Daily cap", "الحد اليومي"), render: (row) => Number(row.maxVisitsPerDay || 0) > 0 ? String(row.maxVisitsPerDay) : l("Unlimited", "غير محدود") },
             { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${statusTone(row.status)}">${escapeHtml(row.status)}</span>`, html: true },
             { label: l("Map", "الخريطة"), render: (row) => row.mapLink ? `<a class="table-link-button" href="${escapeHtml(row.mapLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open map", "فتح الخريطة"))}</a>` : "-", html: true },
           ],
@@ -2823,7 +3156,7 @@ function renderManagersPage() {
       <form id="createManagerForm" class="form-grid two-col">
         <label class="field"><span>${l("Full name", "الاسم الكامل")}</span><input name="fullName" required /></label>
         <label class="field"><span>${l("Email", "البريد الإلكتروني")}</span><input name="email" type="email" required /></label>
-        <label class="field"><span>${l("Password", "كلمة المرور")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+        ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), minLength: 8 })}
         <label class="field"><span>${l("Mobile", "الهاتف")}</span>${renderKuwaitMobileField("mobile")}</label>
         <div class="row-wrap field-span-full">
           <button type="submit">${l("Create manager", "إنشاء المدير")}</button>
@@ -2925,7 +3258,7 @@ function renderManagerEditPage() {
             </div>
             ${state.passwordEditorUserId === manager.id ? `
               <form class="form-grid manual-password-form" data-user-id="${manager.id}" style="margin-top: 12px;">
-                <label class="field"><span>${l("New password", "كلمة المرور الجديدة")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+                ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("New password", "كلمة المرور الجديدة"), minLength: 8 })}
                 <div class="row-wrap">
                   <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
                 </div>
@@ -3495,6 +3828,15 @@ function renderReportsPage() {
   return `
     ${pageHeader(l("Reports", "التقارير"), active.copy, { heroStats: active.heroStats, compactHeroStats: true })}
     ${renderReportTabs()}
+    <section class="panel">
+      <div class="row report-toolbar-head">
+        <div>
+          <h3>${l("Report actions", "إجراءات التقرير")}</h3>
+          <p class="panel-subtitle">${l("Export the currently selected report tab as CSV.", "صدّر تبويب التقرير المحدد حالياً كملف CSV.")}</p>
+        </div>
+        <button type="button" data-action="export-report-csv">${l("Export CSV", "تصدير CSV")}</button>
+      </div>
+    </section>
     ${active.body}
   `;
 }
@@ -3559,6 +3901,11 @@ function renderAvailableCampaignCards(campaigns) {
           (campaign) => `
             <article class="campaign-card">
               ${renderCampaignBanner(campaign, "card")}
+              <div class="offer-headline">
+                <span class="offer-eyebrow">${escapeHtml(l("What you get", "ما الذي ستحصل عليه"))}</span>
+                <strong class="offer-title">${escapeHtml(campaign.offerDescription || l("Campaign offer attached to this code.", "عرض الحملة مرتبط بهذا الكود."))}</strong>
+                ${(campaign.offerUsageCount || 1) > 1 ? `<span class="offer-uses">${l("Uses", "عدد الاستخدام")}: ${escapeHtml(campaign.offerUsageCount)}</span>` : ""}
+              </div>
               <div class="row">
                 <strong>${escapeHtml(campaignTitle(campaign))}</strong>
                 <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
@@ -3569,7 +3916,6 @@ function renderAvailableCampaignCards(campaigns) {
                 <span class="badge">${campaign.codeStats.available} ${l("codes available", "كود متاح")}</span>
                 <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
               </div>
-              ${renderCampaignOffer(campaign, true)}
               <div class="row-wrap" style="margin-top: 12px;">
                 <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View", "عرض")}</button>
                 <button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>
@@ -3635,26 +3981,36 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View campaign", "عرض الحملة")}</button>
             </div>
           `;
-          const pendingForm = participantNeedsProof(participant.status) && !compactOnly ? `
+          const visitNote = participantNeedsVisit(participant.status) && !compactOnly ? `
+            <article class="note-card" style="margin-top: 14px;">
+              <strong>${l("Show your code at the branch", "اعرض الكود عند الفرع")}</strong>
+              <p>${l("Your code is reserved. Visit an eligible branch and ask the cashier to confirm the visit using the branch PIN.", "تم حجز كودك. زر أحد الأفرع المؤهلة واطلب من الكاشير تأكيد الزيارة باستخدام رمز الفرع.")}</p>
+              ${participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
+            </article>
+          ` : "";
+          const pendingForm = participantCanSubmit(participant) && !compactOnly ? `
             <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-top: 14px;">
               <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
               <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
               <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
-              <label class="field"><span>${l("Optional image", "صورة اختيارية")}</span><input name="image" type="file" accept="image/*" /></label>
-              ${participant.imagePath ? `<a class="badge" href="${participant.imagePath}" target="_blank" rel="noreferrer">${escapeHtml(participant.imageName || l("Open image", "عرض الصورة"))}</a>` : ""}
+              <label class="field"><span>${l("Image 1", "الصورة 1")}</span><input name="image1" type="file" accept="image/*" /></label>
+              <label class="field"><span>${l("Image 2", "الصورة 2")}</span><input name="image2" type="file" accept="image/*" /></label>
+              <label class="field"><span>${l("Image 3", "الصورة 3")}</span><input name="image3" type="file" accept="image/*" /></label>
+              <p class="compact field-span-full">${l("Up to 3 images total.", "حتى 3 صور كحد أقصى.")}</p>
+              <div class="row-wrap field-span-full">${renderParticipantImages(participant.images || [])}</div>
               <button type="submit">${l("Submit proof", "إرسال الإثبات")}</button>
             </form>
           ` : "";
-          const submittedBlock = ["submitted", "completed"].includes(participant.status) && !proofOnly ? `
+          const submittedBlock = ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant) && !proofOnly ? `
             <article class="note-card" style="margin-top: 14px;">
               <strong>${l("Submitted Proof", "الإثبات المرسل")}</strong>
               <p>${participant.socialLink ? `<a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a>` : "-"}</p>
               <p>${escapeHtml(participant.feedback || l("No feedback added.", "لا توجد ملاحظات."))}</p>
               <p class="compact">${l("This submission is now view-only.", "هذا التسليم أصبح للعرض فقط.")}</p>
-              ${participant.imagePath ? `<a class="badge" href="${participant.imagePath}" target="_blank" rel="noreferrer">${escapeHtml(participant.imageName || l("Open image", "عرض الصورة"))}</a>` : ""}
+              <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
             </article>
           ` : "";
-          const contentBlock = `${actionBlock}${pendingForm}${submittedBlock}`;
+          const contentBlock = `${actionBlock}${visitNote}${pendingForm}${submittedBlock}`;
 
           if (["submitted", "completed"].includes(participant.status) && !proofOnly) {
             return `
@@ -3714,35 +4070,50 @@ function renderInfluencerCampaignPreviewPage() {
               </div>
               ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
               ${["submitted", "completed"].includes(participant.status) ? `<p class="compact">${l("Your proof has already been submitted and is now view-only.", "تم إرسال الإثبات الخاص بك وهو الآن للعرض فقط.")}</p>` : ""}
-              ${participantNeedsProof(participant.status) ? `<p class="compact">${l("This campaign is waiting for your proof submission.", "هذه الحملة بانتظار إرسال الإثبات.")}</p>` : ""}
+              ${participantNeedsVisit(participant.status) ? `<p class="compact">${l("Visit an eligible branch and show your code to the cashier first.", "قم بزيارة فرع مؤهل واعرض كودك على الكاشير أولاً.")}</p>` : ""}
+              ${participantNeedsProof(participant.status) ? `<p class="compact">${l("Your branch visit is confirmed. You can now submit your proof link.", "تم تأكيد زيارتك للفرع. يمكنك الآن إرسال رابط الإثبات.")}</p>` : ""}
               ${participant.status === "canceled" ? `<p class="compact">${l("This participation was canceled.", "تم إلغاء هذه المشاركة.")}</p>` : ""}
             </article>
           `
           : ""
       }
       ${
-        participant && participantNeedsProof(participant.status)
+        participant && participantCanSubmit(participant)
           ? `
             <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-bottom: 16px;">
               <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
               <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
               <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
-              <label class="field"><span>${l("Optional image", "صورة اختيارية")}</span><input name="image" type="file" accept="image/*" /></label>
-              ${participant.imagePath ? `<a class="badge" href="${participant.imagePath}" target="_blank" rel="noreferrer">${escapeHtml(participant.imageName || l("Open image", "عرض الصورة"))}</a>` : ""}
+              <label class="field"><span>${l("Image 1", "الصورة 1")}</span><input name="image1" type="file" accept="image/*" /></label>
+              <label class="field"><span>${l("Image 2", "الصورة 2")}</span><input name="image2" type="file" accept="image/*" /></label>
+              <label class="field"><span>${l("Image 3", "الصورة 3")}</span><input name="image3" type="file" accept="image/*" /></label>
+              <p class="compact field-span-full">${l("Up to 3 images total.", "حتى 3 صور كحد أقصى.")}</p>
+              <div class="row-wrap field-span-full">${renderParticipantImages(participant.images || [])}</div>
               <button type="submit">${l("Submit proof", "إرسال الإثبات")}</button>
             </form>
           `
           : ""
       }
       ${
-        participant && ["submitted", "completed"].includes(participant.status)
+        participant && participantNeedsVisit(participant.status)
+          ? `
+            <article class="note-card" style="margin-bottom: 16px;">
+              <strong>${l("Show your code to the cashier", "اعرض كودك على الكاشير")}</strong>
+              <p>${l("Your code is already reserved. Once the cashier confirms your visit at an eligible branch, proof submission will unlock here.", "تم حجز كودك بالفعل. بمجرد أن يؤكد الكاشير زيارتك في فرع مؤهل، سيفتح نموذج إرسال الإثبات هنا.")}</p>
+              ${participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
+            </article>
+          `
+          : ""
+      }
+      ${
+        participant && ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant)
           ? `
             <article class="note-card" style="margin-bottom: 16px;">
               <strong>${l("Submitted Proof", "الإثبات المرسل")}</strong>
               <p>${participant.socialLink ? `<a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a>` : "-"}</p>
               <p>${escapeHtml(participant.feedback || l("No feedback added.", "لا توجد ملاحظات."))}</p>
               <p class="compact">${l("This submission is view-only.", "هذا التسليم للعرض فقط.")}</p>
-              ${participant.imagePath ? `<a class="badge" href="${participant.imagePath}" target="_blank" rel="noreferrer">${escapeHtml(participant.imageName || l("Open image", "عرض الصورة"))}</a>` : ""}
+              <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
             </article>
           `
           : ""
@@ -3782,7 +4153,7 @@ function renderProfilePage() {
         <label class="field" style="grid-column: 1 / -1;"><span>${l("Upload image", "رفع الصورة")}</span><input name="avatar" type="file" accept="image/*" /></label>
         <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(user.fullName || "")}" /></label>
         <label class="field"><span>${l("Mobile", "الهاتف")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderKuwaitMobileField("mobile", user.mobile || "", isInfluencer)}</label>
-        <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", user.gender || "", true)}</label>
+        <label class="field"><span>${l("Gender", "الجنس")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderGenderSelect("gender", user.gender || "", isInfluencer)}</label>
         <label class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><input name="dateOfBirth" type="date" value="${escapeHtml(user.dateOfBirth || "")}" /></label>
         <label class="field"><span>${l("City", "المدينة")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderCitySelect("cityId", user.cityId, false, isInfluencer)}</label>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", user.categoryId)}</label>
@@ -3888,7 +4259,7 @@ function renderInfluencerProfilePage() {
           <button type="button" class="secondary" data-action="toggle-password-editor" data-user-id="${user.id}">${state.passwordEditorUserId === user.id ? l("Close password", "إغلاق كلمة المرور") : l("Change password", "تغيير كلمة المرور")}</button>
         </div>
         ${state.passwordEditorUserId === user.id ? `<form class="inline-form manual-password-form" data-user-id="${user.id}" style="margin-top: 12px;">
-          <label class="field"><span>${l("Set manual password", "تعيين كلمة مرور يدوية")}</span><input name="password" type="password" required minlength="8" autocomplete="new-password" /><small class="field-help">${escapeHtml(passwordRequirementHint())}</small></label>
+          ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Set manual password", "تعيين كلمة مرور يدوية"), minLength: 8 })}
           <button type="submit">${l("Save password", "حفظ كلمة المرور")}</button>
         </form>` : ""}
       </section>
@@ -3990,11 +4361,29 @@ function renderPlatformSelect(name, selectedValue, includeAll = false) {
 }
 
 function generateCampaignShareText(campaign) {
-  const title = campaign.titleEn || campaign.titleAr || "PICK";
+  const titleEn = campaign.titleEn || campaign.titleAr || "PICK";
   const titleAr = campaign.titleAr || campaign.titleEn || "PICK";
-  return state.locale === "ar"
-    ? `حملة جديدة من PICK: ${titleAr}. آخر موعد للزيارة ${formatDate(campaign.visitDeadline)}. سجّل اهتمامك لتحصل على كود خاص محجوز لك فقط.`
-    : `New PICK campaign: ${title}. Visit deadline: ${formatDate(campaign.visitDeadline)}. Confirm interest to reserve your private one-time code.`;
+  const branchLabel =
+    campaign.branchMode === "selected"
+      ? (campaign.branchIds || []).map((branchId) => branchDisplayName((state.data?.branches || []).find((branch) => branch.id === branchId))).filter(Boolean).join(", ")
+      : l("All campaign branches", "كل أفرع الحملة");
+  return [
+    `PICK Campaign`,
+    `Title: ${titleEn}`,
+    `Offer: ${campaign.offerDescription || "-"}`,
+    `Branches: ${branchLabel || "-"}`,
+    `Visit deadline: ${formatDate(campaign.visitDeadline)}`,
+    `Submission deadline: ${formatDate(campaign.submissionDeadline)}`,
+    `CTA: Confirm your interest to reserve your private code.`,
+    ``,
+    `حملة PICK`,
+    `العنوان: ${titleAr}`,
+    `العرض: ${campaign.offerDescription || "-"}`,
+    `الأفرع: ${branchLabel || "-"}`,
+    `آخر موعد للزيارة: ${formatDate(campaign.visitDeadline)}`,
+    `آخر موعد للتسليم: ${formatDate(campaign.submissionDeadline)}`,
+    `الإجراء: أكد اهتمامك لتحجز كودك الخاص.`,
+  ].join("\n");
 }
 
 function generateCampaignEmailText(campaign) {
@@ -4049,6 +4438,15 @@ async function handleClick(event) {
     state.flash = null;
     window.clearTimeout(flash._timeout);
     syncFlashLayer();
+    return;
+  }
+
+  if (action === "toggle-password-visibility") {
+    const field = target.closest(".password-field")?.querySelector("input");
+    if (!field) return;
+    const showing = field.type === "text";
+    field.type = showing ? "password" : "text";
+    target.textContent = showing ? l("Show", "إظهار") : l("Hide", "إخفاء");
     return;
   }
 
@@ -4107,6 +4505,22 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "rotate-branch-pin") {
+    if (!window.confirm(l("Rotate the branch PIN now?", "هل تريد تدوير رمز الفرع الآن؟"))) return;
+    await mutateAndRefresh(`/api/branches/${target.dataset.branchId}/rotate-pin`, {}, l("Branch PIN rotated.", "تم تدوير رمز الفرع."), { rethrow: true });
+    return;
+  }
+
+  if (action === "copy-branch-pin") {
+    try {
+      await navigator.clipboard.writeText(target.dataset.pin || "");
+      flash(l("Branch PIN copied.", "تم نسخ رمز الفرع."), "success");
+    } catch (error) {
+      flash(l("Could not copy the branch PIN.", "تعذر نسخ رمز الفرع."), "error");
+    }
+    return;
+  }
+
   if (action === "edit-manager") {
     state.selectedManagerId = Number(target.dataset.managerId);
     state.currentPage = "manager-edit";
@@ -4159,6 +4573,7 @@ async function handleClick(event) {
       tag: { url: `/api/tags/${id}/delete`, message: l("Tag deactivated for future use.", "تم تعطيل العلامة للاستخدامات المستقبلية.") },
     }[type];
     if (!config) return;
+    if (!window.confirm(l("Deactivate this item for future use?", "هل تريد تعطيل هذا العنصر للاستخدامات المستقبلية؟"))) return;
     state.masterDataEditor = { type: "", id: null };
     await mutateAndRefresh(config.url, {}, config.message);
     return;
@@ -4204,6 +4619,23 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "duplicate-campaign") {
+    try {
+      const payload = await api(`/api/campaigns/${target.dataset.campaignId}/duplicate`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadBootstrap();
+      state.selectedCampaignId = payload.campaign.id;
+      state.currentPage = "campaign-edit";
+      flash(l("Campaign duplicated as draft.", "تم نسخ الحملة كمسودة."), "success");
+      render();
+    } catch (error) {
+      flash(error.message, "error");
+    }
+    return;
+  }
+
   if (action === "back-to-campaigns") {
     state.manualReserveCodeId = null;
     state.currentPage = "campaigns";
@@ -4214,6 +4646,11 @@ async function handleClick(event) {
   if (action === "set-report-tab") {
     state.reportTab = target.dataset.tab || "campaigns";
     render();
+    return;
+  }
+
+  if (action === "export-report-csv") {
+    window.location.assign(`/api/reports/export.csv?tab=${encodeURIComponent(state.reportTab)}`);
     return;
   }
 
@@ -4250,13 +4687,69 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "set-checkbox-group") {
+    const field = target.closest(".field");
+    const name = target.dataset.checkboxName;
+    const mode = target.dataset.checkboxMode;
+    if (!field || !name) return;
+    field.querySelectorAll(`input[name="${CSS.escape(name)}"]`).forEach((input) => {
+      input.checked = mode === "all";
+    });
+    return;
+  }
+
   if (action === "join-campaign") {
+    const campaign = currentCampaigns().find((item) => item.id === Number(target.dataset.campaignId));
+    if (campaign) {
+      const confirmed = window.confirm(
+        l(
+          `Confirming interest will reserve a unique code for you.\nOffer: ${campaign.offerDescription || "-"}\nVisit deadline: ${formatDate(campaign.visitDeadline)}\nSubmission deadline: ${formatDate(campaign.submissionDeadline)}`,
+          `تأكيد الاهتمام سيحجز لك كوداً فريداً.\nالعرض: ${campaign.offerDescription || "-"}\nآخر موعد للزيارة: ${formatDate(campaign.visitDeadline)}\nآخر موعد للتسليم: ${formatDate(campaign.submissionDeadline)}`
+        )
+      );
+      if (!confirmed) return;
+    }
     await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your private code has been reserved.", "تم حجز كودك الخاص."));
     return;
   }
 
+  if (action === "copy-whatsapp-text") {
+    const campaign = currentCampaigns().find((item) => item.id === Number(target.dataset.campaignId));
+    if (!campaign) {
+      flash(l("Campaign not found.", "الحملة غير موجودة."), "error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(generateCampaignShareText(campaign));
+      flash(l("WhatsApp text copied.", "تم نسخ نص واتساب."), "success");
+    } catch (error) {
+      flash(l("Could not copy the WhatsApp text.", "تعذر نسخ نص واتساب."), "error");
+    }
+    return;
+  }
+
+  if (action === "cancel-participation") {
+    if (!window.confirm(l("Cancel this participation and release the reserved code?", "هل تريد إلغاء هذه المشاركة وإعادة الكود المحجوز؟"))) return;
+    await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/cancel`, {}, l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."), { rethrow: true });
+    return;
+  }
+
   if (action === "remove-participant") {
+    if (!window.confirm(l("Remove this influencer from the campaign?", "هل تريد إزالة هذا المؤثر من الحملة؟"))) return;
     await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/remove`, {}, l("Influencer removed from campaign.", "تمت إزالة المؤثر من الحملة."));
+    return;
+  }
+
+  if (action === "download-sample-csv") {
+    const sample = "code,usage,offer\nPICK-001,1,Free coffee\n";
+    const blob = new Blob([sample], { type: "text/csv;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "sample-codes.csv";
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+    return;
   }
 }
 
@@ -4265,6 +4758,7 @@ async function handleSubmit(event) {
   const form = event.target;
   clearFormErrors(form);
   if (!reportFormValidity(form)) return;
+  const submitButton = lockFormButton(form);
   try {
     if (form.id === "loginForm") {
       const payload = formDataToObject(new FormData(form));
@@ -4298,8 +4792,9 @@ async function handleSubmit(event) {
     }
     if (form.id === "forgotPasswordForm") {
       const payload = await api("/api/password/forgot", { method: "POST", body: JSON.stringify(formDataToObject(new FormData(form))) });
-      state.generatedLink = payload.resetLink;
-      flash(l("Reset link generated.", "تم توليد رابط إعادة التعيين."), "success");
+      state.generatedLink = "";
+      state.authMode = "login";
+      flash(payload.message || l("If an account exists for this email, an admin will share the reset link with you.", "إذا كان الحساب موجوداً، فسيشاركك المسؤول رابط إعادة التعيين."), "success");
       render();
       return;
     }
@@ -4377,6 +4872,7 @@ async function handleSubmit(event) {
       return;
     }
     if (form.id === "resetCodesForm") {
+      if (!window.confirm(l("Delete uploaded codes and cancel affected assignments?", "هل تريد حذف الأكواد المرفوعة وإلغاء التخصيصات المتأثرة؟"))) return;
       const campaignId = new FormData(form).get("campaignId");
       await mutateAndRefresh(`/api/campaigns/${campaignId}/codes/reset`, {}, l("Uploaded codes deleted and affected assignments canceled.", "تم حذف الأكواد وإلغاء التخصيصات المتأثرة."), { rethrow: true });
       return;
@@ -4536,12 +5032,17 @@ async function handleSubmit(event) {
     applyApiErrorToForm(form, error.message);
     syncInvalidFields(form);
     flash(error.message, "error");
+  } finally {
+    unlockFormButton(submitButton);
   }
 }
 
 function handleChange(event) {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
     clearFieldError(event.target);
+  }
+  if (event.target.matches("input[type='file'][accept*='image']")) {
+    syncImagePreview(event.target);
   }
   if (event.target.matches("[data-action='change-locale']")) {
     saveLocale(event.target.value);
@@ -4586,8 +5087,18 @@ function handleInput(event) {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
     clearFieldError(event.target);
   }
+  if (event.target.matches("[data-kuwait-mobile]")) {
+    event.target.value = kuwaitMobileLocal(event.target.value).slice(0, 8);
+    return;
+  }
   if (event.target.matches("[data-tag-editor]")) {
     event.target.value = sanitizeTagToken(event.target.value);
+    return;
+  }
+
+  if (event.target.matches("[name='campaignSearch']")) {
+    state.campaignSearch = event.target.value;
+    render({ preserveFocus: true });
     return;
   }
 
@@ -4669,6 +5180,10 @@ function campaignFormPayload(form) {
     targetCityIds: formData.getAll("targetCityIds"),
     targetCategoryIds: formData.getAll("targetCategoryIds"),
     targetTags: normalizedTargetTags,
+    targetGender: formData.get("targetGender"),
+    minFollowers: Number(formData.get("minFollowers")) || 0,
+    targetPlatformIds: formData.getAll("targetPlatformIds"),
+    participantCap: Number(formData.get("participantCap")) || 0,
   };
 }
 

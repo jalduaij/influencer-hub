@@ -8,15 +8,32 @@ const ROOT = __dirname;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
 const STORE_PATH = path.resolve(process.env.STORE_PATH || path.join(DATA_DIR, "store.json"));
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(ROOT, "uploads"));
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const BUNDLED_DATA_DIR = path.join(ROOT, "data");
 const BUNDLED_STORE_PATH = path.join(BUNDLED_DATA_DIR, "store.json");
 const BUNDLED_UPLOAD_DIR = path.join(ROOT, "uploads");
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || 5050);
 const APP_BASE_URL = normalizeBaseUrl(process.env.APP_BASE_URL || `http://localhost:${PORT}`);
 const SESSION_COOKIE = "pick_sid";
 const IS_SECURE_APP = APP_BASE_URL.startsWith("https://");
+const RESET_LINKS_LOG_PATH = path.join(DATA_DIR, "reset-links.log");
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+const ALLOWED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"]);
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+const rateLimitBuckets = new Map();
+const CSRF_EXEMPT_PATHS = new Set(["/api/visits/confirm"]);
 
 const sessions = new Map();
+let storeWriteChain = Promise.resolve();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -58,7 +75,119 @@ function safeFileNameSegment(value) {
     .replace(/^-|-$/g, "") || "upload";
 }
 
+function httpError(statusCode, message) {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+function normalizeMimeType(value) {
+  return String(value || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+}
+
+function detectImageType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return "";
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpeg";
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "png";
+  }
+  if (
+    buffer.slice(0, 4).toString("ascii") === "RIFF" &&
+    buffer.slice(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "webp";
+  }
+  if (buffer.slice(4, 8).toString("ascii") === "ftyp") {
+    return "heic";
+  }
+  return "";
+}
+
+function validateUploadedImage(file) {
+  if (!file?.filename || !Buffer.isBuffer(file.content)) {
+    return { ok: false, error: "Image file is required." };
+  }
+  if (file.content.length > 5 * 1024 * 1024) {
+    return { ok: false, error: "Image must be 5MB or smaller." };
+  }
+  const extension = path.extname(file.filename).toLowerCase();
+  if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
+    return { ok: false, error: "Only JPG, PNG, WebP, and HEIC images are allowed." };
+  }
+  const mimeType = normalizeMimeType(file.contentType);
+  if (mimeType && !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    return { ok: false, error: "Uploaded file type is not allowed." };
+  }
+  if (!detectImageType(file.content)) {
+    return { ok: false, error: "Uploaded file is not a valid image." };
+  }
+  return { ok: true };
+}
+
+function scryptAsync(password, salt, keylen, options) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, keylen, options, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(derivedKey);
+    });
+  });
+}
+
+async function hashPassword(plaintext) {
+  const salt = crypto.randomBytes(16);
+  const derivedKey = await scryptAsync(plaintext, salt, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+  });
+  return `scrypt$${SCRYPT_N}$${salt.toString("hex")}$${derivedKey.toString("hex")}`;
+}
+
+async function verifyPassword(plaintext, stored) {
+  const storedValue = String(stored || "");
+  if (!storedValue.startsWith("scrypt$")) {
+    return {
+      ok: storedValue === String(plaintext || ""),
+      needsRehash: storedValue === String(plaintext || ""),
+    };
+  }
+  const parts = storedValue.split("$");
+  if (parts.length !== 4) return { ok: false, needsRehash: false };
+  const [, nValue, saltHex, hashHex] = parts;
+  const salt = Buffer.from(saltHex, "hex");
+  const expectedHash = Buffer.from(hashHex, "hex");
+  const derivedKey = await scryptAsync(String(plaintext || ""), salt, expectedHash.length, {
+    N: Number(nValue) || SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+  });
+  if (derivedKey.length !== expectedHash.length) {
+    return { ok: false, needsRehash: false };
+  }
+  return {
+    ok: crypto.timingSafeEqual(derivedKey, expectedHash),
+    needsRehash: false,
+  };
+}
+
 async function persistUploadedImage(file) {
+  const validation = validateUploadedImage(file);
+  if (!validation.ok) {
+    throw httpError(422, validation.error);
+  }
   const stamp = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const originalExt = path.extname(file.filename).toLowerCase();
   const baseName = safeFileNameSegment(file.filename);
@@ -78,7 +207,7 @@ async function persistUploadedImage(file) {
       };
     } catch (error) {
       await fs.rm(sourcePath, { force: true });
-      throw new Error("HEIC banners could not be converted. Please upload JPG, PNG, or WebP.");
+      throw httpError(422, "HEIC images could not be converted. Please upload JPG, PNG, or WebP.");
     }
   }
 
@@ -94,6 +223,13 @@ async function persistUploadedImage(file) {
 async function ensureRuntimeFiles() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  await fs.mkdir(BACKUP_DIR, { recursive: true });
+}
+
+function runSerializedStoreTask(task) {
+  const run = storeWriteChain.then(task, task);
+  storeWriteChain = run.catch(() => {});
+  return run;
 }
 
 async function pathExists(targetPath) {
@@ -139,6 +275,19 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function localizedText(en, ar) {
+  return { en: text(en), ar: text(ar) };
+}
+
+function makeNotification(id, tone, titleEn, titleAr, bodyEn, bodyAr) {
+  return {
+    id,
+    tone,
+    title: localizedText(titleEn, titleAr),
+    body: localizedText(bodyEn, bodyAr),
+  };
+}
+
 function parseList(value) {
   if (Array.isArray(value)) return value.map((item) => text(item)).filter(Boolean);
   if (typeof value !== "string") return [];
@@ -156,6 +305,18 @@ function parseList(value) {
 
 function normalizeTag(value) {
   return text(value).toLowerCase();
+}
+
+function normalizeSocialHandle(value) {
+  const raw = text(value).toLowerCase();
+  if (!raw) return "";
+  let normalized = raw.replace(/^https?:\/\//, "");
+  normalized = normalized.replace(/^www\./, "");
+  normalized = normalized.replace(/^instagram\.com\//, "");
+  normalized = normalized.replace(/^tiktok\.com\//, "");
+  normalized = normalized.replace(/^snapchat\.com\/add\//, "");
+  normalized = normalized.split(/[/?#]/)[0] || "";
+  return normalized.replace(/^@+/, "");
 }
 
 function kuwaitMobileLocal(value) {
@@ -215,6 +376,227 @@ function randomToken() {
   return crypto.randomBytes(24).toString("hex");
 }
 
+function randomSixDigitPin() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toDateString(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function sameDay(left, right) {
+  return toDateString(left) && toDateString(left) === toDateString(right);
+}
+
+function canVisitCampaignBranch(campaign, branchId) {
+  if (!campaign) return false;
+  if (campaign.branchMode === "all") return true;
+  return (campaign.branchIds || []).includes(Number(branchId));
+}
+
+function syncParticipantPrimaryImage(participant) {
+  const firstImage = participant.images?.[0] || null;
+  participant.imageName = firstImage?.name || "";
+  participant.imagePath = firstImage?.path || "";
+}
+
+function totalFollowers(influencer) {
+  const followers = influencer?.followers || {};
+  return (Number(followers.instagram) || 0) + (Number(followers.tiktok) || 0) + (Number(followers.snapchat) || 0);
+}
+
+function platformNameForId(store, platformId) {
+  const platform = platformById(store, platformId);
+  return text(platform?.nameEn).toLowerCase();
+}
+
+function influencerMatchesTargetPlatforms(store, influencer, targetPlatformIds) {
+  if (!targetPlatformIds?.length) return true;
+  const preferred = text(influencer.preferredPlatform).toLowerCase();
+  const followers = influencer.followers || {};
+  return targetPlatformIds.some((platformId) => {
+    const name = platformNameForId(store, platformId);
+    if (!name) return false;
+    if (preferred === name) return true;
+    if (name === "instagram") return (Number(followers.instagram) || 0) > 0;
+    if (name === "tiktok") return (Number(followers.tiktok) || 0) > 0;
+    if (name === "snapchat") return (Number(followers.snapchat) || 0) > 0;
+    return false;
+  });
+}
+
+function releaseAssignedCode(store, participant) {
+  const code = assignedCodeForParticipant(store, participant);
+  if (!code) return null;
+  code.status = "available";
+  code.reservedByParticipantId = null;
+  code.reservedAt = null;
+  code.usedAt = null;
+  code.blockedAt = null;
+  return code;
+}
+
+function participantCanSubmitOnServer(participant) {
+  if (!participant) return { ok: false, reason: "Participation not found." };
+  if (participant.status === "visited") return { ok: true, editingExisting: false };
+  if (participant.status === "submitted") {
+    const submittedAt = participant.submittedAt ? new Date(participant.submittedAt).getTime() : 0;
+    if (submittedAt && Date.now() - submittedAt <= 24 * 60 * 60 * 1000) {
+      return { ok: true, editingExisting: true };
+    }
+    return { ok: false, reason: "Submitted proof is view-only and can no longer be edited." };
+  }
+  if (participant.status === "completed") {
+    return { ok: false, reason: "Submitted proof is view-only and can no longer be edited." };
+  }
+  if (participant.status === "confirmed") {
+    return { ok: false, reason: "Visit must be confirmed at the branch before proof submission." };
+  }
+  return { ok: false, reason: "This campaign is not ready for proof submission." };
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return forwarded || req.socket.remoteAddress || "unknown";
+}
+
+function checkRateLimit(key, limit, windowMs) {
+  const now = Date.now();
+  const bucket = (rateLimitBuckets.get(key) || []).filter((timestamp) => now - timestamp < windowMs);
+  if (bucket.length >= limit) {
+    const oldestRelevant = bucket[0];
+    const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - oldestRelevant)) / 1000));
+    rateLimitBuckets.set(key, bucket);
+    return { ok: false, retryAfterSeconds };
+  }
+  bucket.push(now);
+  rateLimitBuckets.set(key, bucket);
+  return { ok: true };
+}
+
+function pruneLoginAttempts(store) {
+  store.loginAttempts ||= [];
+  const cutoff = Date.now() - 15 * 60 * 1000 * 4;
+  store.loginAttempts = store.loginAttempts.filter((attempt) => new Date(attempt.at).getTime() >= cutoff);
+}
+
+function recordLoginAttempt(store, email, success) {
+  pruneLoginAttempts(store);
+  store.loginAttempts.push({
+    at: new Date().toISOString(),
+    email: text(email).toLowerCase(),
+    success: Boolean(success),
+  });
+}
+
+function isLockedOut(store, email) {
+  const normalizedEmail = text(email).toLowerCase();
+  const windowMs = 15 * 60 * 1000;
+  const now = Date.now();
+  const attempts = (store.loginAttempts || [])
+    .filter(
+      (attempt) =>
+        attempt.email === normalizedEmail &&
+        now - new Date(attempt.at).getTime() <= windowMs
+    )
+    .sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime());
+  const recent = attempts.slice(-5);
+  if (recent.length < 5 || recent.some((attempt) => attempt.success)) return null;
+  const firstFailureAt = new Date(recent[0].at).getTime();
+  const remainingMs = firstFailureAt + windowMs - now;
+  return remainingMs > 0 ? Math.max(1, Math.ceil(remainingMs / 1000)) : null;
+}
+
+function checkSameOrigin(req) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return true;
+  const origin = text(req.headers.origin);
+  const referer = text(req.headers.referer);
+  if (origin) return origin === APP_BASE_URL;
+  if (referer) {
+    try {
+      return new URL(referer).origin === APP_BASE_URL;
+    } catch (error) {
+      return false;
+    }
+  }
+  return false;
+}
+
+function actorSnapshot(actor) {
+  if (!actor) {
+    return {
+      actorId: null,
+      actorRole: null,
+      actorName: "System",
+    };
+  }
+  return {
+    actorId: actor.id ?? null,
+    actorRole: actor.role ?? null,
+    actorName: actor.fullName || actor.email || "Unknown",
+  };
+}
+
+function appendAuditEvent(store, actor, action, targetType, targetId, meta = {}) {
+  store.auditEvents ||= [];
+  store.nextIds ||= {};
+  store.nextIds.auditEvent ||= nextId(store.auditEvents);
+  store.auditEvents.push({
+    id: store.nextIds.auditEvent++,
+    at: new Date().toISOString(),
+    ...actorSnapshot(actor),
+    action,
+    targetType,
+    targetId: targetId ?? null,
+    meta,
+  });
+  if (store.auditEvents.length > 5000) {
+    store.auditEvents.splice(0, store.auditEvents.length - 5000);
+  }
+}
+
+function backupFileName(at = new Date()) {
+  const parts = [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, "0"),
+    String(at.getDate()).padStart(2, "0"),
+  ];
+  const time = [
+    String(at.getHours()).padStart(2, "0"),
+    String(at.getMinutes()).padStart(2, "0"),
+    String(at.getSeconds()).padStart(2, "0"),
+  ].join("-");
+  return `store-${parts.join("-")}_${time}.json`;
+}
+
+async function writeJsonAtomic(targetPath, content) {
+  const tempPath = `${targetPath}.tmp`;
+  const handle = await fs.open(tempPath, "w");
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fs.rename(tempPath, targetPath);
+}
+
+async function writeBackupSnapshot(content) {
+  const backupPath = path.join(BACKUP_DIR, backupFileName());
+  await writeJsonAtomic(backupPath, content);
+  const entries = (await fs.readdir(BACKUP_DIR))
+    .filter((entry) => entry.startsWith("store-") && entry.endsWith(".json"))
+    .sort();
+  const overflow = entries.slice(0, Math.max(0, entries.length - 20));
+  await Promise.all(overflow.map((entry) => fs.rm(path.join(BACKUP_DIR, entry), { force: true })));
+}
+
 function createSession(userId) {
   const id = randomToken();
   sessions.set(id, { userId, createdAt: Date.now() });
@@ -242,6 +624,15 @@ function sessionCookieHeader(value, options = {}) {
   return parts.join("; ");
 }
 
+function applySecurityHeaders(res) {
+  if (!res.hasHeader("X-Content-Type-Options")) res.setHeader("X-Content-Type-Options", "nosniff");
+  if (!res.hasHeader("X-Frame-Options")) res.setHeader("X-Frame-Options", "DENY");
+  if (!res.hasHeader("Referrer-Policy")) res.setHeader("Referrer-Policy", "same-origin");
+  if (!res.hasHeader("Permissions-Policy")) {
+    res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  }
+}
+
 function getSessionUser(req, store) {
   const sessionId = parseCookies(req)[SESSION_COOKIE];
   const session = sessions.get(sessionId);
@@ -250,6 +641,7 @@ function getSessionUser(req, store) {
 }
 
 function sendJson(res, statusCode, payload, headers = {}) {
+  applySecurityHeaders(res);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     ...headers,
@@ -258,8 +650,19 @@ function sendJson(res, statusCode, payload, headers = {}) {
 }
 
 function sendText(res, statusCode, body, headers = {}) {
+  applySecurityHeaders(res);
   res.writeHead(statusCode, {
     "Content-Type": "text/plain; charset=utf-8",
+    ...headers,
+  });
+  res.end(body);
+}
+
+function sendCsv(res, fileName, body, headers = {}) {
+  applySecurityHeaders(res);
+  res.writeHead(200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${fileName}"`,
     ...headers,
   });
   res.end(body);
@@ -269,6 +672,7 @@ async function serveFile(res, filePath) {
   try {
     const data = await fs.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
+    applySecurityHeaders(res);
     res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
     res.end(data);
   } catch (error) {
@@ -419,6 +823,8 @@ function normalizeStore(store) {
   store.campaignCodes ||= [];
   store.participants ||= [];
   store.passwordResets ||= [];
+  store.auditEvents ||= [];
+  store.loginAttempts ||= [];
   store.cities ||= [];
   store.categories ||= [];
   store.platforms ||= [];
@@ -443,6 +849,7 @@ function normalizeStore(store) {
   store.nextIds.platform ||= nextId(store.platforms);
   store.nextIds.tag ||= nextId(store.tags);
   store.nextIds.passwordReset ||= nextId(store.passwordResets);
+  store.nextIds.auditEvent ||= nextId(store.auditEvents);
 
   for (const city of store.cities) {
     if (!city.nameEn) {
@@ -524,6 +931,9 @@ function normalizeStore(store) {
     branch.mapLink ||= "";
     branch.imageName ||= "";
     branch.imagePath ||= "";
+    branch.pin ||= randomSixDigitPin();
+    branch.pinUpdatedAt ||= branch.createdAt || new Date().toISOString();
+    branch.maxVisitsPerDay = Math.max(0, Number(branch.maxVisitsPerDay) || 0);
     branch.status ||= "active";
   }
 
@@ -560,6 +970,10 @@ function normalizeStore(store) {
     campaign.targetTags = normalizedTargetTags;
     campaign.offerDescription = text(campaign.offerDescription ?? campaign.offerText);
     campaign.offerUsageCount = Math.max(1, Number(campaign.offerUsageCount ?? campaign.usageCount) || 1);
+    campaign.targetGender = text(campaign.targetGender || "");
+    campaign.minFollowers = Math.max(0, Number(campaign.minFollowers) || 0);
+    campaign.targetPlatformIds = parseNumberList(campaign.targetPlatformIds);
+    campaign.participantCap = Math.max(0, Number(campaign.participantCap) || 0);
     if ((!campaign.targetCategoryIds.length || !campaign.targetCityIds.length) && Array.isArray(campaign.targeting)) {
       for (const token of campaign.targeting) {
         const categoryId = store.categories.find(
@@ -573,6 +987,7 @@ function normalizeStore(store) {
     campaign.createdAt ||= new Date().toISOString();
     campaign.updatedAt ||= campaign.createdAt;
     campaign.updatedBy ||= campaign.createdBy;
+    campaign.autoClosedAt ||= null;
     campaign.status ||= "draft";
     if (["active", "published"].includes(campaign.status)) {
       campaign.status = "live";
@@ -605,20 +1020,24 @@ function normalizeStore(store) {
 
   for (const participant of store.participants) {
     participant.status ||= "confirmed";
-    if (participant.status === "visited") {
-      participant.status = "confirmed";
-      changed.value = true;
-    }
     participant.joinedAt ||= new Date().toISOString();
     participant.visitedAt ||= null;
+    participant.visitedBranchId ||= null;
+    participant.visitedConfirmedByPin ||= false;
     participant.submittedAt ||= null;
     participant.completedAt ||= null;
     participant.selectedBranchId ||= null;
     participant.selectedVisitDate ||= null;
     participant.socialLink ||= "";
     participant.feedback ||= "";
+    participant.images ||= [];
+    if (!participant.images.length && participant.imagePath) {
+      participant.images = [{ name: participant.imageName || "Image", path: participant.imagePath }];
+      changed.value = true;
+    }
     participant.imageName ||= "";
     participant.imagePath ||= "";
+    syncParticipantPrimaryImage(participant);
     participant.platform ||= "";
     participant.canceledReason ||= "";
     participant.source ||= participant.influencerId ? "platform" : "offline";
@@ -660,26 +1079,81 @@ function normalizeStore(store) {
   return { store, changed: changed.value };
 }
 
+function applyLifecycleSweep(store) {
+  let changed = false;
+  const today = todayDateString();
+
+  for (const campaign of store.campaigns) {
+    if (campaign.status === "live" && campaign.submissionDeadline && toDateString(campaign.submissionDeadline) < today) {
+      campaign.status = "completed";
+      campaign.autoClosedAt = new Date().toISOString();
+      appendAuditEvent(store, null, "campaign.auto_closed", "campaign", campaign.id, {
+        submissionDeadline: campaign.submissionDeadline,
+      });
+      changed = true;
+    }
+  }
+
+  for (const participant of store.participants) {
+    const campaign = campaignById(store, participant.campaignId);
+    if (!campaign) continue;
+
+    if (participant.status === "confirmed" && campaign.visitDeadline && toDateString(campaign.visitDeadline) < today) {
+      releaseAssignedCode(store, participant);
+      participant.status = "canceled";
+      participant.canceledReason = "Visit deadline passed without confirmation";
+      participant.assignedCodeId = null;
+      appendAuditEvent(store, null, "participant.auto_canceled", "participant", participant.id, {
+        reason: participant.canceledReason,
+        campaignId: participant.campaignId,
+      });
+      changed = true;
+      continue;
+    }
+
+    if (participant.status === "submitted" && campaign.submissionDeadline && toDateString(campaign.submissionDeadline) < today) {
+      participant.status = "completed";
+      participant.completedAt ||= new Date().toISOString();
+      appendAuditEvent(store, null, "participant.auto_completed", "participant", participant.id, {
+        campaignId: participant.campaignId,
+      });
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 async function readStore() {
   const raw = JSON.parse(await fs.readFile(STORE_PATH, "utf8"));
   const normalized = normalizeStore(raw);
-  if (normalized.changed) {
-    await fs.writeFile(STORE_PATH, JSON.stringify(normalized.store, null, 2));
+  const swept = applyLifecycleSweep(normalized.store);
+  if (normalized.changed || swept) {
+    await writeStore(normalized.store, { skipBackup: true });
   }
   return normalized.store;
 }
 
-async function writeStore(store) {
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
+async function writeStore(store, options = {}) {
+  const content = JSON.stringify(store, null, 2);
+  await writeJsonAtomic(STORE_PATH, content);
+  if (!options.skipBackup) {
+    await writeBackupSnapshot(content);
+  }
 }
 
-function serializeBranch(store, branch) {
+function serializeBranch(store, branch, options = {}) {
   const city = cityById(store, branch.cityId);
-  return {
+  const serialized = {
     ...branch,
     cityNameEn: city?.nameEn || "",
     cityNameAr: city?.nameAr || "",
   };
+  if (!options.includePin) {
+    delete serialized.pin;
+    delete serialized.pinUpdatedAt;
+  }
+  return serialized;
 }
 
 function serializeCampaignCode(store, code) {
@@ -763,7 +1237,7 @@ function influencerSummary(store, influencer) {
   const participations = store.participants.filter((participant) => participant.influencerId === influencer.id);
   const joined = participations.filter((participant) => participant.status !== "canceled").length;
   const visited = participations.filter((participant) =>
-    ["confirmed", "visited", "submitted", "completed"].includes(participant.status)
+    ["visited", "submitted", "completed"].includes(participant.status)
   ).length;
   const submitted = participations.filter((participant) =>
     ["submitted", "completed"].includes(participant.status)
@@ -794,13 +1268,27 @@ function influencerSummary(store, influencer) {
   };
 }
 
+function csvEscape(value) {
+  const normalized = String(value ?? "");
+  if (!/[",\r\n]/.test(normalized)) return normalized;
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function buildCsv(headers, rows) {
+  const lines = [headers.map(csvEscape).join(",")];
+  for (const row of rows) {
+    lines.push(row.map(csvEscape).join(","));
+  }
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
 function reportBundleForCampaigns(store, campaigns) {
   const campaignRows = campaigns.map((campaign) => {
     const participants = store.participants.filter((participant) => participant.campaignId === campaign.id);
     const codeStats = codeStatsForCampaign(store, campaign.id);
     const joined = participants.filter((participant) => participant.status !== "canceled").length;
     const visited = participants.filter((participant) =>
-      ["confirmed", "visited", "submitted", "completed"].includes(participant.status)
+      ["visited", "submitted", "completed"].includes(participant.status)
     ).length;
     const submitted = participants.filter((participant) =>
       ["submitted", "completed"].includes(participant.status)
@@ -847,6 +1335,7 @@ function reportBundleForCampaigns(store, campaigns) {
         campaignTitleAr: campaign?.titleAr || "",
         influencerName: influencer?.fullName || "",
         status: participant.status,
+        platform: participant.platform || "",
         socialLink: participant.socialLink,
         feedback: participant.feedback,
         hasImage: Boolean(participant.imagePath),
@@ -895,6 +1384,151 @@ function reportBundleForCampaigns(store, campaigns) {
   };
 }
 
+function exportRowsForTab(store, tab) {
+  const reports = reportBundleForCampaigns(store, store.campaigns);
+
+  if (tab === "campaigns") {
+    return buildCsv(
+      [
+        "Campaign ID",
+        "Campaign title (EN)",
+        "Campaign title (AR)",
+        "Status",
+        "Joined",
+        "Visited",
+        "Submitted",
+        "Canceled",
+        "Total codes",
+        "Available codes",
+        "Reserved codes",
+        "Used codes",
+        "Blocked codes",
+        "Visit deadline",
+        "Submission deadline",
+      ],
+      reports.campaigns.map((row) => [
+        row.campaignId,
+        row.titleEn,
+        row.titleAr,
+        row.status,
+        row.joined,
+        row.visited,
+        row.submitted,
+        row.canceled,
+        row.totalCodes,
+        row.availableCodes,
+        row.reservedCodes,
+        row.usedCodes,
+        row.blockedCodes,
+        row.visitDeadline,
+        row.submissionDeadline,
+      ])
+    );
+  }
+
+  if (tab === "influencers") {
+    return buildCsv(
+      [
+        "Influencer ID",
+        "Full name",
+        "Email",
+        "Mobile",
+        "Status",
+        "City",
+        "Category",
+        "Tags",
+        "Joined",
+        "Visited",
+        "Submitted",
+        "Pending proof",
+        "Completion rate",
+        "Last activity",
+      ],
+      reports.influencers.map((row) => {
+        const user = userById(store, row.influencerId);
+        return [
+          row.influencerId,
+          row.fullName,
+          user?.email || "",
+          user?.mobile || "",
+          user?.status || "",
+          row.cityNameEn,
+          row.categoryNameEn,
+          (row.tags || []).join(", "),
+          row.joined,
+          row.visited,
+          row.submitted,
+          row.pendingProof,
+          row.completionRate,
+          row.lastActivityDate,
+        ];
+      })
+    );
+  }
+
+  if (tab === "submissions") {
+    return buildCsv(
+      [
+        "Participant ID",
+        "Campaign title (EN)",
+        "Campaign title (AR)",
+        "Influencer",
+        "Status",
+        "Platform",
+        "Social link",
+        "Feedback",
+        "Has image",
+        "Submitted at",
+      ],
+      reports.submissions.map((row) => [
+        row.participantId,
+        row.campaignTitleEn,
+        row.campaignTitleAr,
+        row.influencerName,
+        row.status,
+        row.platform || "",
+        row.socialLink || "",
+        row.feedback || "",
+        row.hasImage ? "Yes" : "No",
+        row.submittedAt || "",
+      ])
+    );
+  }
+
+  if (tab === "codes") {
+    return buildCsv(
+      [
+        "Campaign ID",
+        "Campaign title (EN)",
+        "Code",
+        "Status",
+        "Reservation source",
+        "Assigned influencer",
+        "Usage count",
+        "Offer text",
+        "Reserved at",
+        "Used at",
+        "Blocked at",
+      ],
+      reports.codes.map((row) => [
+        row.campaignId,
+        row.campaignTitleEn,
+        row.codeValue,
+        row.status,
+        row.reservationSource || "",
+        row.assignedInfluencer || "",
+        row.usageCount,
+        row.offerText || "",
+        row.reservedAt || "",
+        row.usedAt || "",
+        row.blockedAt || "",
+      ])
+    );
+  }
+
+  return "";
+}
+
 function activeManagerScopeCampaigns(store, user) {
   if (!user) return [];
   if (["admin", "campaign_manager"].includes(user.role)) return store.campaigns;
@@ -908,6 +1542,9 @@ function campaignMatchesInfluencer(store, campaign, influencer) {
   if (!["live"].includes(campaign.status)) return false;
   if (campaign.targetCityIds.length && !campaign.targetCityIds.includes(influencer.cityId)) return false;
   if (campaign.targetCategoryIds.length && !campaign.targetCategoryIds.includes(influencer.categoryId)) return false;
+  if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
+  if (campaign.minFollowers > 0 && totalFollowers(influencer) < campaign.minFollowers) return false;
+  if (!influencerMatchesTargetPlatforms(store, influencer, campaign.targetPlatformIds || [])) return false;
   if (campaign.targetTags.length) {
     const influencerTags = new Set((influencer.tags || []).map((tag) => tag.toLowerCase()));
     const matched = campaign.targetTags.some((tag) => influencerTags.has(tag.toLowerCase()));
@@ -927,6 +1564,12 @@ function eligibleCampaignsFor(store, user) {
     if (!campaignMatchesInfluencer(store, campaign, user)) return false;
     if (joinedActiveIds.has(campaign.id)) return false;
     if (codeStatsForCampaign(store, campaign.id).available <= 0) return false;
+    if (campaign.participantCap > 0) {
+      const activeParticipants = store.participants.filter(
+        (participant) => participant.campaignId === campaign.id && participant.status !== "canceled"
+      ).length;
+      if (activeParticipants >= campaign.participantCap) return false;
+    }
     return true;
   });
 }
@@ -938,50 +1581,111 @@ function generateNotifications(store, user) {
   if (["admin", "campaign_manager"].includes(user.role)) {
     const pendingApprovals = store.users.filter((item) => item.role === "influencer" && item.status === "pending").length;
     if (pendingApprovals) {
-      notifications.push({
-        id: `pending-${pendingApprovals}`,
-        tone: "warning",
-        title: "Pending influencer approvals",
-        body: `${pendingApprovals} influencer sign-up request${pendingApprovals === 1 ? "" : "s"} need review.`,
-      });
+      notifications.push(
+        makeNotification(
+          `pending-${pendingApprovals}`,
+          "warning",
+          "Pending influencer approvals",
+          "طلبات اعتماد المؤثرين المعلقة",
+          `${pendingApprovals} influencer sign-up request${pendingApprovals === 1 ? "" : "s"} need review.`,
+          `${pendingApprovals} طلب${pendingApprovals === 1 ? "" : ""} تسجيل مؤثر بحاجة إلى مراجعة.`
+        )
+      );
+    }
+
+    const awaitingVisit = store.participants.filter(
+      (participant) => participant.source !== "offline" && participant.status === "confirmed"
+    ).length;
+    if (awaitingVisit) {
+      notifications.push(
+        makeNotification(
+          `visit-${awaitingVisit}`,
+          "warning",
+          "Awaiting branch visit",
+          "بانتظار زيارة الفرع",
+          `${awaitingVisit} platform influencer${awaitingVisit === 1 ? "" : "s"} still need${awaitingVisit === 1 ? "s" : ""} a cashier-confirmed branch visit.`,
+          `${awaitingVisit} مؤثر${awaitingVisit === 1 ? "" : ""} من المنصة ما زال بحاجة إلى زيارة فرع مؤكدة من الكاشير.`
+        )
+      );
     }
 
     const pendingProof = store.participants.filter(
-      (participant) => participant.source !== "offline" && ["confirmed", "visited"].includes(participant.status)
+      (participant) => participant.source !== "offline" && participant.status === "visited"
     ).length;
     if (pendingProof) {
-      notifications.push({
-        id: `proof-${pendingProof}`,
-        tone: "info",
-        title: "Pending proof submissions",
-        body: `${pendingProof} platform influencer${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
-      });
+      notifications.push(
+        makeNotification(
+          `proof-${pendingProof}`,
+          "info",
+          "Pending proof submissions",
+          "إثباتات تسليم معلقة",
+          `${pendingProof} platform influencer${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
+          `${pendingProof} مؤثر${pendingProof === 1 ? "" : ""} من المنصة ما زال بحاجة إلى تسليم الإثبات عبر الحملات المباشرة.`
+        )
+      );
     }
   }
 
   if (user.role === "influencer") {
+    const awaitingVisit = store.participants.filter(
+      (participant) => participant.influencerId === user.id && participant.status === "confirmed"
+    );
+    if (awaitingVisit.length) {
+      notifications.push(
+        makeNotification(
+          `my-visit-${awaitingVisit.length}`,
+          "warning",
+          "Visit your branch",
+          "قم بزيارة فرعك",
+          `${awaitingVisit.length} campaign${awaitingVisit.length === 1 ? "" : "s"} still need${awaitingVisit.length === 1 ? "s" : ""} a branch visit confirmation.`,
+          `${awaitingVisit.length} حملة ما زالت بحاجة إلى تأكيد زيارة الفرع.`
+        )
+      );
+    }
+
     const pendingProof = store.participants.filter(
-      (participant) => participant.influencerId === user.id && ["confirmed", "visited"].includes(participant.status)
+      (participant) => participant.influencerId === user.id && participant.status === "visited"
     );
     if (pendingProof.length) {
-      notifications.push({
-        id: `my-proof-${pendingProof.length}`,
-        tone: "warning",
-        title: "Visit proof pending",
-        body: `${pendingProof.length} campaign${pendingProof.length === 1 ? "" : "s"} still need proof submission.`,
-      });
+      notifications.push(
+        makeNotification(
+          `my-proof-${pendingProof.length}`,
+          "warning",
+          "Submit your proof",
+          "أرسل إثباتك",
+          `${pendingProof.length} campaign${pendingProof.length === 1 ? "" : "s"} still need proof submission.`,
+          `${pendingProof.length} حملة ما زالت بحاجة إلى إرسال الإثبات.`
+        )
+      );
+    }
+
+    if (totalFollowers(user) === 0) {
+      notifications.push(
+        makeNotification(
+          "followers-zero",
+          "info",
+          "Add your follower counts",
+          "أضف أعداد متابعيك",
+          "Follower counts help us match you with campaigns that require minimum reach.",
+          "أعداد المتابعين تساعدنا على مطابقتك مع الحملات التي تتطلب حداً أدنى من الوصول."
+        )
+      );
     }
 
     const canceled = store.participants.filter(
       (participant) => participant.influencerId === user.id && participant.status === "canceled"
     );
     if (canceled.length) {
-      notifications.push({
-        id: `my-canceled-${canceled.length}`,
-        tone: "error",
-        title: "Canceled campaign assignments",
-        body: `${canceled.length} joined campaign${canceled.length === 1 ? " was" : "s were"} canceled.`,
-      });
+      notifications.push(
+        makeNotification(
+          `my-canceled-${canceled.length}`,
+          "error",
+          "Canceled campaign assignments",
+          "تخصيصات حملات ملغاة",
+          `${canceled.length} joined campaign${canceled.length === 1 ? " was" : "s were"} canceled.`,
+          `تم إلغاء ${canceled.length} من الحملات التي انضممت إليها.`
+        )
+      );
     }
   }
 
@@ -992,12 +1696,16 @@ function generateNotifications(store, user) {
   });
 
   if (upcomingDeadlines.length) {
-    notifications.push({
-      id: `deadline-${upcomingDeadlines.length}`,
-      tone: "info",
-      title: "Upcoming visit deadlines",
-      body: `${upcomingDeadlines.length} campaign${upcomingDeadlines.length === 1 ? "" : "s"} have visit deadlines within 3 days.`,
-    });
+    notifications.push(
+      makeNotification(
+        `deadline-${upcomingDeadlines.length}`,
+        "info",
+        "Upcoming visit deadlines",
+        "مواعيد زيارة قريبة",
+        `${upcomingDeadlines.length} campaign${upcomingDeadlines.length === 1 ? "" : "s"} have visit deadlines within 3 days.`,
+        `${upcomingDeadlines.length} حملة لديها موعد زيارة خلال 3 أيام.`
+      )
+    );
   }
 
   return notifications;
@@ -1006,13 +1714,14 @@ function generateNotifications(store, user) {
 function buildBootstrap(store, user) {
   const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
   const reports = reportBundleForCampaigns(store, store.campaigns);
+  const includeBranchPin = ["admin", "campaign_manager"].includes(user.role);
   const common = {
     currentUser: sanitizeUser(user),
     cities: store.cities,
     categories: store.categories,
     platforms: store.platforms,
     tags: store.tags,
-    branches: store.branches.map((branch) => serializeBranch(store, branch)),
+    branches: store.branches.map((branch) => serializeBranch(store, branch, { includePin: includeBranchPin })),
     campaigns,
     notifications: generateNotifications(store, user),
   };
@@ -1023,6 +1732,7 @@ function buildBootstrap(store, user) {
       users: store.users.map(sanitizeUser),
       participants: store.participants.map((participant) => serializeParticipant(store, participant)),
       reports,
+      auditEvents: store.auditEvents.slice(-200),
     };
   }
 
@@ -1047,7 +1757,18 @@ function buildBootstrap(store, user) {
         status: participant.status,
       })),
     },
+    auditEvents: [],
   };
+}
+
+function handleExportReportCsv(req, res, store, actor, searchParams) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const tab = text(searchParams.get("tab")).toLowerCase();
+  if (!["campaigns", "influencers", "submissions", "codes"].includes(tab)) {
+    return sendJson(res, 422, { error: "A valid report tab is required." });
+  }
+  const body = exportRowsForTab(store, tab);
+  return sendCsv(res, `pick-${tab}-report.csv`, body);
 }
 
 function publicMetadata(store) {
@@ -1088,6 +1809,10 @@ function campaignPayload(body, existingCampaign = null) {
     targetCityIds: parseNumberList(body.targetCityIds),
     targetCategoryIds: parseNumberList(body.targetCategoryIds),
     targetTags,
+    targetGender: text(body.targetGender ?? existingCampaign?.targetGender),
+    minFollowers: Math.max(0, Number(body.minFollowers ?? existingCampaign?.minFollowers) || 0),
+    targetPlatformIds: parseNumberList(body.targetPlatformIds ?? existingCampaign?.targetPlatformIds),
+    participantCap: Math.max(0, Number(body.participantCap ?? existingCampaign?.participantCap) || 0),
   };
 }
 
@@ -1174,6 +1899,9 @@ function cancelParticipant(store, participant, reason, codeStatus = "blocked") {
   participant.status = "canceled";
   participant.canceledReason = reason;
   const code = assignedCodeForParticipant(store, participant);
+  if (code && codeStatus === "available") {
+    releaseAssignedCode(store, participant);
+  }
   if (code && codeStatus === "blocked") {
     code.status = "blocked";
     code.blockedAt = new Date().toISOString();
@@ -1212,16 +1940,46 @@ async function handleLogin(req, res, store) {
   const body = jsonOrForm(await readBody(req), req);
   const email = text(body.email).toLowerCase();
   const password = text(body.password);
+  const ip = clientIp(req);
+  const ipLimit = checkRateLimit(`login:ip:${ip}`, 20, 60 * 1000);
+  if (!ipLimit.ok) {
+    return sendJson(res, 429, {
+      error: `Too many login attempts from this device. Try again in ${ipLimit.retryAfterSeconds} second(s).`,
+    });
+  }
+  const emailLimit = checkRateLimit(`login:email:${email}`, 10, 60 * 1000);
+  if (!emailLimit.ok) {
+    return sendJson(res, 429, {
+      error: `Too many login attempts for this account. Try again in ${emailLimit.retryAfterSeconds} second(s).`,
+    });
+  }
+  const lockedSeconds = isLockedOut(store, email);
+  if (lockedSeconds !== null) {
+    const remainingMinutes = Math.max(1, Math.ceil(lockedSeconds / 60));
+    return sendJson(res, 429, {
+      error: `This account is temporarily locked. Try again in ${remainingMinutes} minute(s).`,
+    });
+  }
   const user = store.users.find((item) => item.email.toLowerCase() === email);
+  const verification = user ? await verifyPassword(password, user.password) : { ok: false, needsRehash: false };
 
-  if (!user || user.password !== password) {
+  if (!user || !verification.ok) {
+    recordLoginAttempt(store, email, false);
+    await writeStore(store);
     return sendJson(res, 401, { error: "Invalid email or password." });
   }
   if (user.status !== "active") {
+    recordLoginAttempt(store, email, false);
+    await writeStore(store);
     return sendJson(res, 403, { error: "This account is not active yet." });
   }
 
+  if (verification.needsRehash) {
+    user.password = await hashPassword(password);
+  }
   user.lastLogin = new Date().toISOString();
+  recordLoginAttempt(store, email, true);
+  appendAuditEvent(store, user, "auth.login", "user", user.id);
   await writeStore(store);
   const sessionId = createSession(user.id);
   return sendJson(
@@ -1252,6 +2010,12 @@ async function handleSignup(req, res, store) {
   if (signupPasswordError) {
     return sendJson(res, 422, { error: signupPasswordError });
   }
+  const signupRateLimit = checkRateLimit(`signup:ip:${clientIp(req)}`, 5, 10 * 60 * 1000);
+  if (!signupRateLimit.ok) {
+    return sendJson(res, 429, {
+      error: `Too many signup attempts. Try again in ${signupRateLimit.retryAfterSeconds} second(s).`,
+    });
+  }
   const signupGender = normalizeGender(body.gender);
   if (!signupGender) {
     return sendJson(res, 422, { error: "Gender is required and must be male or female." });
@@ -1277,7 +2041,7 @@ async function handleSignup(req, res, store) {
     role: "influencer",
     fullName: text(body.fullName),
     email,
-    password: text(body.password),
+    password: await hashPassword(text(body.password)),
     status: "pending",
     mobile: normalizeKuwaitMobile(body.mobile),
     gender: signupGender,
@@ -1287,9 +2051,9 @@ async function handleSignup(req, res, store) {
     city: cityById(store, body.cityId)?.nameEn || "",
     category: categoryById(store, body.categoryId)?.nameEn || "",
     preferredLanguage: text(body.preferredLanguage || "en"),
-    instagram: text(body.instagram),
-    tiktok: text(body.tiktok),
-    snapchat: text(body.snapchat),
+    instagram: normalizeSocialHandle(body.instagram),
+    tiktok: normalizeSocialHandle(body.tiktok),
+    snapchat: normalizeSocialHandle(body.snapchat),
     followers: {
       instagram: Number(body.instagramFollowers) || 0,
       tiktok: Number(body.tiktokFollowers) || 0,
@@ -1313,11 +2077,25 @@ async function handleSignup(req, res, store) {
 async function handleForgotPassword(req, res, store) {
   const body = jsonOrForm(await readBody(req), req);
   const email = text(body.email).toLowerCase();
+  const forgotRateLimit = checkRateLimit(`forgot:ip:${clientIp(req)}`, 5, 10 * 60 * 1000);
+  if (!forgotRateLimit.ok) {
+    return sendJson(res, 429, {
+      error: `Too many reset requests. Try again in ${forgotRateLimit.retryAfterSeconds} second(s).`,
+    });
+  }
   const user = store.users.find((item) => item.email.toLowerCase() === email);
-  if (!user) return sendJson(res, 404, { error: "No account found for this email." });
-  const reset = rememberPasswordReset(store, user.id, null);
-  await writeStore(store);
-  return sendJson(res, 200, { ok: true, resetLink: reset.resetLink });
+  if (user) {
+    const reset = rememberPasswordReset(store, user.id, null);
+    appendAuditEvent(store, user, "user.password_forgot_requested", "user", user.id);
+    const resetLine = `${new Date().toISOString()}\t${user.email}\t${reset.resetLink}\n`;
+    await fs.appendFile(RESET_LINKS_LOG_PATH, resetLine, "utf8");
+    console.log(`Password reset link for ${user.email}: ${reset.resetLink}`);
+    await writeStore(store);
+  }
+  return sendJson(res, 200, {
+    ok: true,
+    message: "If an account exists for this email, a reset link has been generated. Contact your admin to retrieve it.",
+  });
 }
 
 async function handleResetPassword(req, res, store) {
@@ -1334,8 +2112,9 @@ async function handleResetPassword(req, res, store) {
   const user = userById(store, record.userId);
   if (!user) return sendJson(res, 404, { error: "User not found." });
 
-  user.password = password;
+  user.password = await hashPassword(password);
   record.usedAt = new Date().toISOString();
+  appendAuditEvent(store, user, "user.password_reset", "user", user.id);
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -1352,8 +2131,13 @@ async function handleUserStatus(req, res, store, actor, userId) {
   if (!["active", "pending", "rejected", "suspended"].includes(body.status)) {
     return sendJson(res, 422, { error: "Invalid status." });
   }
+  const previousStatus = user.status;
   user.status = body.status;
   user.approvedByUserId = body.status === "active" ? actor.id : user.approvedByUserId;
+  appendAuditEvent(store, actor, "user.status_change", "user", user.id, {
+    from: previousStatus,
+    to: user.status,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -1387,8 +2171,9 @@ async function handleSetUserPassword(req, res, store, actor, userId) {
   if (!text(body.password)) return sendJson(res, 422, { error: "Password is required." });
   const setPasswordError = passwordStrengthError(body.password);
   if (setPasswordError) return sendJson(res, 422, { error: setPasswordError });
-  user.password = text(body.password);
+  user.password = await hashPassword(text(body.password));
   user.passwordResetMode = "manual";
+  appendAuditEvent(store, actor, "user.password_set", "user", user.id);
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -1400,6 +2185,7 @@ async function handleGenerateResetLink(req, res, store, actor, userId) {
   if (actor.role === "campaign_manager" && user.role !== "influencer") return sendJson(res, 403, { error: "Forbidden" });
   if (actor.role === "admin" && !["influencer", "campaign_manager"].includes(user.role)) return sendJson(res, 403, { error: "Forbidden" });
   const reset = rememberPasswordReset(store, user.id, actor.id);
+  appendAuditEvent(store, actor, "user.reset_link_generated", "user", user.id);
   await writeStore(store);
   return sendJson(res, 200, { ok: true, resetLink: reset.resetLink });
 }
@@ -1432,13 +2218,13 @@ async function handleProfileUpdate(req, res, store, actor) {
   }
   if (body.gender !== undefined) {
     const normalizedGender = normalizeGender(body.gender);
-    if (!normalizedGender) {
+    if (!normalizedGender && (actor.role === "influencer" || text(body.gender))) {
       return sendJson(res, 422, { error: "Gender is required and must be male or female." });
     }
     user.gender = normalizedGender;
   }
   if (body.mobile !== undefined) {
-    if (!validKuwaitMobile(body.mobile)) {
+    if (text(body.mobile) && !validKuwaitMobile(body.mobile)) {
       return sendJson(res, 422, { error: "Mobile number must be 8 digits in Kuwait format." });
     }
     user.mobile = normalizeKuwaitMobile(body.mobile);
@@ -1462,6 +2248,9 @@ async function handleProfileUpdate(req, res, store, actor) {
   if (body.instagramFollowers !== undefined) user.followers.instagram = Number(body.instagramFollowers) || 0;
   if (body.tiktokFollowers !== undefined) user.followers.tiktok = Number(body.tiktokFollowers) || 0;
   if (body.snapchatFollowers !== undefined) user.followers.snapchat = Number(body.snapchatFollowers) || 0;
+  if (body.instagram !== undefined) user.instagram = normalizeSocialHandle(body.instagram);
+  if (body.tiktok !== undefined) user.tiktok = normalizeSocialHandle(body.tiktok);
+  if (body.snapchat !== undefined) user.snapchat = normalizeSocialHandle(body.snapchat);
 
   const avatar = parsed.files.avatar;
   if (avatar && avatar.filename) {
@@ -1492,12 +2281,13 @@ async function handleCreateManager(req, res, store, actor) {
     return sendJson(res, 409, { error: "This email already exists." });
   }
 
+  const newManagerId = store.nextIds.user++;
   store.users.push({
-    id: store.nextIds.user++,
+    id: newManagerId,
     role: "campaign_manager",
     fullName: text(body.fullName),
     email,
-    password: text(body.password),
+    password: await hashPassword(text(body.password)),
     status: "active",
     cityId: Number(body.cityId) || null,
     city: cityById(store, body.cityId)?.nameEn || "",
@@ -1521,6 +2311,7 @@ async function handleCreateManager(req, res, store, actor) {
     approvedByUserId: actor.id,
   });
 
+  appendAuditEvent(store, actor, "user.manager_created", "user", newManagerId, { email });
   await writeStore(store);
   return sendJson(res, 201, { ok: true });
 }
@@ -1742,6 +2533,9 @@ async function handleCreateBranch(req, res, store, actor) {
     mapLink: text(body.mapLink),
     imageName: "",
     imagePath: "",
+    pin: randomSixDigitPin(),
+    pinUpdatedAt: new Date().toISOString(),
+    maxVisitsPerDay: Math.max(0, Number(body.maxVisitsPerDay) || 0),
     status: body.status === "inactive" ? "inactive" : "active",
     createdAt: new Date().toISOString(),
   };
@@ -1772,6 +2566,7 @@ async function handleUpdateBranch(req, res, store, actor, branchId) {
   branch.addressEn = text(body.addressEn ?? branch.addressEn);
   branch.addressAr = text(body.addressAr ?? branch.addressAr);
   branch.mapLink = text(body.mapLink ?? branch.mapLink);
+  branch.maxVisitsPerDay = Math.max(0, Number(body.maxVisitsPerDay ?? branch.maxVisitsPerDay) || 0);
   branch.status = body.status === "inactive" ? "inactive" : "active";
   const image = parsed.files.image;
   if (image && image.filename) {
@@ -1781,6 +2576,17 @@ async function handleUpdateBranch(req, res, store, actor, branchId) {
   }
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
+}
+
+async function handleRotateBranchPin(req, res, store, actor, branchId) {
+  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
+  const branch = branchById(store, branchId);
+  if (!branch) return sendJson(res, 404, { error: "Branch not found." });
+  branch.pin = randomSixDigitPin();
+  branch.pinUpdatedAt = new Date().toISOString();
+  appendAuditEvent(store, actor, "branch.pin_rotated", "branch", branch.id);
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true, branch: serializeBranch(store, branch, { includePin: true }) });
 }
 
 async function handleCreateCampaign(req, res, store, actor) {
@@ -1850,6 +2656,37 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
   return sendJson(res, 200, { ok: true, campaign: serializeCampaign(store, campaign) });
 }
 
+async function handleDuplicateCampaign(req, res, store, actor, campaignId) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const campaign = campaignById(store, campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+  const now = new Date().toISOString();
+  const duplicated = {
+    ...campaign,
+    id: store.nextIds.campaign++,
+    titleEn: campaign.titleEn ? `${campaign.titleEn} (copy)` : "Copy",
+    titleAr: campaign.titleAr ? `${campaign.titleAr} (نسخة)` : "نسخة",
+    status: "draft",
+    startDate: "",
+    endDate: "",
+    visitDeadline: "",
+    submissionDeadline: "",
+    bannerName: "",
+    bannerPath: "",
+    autoClosedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: actor.id,
+    updatedBy: actor.id,
+  };
+  store.campaigns.unshift(duplicated);
+  appendAuditEvent(store, actor, "campaign.duplicated", "campaign", duplicated.id, {
+    sourceCampaignId: campaign.id,
+  });
+  await writeStore(store);
+  return sendJson(res, 201, { ok: true, campaign: serializeCampaign(store, duplicated) });
+}
+
 async function handleUploadBanner(req, res, store, actor, campaignId) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const campaign = campaignById(store, campaignId);
@@ -1904,6 +2741,9 @@ async function handleUploadCodes(req, res, store, actor, campaignId) {
     });
   }
 
+  appendAuditEvent(store, actor, "campaign.codes_uploaded", "campaign", campaign.id, {
+    added: codes.length,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true, uploaded: codes.length });
 }
@@ -1933,6 +2773,11 @@ async function handleResetCodes(req, res, store, actor, campaignId) {
     }
   }
 
+  appendAuditEvent(store, actor, "campaign.codes_reset", "campaign", campaign.id, {
+    deleted: codes.length,
+    batchId,
+    canceledParticipants: linkedParticipants.size,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true, deleted: codes.length });
 }
@@ -1956,6 +2801,12 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
   const eligibleIds = new Set(eligibleCampaignsFor(store, actor).map((item) => item.id));
   if (!eligibleIds.has(campaign.id)) {
     return sendJson(res, 409, { error: "This campaign is not available for this influencer." });
+  }
+  const activeParticipants = store.participants.filter(
+    (participant) => participant.campaignId === campaign.id && participant.status !== "canceled"
+  ).length;
+  if (campaign.participantCap > 0 && activeParticipants >= campaign.participantCap) {
+    return sendJson(res, 409, { error: "This campaign has reached its participant cap." });
   }
 
   const availableCode = store.campaignCodes.find((code) => code.campaignId === campaign.id && code.status === "available");
@@ -1987,6 +2838,10 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
   availableCode.reservedAt = now;
 
   store.participants.push(participant);
+  appendAuditEvent(store, actor, "campaign.joined", "campaign", campaign.id, {
+    participantId: participant.id,
+    codeId: availableCode.id,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -2034,6 +2889,11 @@ async function handleManualReserveCode(req, res, store, actor, codeId) {
   code.reservedAt = now;
 
   store.participants.push(participant);
+  appendAuditEvent(store, actor, "campaign.manual_reserve", "campaign", campaign.id, {
+    participantId: participant.id,
+    codeId: code.id,
+    offlineName,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true, participant: serializeParticipant(store, participant) });
 }
@@ -2043,8 +2903,114 @@ async function handleRemoveParticipant(req, res, store, actor, participantId) {
   const participant = participantById(store, participantId);
   if (!participant) return sendJson(res, 404, { error: "Participation not found." });
   cancelParticipant(store, participant, "Removed by campaign team", "blocked");
+  appendAuditEvent(store, actor, "participant.removed", "participant", participant.id);
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
+}
+
+async function handleSelfCancelParticipant(req, res, store, actor, participantId) {
+  if (!requireRole(actor, ["influencer"])) return sendJson(res, 403, { error: "Forbidden" });
+  const participant = store.participants.find(
+    (item) => item.id === Number(participantId) && item.influencerId === actor.id
+  );
+  if (!participant) return sendJson(res, 404, { error: "Participation not found." });
+  if (participant.status !== "confirmed") {
+    return sendJson(res, 409, { error: "Only reserved campaign visits can be canceled by the influencer." });
+  }
+  cancelParticipant(store, participant, "Canceled by influencer", "available");
+  participant.assignedCodeId = null;
+  appendAuditEvent(store, actor, "participant.self_canceled", "participant", participant.id, {
+    campaignId: participant.campaignId,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true });
+}
+
+async function handleVisitConfirm(req, res, store) {
+  const visitRateLimit = checkRateLimit(`visit-confirm:ip:${clientIp(req)}`, 30, 60 * 1000);
+  if (!visitRateLimit.ok) {
+    return sendJson(res, 429, {
+      error: `Too many visit confirmations. Try again in ${visitRateLimit.retryAfterSeconds} second(s).`,
+    });
+  }
+
+  const body = jsonOrForm(await readBody(req), req);
+  const codeValue = normalizeCode(body.code);
+  const pin = text(body.pin);
+  if (!codeValue || !pin) {
+    return sendJson(res, 422, { error: "Code and branch PIN are required." });
+  }
+
+  const branch = store.branches.find((item) => item.status === "active" && item.pin === pin);
+  if (!branch) {
+    return sendJson(res, 401, { error: "Branch PIN is invalid." });
+  }
+
+  const code = store.campaignCodes.find((item) => normalizeCode(item.codeValue) === codeValue);
+  if (!code) {
+    return sendJson(res, 404, { error: "Code not found." });
+  }
+  if (code.status === "used") {
+    return sendJson(res, 409, { error: "This code has already been used." });
+  }
+  if (code.status !== "reserved" || !code.reservedByParticipantId) {
+    return sendJson(res, 409, { error: "This code is not currently reserved for a visit confirmation." });
+  }
+
+  const participant = participantById(store, code.reservedByParticipantId);
+  if (!participant) {
+    return sendJson(res, 409, { error: "The reservation linked to this code could not be found." });
+  }
+  if (!["confirmed", "offline_reserved"].includes(participant.status)) {
+    return sendJson(res, 409, { error: "This participant is not in a confirmable state." });
+  }
+
+  const campaign = campaignById(store, code.campaignId);
+  if (!campaign) {
+    return sendJson(res, 404, { error: "Campaign not found." });
+  }
+  if (!canVisitCampaignBranch(campaign, branch.id)) {
+    return sendJson(res, 409, { error: "This branch is not part of the campaign scope." });
+  }
+
+  if (branch.maxVisitsPerDay > 0) {
+    const visitsToday = store.participants.filter(
+      (item) => item.visitedBranchId === branch.id && item.visitedAt && sameDay(item.visitedAt, new Date().toISOString())
+    ).length;
+    if (visitsToday >= branch.maxVisitsPerDay) {
+      return sendJson(res, 409, { error: "This branch has reached its daily visit confirmation limit." });
+    }
+  }
+
+  const now = new Date().toISOString();
+  code.status = "used";
+  code.usedAt = now;
+  participant.status = "visited";
+  participant.visitedAt = now;
+  participant.visitedBranchId = branch.id;
+  participant.visitedConfirmedByPin = true;
+  appendAuditEvent(store, null, "participant.visit_confirmed", "participant", participant.id, {
+    campaignId: participant.campaignId,
+    branchId: branch.id,
+    codeId: code.id,
+  });
+  await writeStore(store);
+
+  const influencer = participant.influencerId ? userById(store, participant.influencerId) : null;
+  return sendJson(res, 200, {
+    ok: true,
+    receipt: {
+      campaignId: campaign.id,
+      campaignTitleEn: campaign.titleEn,
+      campaignTitleAr: campaign.titleAr,
+      offerDescription: campaign.offerDescription || code.offerText || "",
+      branchNameEn: branch.nameEn,
+      branchNameAr: branch.nameAr,
+      influencerName: influencer?.fullName || participant.offlineName || "",
+      codeValue: code.codeValue,
+      confirmedAt: now,
+    },
+  });
 }
 
 async function handleSubmission(req, res, store, actor, participantId) {
@@ -2053,11 +3019,9 @@ async function handleSubmission(req, res, store, actor, participantId) {
     (item) => item.id === Number(participantId) && item.influencerId === actor.id
   );
   if (!participant) return sendJson(res, 404, { error: "Participation not found." });
-  if (participant.status !== "confirmed") {
-    if (["submitted", "completed"].includes(participant.status)) {
-      return sendJson(res, 409, { error: "Submitted proof is view-only and can no longer be edited." });
-    }
-    return sendJson(res, 409, { error: "This campaign is not ready for proof submission." });
+  const submitState = participantCanSubmitOnServer(participant);
+  if (!submitState.ok) {
+    return sendJson(res, 409, { error: submitState.reason });
   }
 
   const body = await readBody(req);
@@ -2069,26 +3033,48 @@ async function handleSubmission(req, res, store, actor, participantId) {
   participant.feedback = text(parsed.fields.feedback);
   participant.platform = text(parsed.fields.platform);
   participant.status = "submitted";
-  participant.submittedAt = new Date().toISOString();
+  participant.submittedAt = submitState.editingExisting
+    ? participant.submittedAt || new Date().toISOString()
+    : new Date().toISOString();
+  participant.images ||= [];
 
-  const image = parsed.files.image;
-  if (image && image.filename) {
-    const storedName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${image.filename}`;
-    await fs.writeFile(path.join(UPLOAD_DIR, storedName), image.content);
-    participant.imageName = image.filename;
-    participant.imagePath = `/uploads/${storedName}`;
+  const imageFields = ["image1", "image2", "image3", "image"];
+  for (const fieldName of imageFields) {
+    const image = parsed.files[fieldName];
+    if (!image?.filename) continue;
+    try {
+      const persisted = await persistUploadedImage(image);
+      participant.images.push({
+        name: persisted.displayName,
+        path: `/uploads/${persisted.storedName}`,
+      });
+    } catch (error) {
+      if (error.statusCode === 422) {
+        return sendJson(res, 422, { error: error.message });
+      }
+      throw error;
+    }
   }
+  participant.images = participant.images.slice(0, 3);
+  syncParticipantPrimaryImage(participant);
 
+  appendAuditEvent(store, actor, "participant.submission", "participant", participant.id, {
+    campaignId: participant.campaignId,
+  });
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
 
 async function requestHandler(req, res) {
+  applySecurityHeaders(res);
   await ensureRuntimeFiles();
   await seedRuntimeFilesIfMissing();
-  const store = await readStore();
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
+  if (pathname.startsWith("/api/") && !CSRF_EXEMPT_PATHS.has(pathname) && !checkSameOrigin(req)) {
+    return sendJson(res, 403, { error: "Cross-site request blocked." });
+  }
+  const store = await readStore();
 
   if (req.method === "GET" && (pathname === "/health" || pathname === "/api/health")) {
     return sendJson(res, 200, {
@@ -2106,11 +3092,16 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && pathname === "/api/signup") return handleSignup(req, res, store);
   if (req.method === "POST" && pathname === "/api/password/forgot") return handleForgotPassword(req, res, store);
   if (req.method === "POST" && pathname === "/api/password/reset") return handleResetPassword(req, res, store);
+  if (req.method === "POST" && pathname === "/api/visits/confirm") return handleVisitConfirm(req, res, store);
 
   const actor = getSessionUser(req, store);
   if (req.method === "GET" && pathname === "/api/bootstrap") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleBootstrap(req, res, store, actor);
+  }
+  if (req.method === "GET" && pathname === "/api/reports/export.csv") {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleExportReportCsv(req, res, store, actor, url.searchParams);
   }
   if (req.method === "POST" && pathname === "/api/profile/update") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
@@ -2190,6 +3181,11 @@ async function requestHandler(req, res) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateBranch(req, res, store, actor, branchMatch[0]);
   }
+  const branchRotatePinMatch = routeMatch(pathname, /^\/api\/branches\/(\d+)\/rotate-pin$/);
+  if (req.method === "POST" && branchRotatePinMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleRotateBranchPin(req, res, store, actor, branchRotatePinMatch[0]);
+  }
   const userStatusMatch = routeMatch(pathname, /^\/api\/users\/(\d+)\/status$/);
   if (req.method === "POST" && userStatusMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
@@ -2218,6 +3214,11 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && campaignUpdateMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateCampaign(req, res, store, actor, campaignUpdateMatch[0]);
+  }
+  const campaignDuplicateMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/duplicate$/);
+  if (req.method === "POST" && campaignDuplicateMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleDuplicateCampaign(req, res, store, actor, campaignDuplicateMatch[0]);
   }
   const campaignBannerMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/banner$/);
   if (req.method === "POST" && campaignBannerMatch) {
@@ -2254,6 +3255,11 @@ async function requestHandler(req, res) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleRemoveParticipant(req, res, store, actor, participantRemoveMatch[0]);
   }
+  const participantCancelMatch = routeMatch(pathname, /^\/api\/participants\/(\d+)\/cancel$/);
+  if (req.method === "POST" && participantCancelMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleSelfCancelParticipant(req, res, store, actor, participantCancelMatch[0]);
+  }
   const submissionMatch = routeMatch(pathname, /^\/api\/participants\/(\d+)\/submission$/);
   if (req.method === "POST" && submissionMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
@@ -2263,6 +3269,7 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
     return serveFile(res, path.join(ROOT, "index.html"));
   }
+  if (req.method === "GET" && pathname === "/branch") return serveFile(res, path.join(ROOT, "branch.html"));
   if (req.method === "GET" && pathname === "/styles.css") return serveFile(res, path.join(ROOT, "styles.css"));
   if (req.method === "GET" && pathname === "/client.js") return serveFile(res, path.join(ROOT, "client.js"));
   if (req.method === "GET" && pathname.startsWith("/uploads/")) {
@@ -2272,9 +3279,25 @@ async function requestHandler(req, res) {
   return sendText(res, 404, "Not found");
 }
 
+function isSerializedApiRequest(req) {
+  try {
+    const parsed = new URL(req.url, `http://${req.headers.host}`);
+    return parsed.pathname.startsWith("/api/");
+  } catch (error) {
+    return false;
+  }
+}
+
 const server = http.createServer((req, res) => {
-  requestHandler(req, res).catch((error) => {
+  const run = isSerializedApiRequest(req)
+    ? runSerializedStoreTask(() => requestHandler(req, res))
+    : requestHandler(req, res);
+  run.catch((error) => {
     console.error(error);
+    if (error?.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      sendJson(res, error.statusCode, { error: error.message });
+      return;
+    }
     sendJson(res, 500, { error: "Internal server error" });
   });
 });

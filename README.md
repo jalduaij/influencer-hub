@@ -43,9 +43,15 @@ Or use the helper script:
 ./start.sh
 ```
 
-Then open [http://localhost:4173](http://localhost:4173).
+Then open [http://localhost:5050](http://localhost:5050).
 
 If your terminal says `command not found: node`, use `./start.sh` or the full runtime path above. This project can use the Node runtime bundled inside Codex.
+
+`./start.sh` now defaults to watch mode on port `5050`, and you can opt out with:
+
+```bash
+./start.sh --no-watch
+```
 
 ## Stage Deployment
 
