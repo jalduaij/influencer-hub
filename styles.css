@@ -225,7 +225,8 @@ textarea:user-invalid {
 .login-card .field span,
 .panel .field span,
 .topbar .field span,
-.hero-card .field span {
+.hero-card .field span,
+.branch-card .field span {
   color: var(--accent-dark);
 }
 
