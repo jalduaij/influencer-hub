@@ -516,6 +516,11 @@ function branchName(branchId) {
   return branch ? (state.locale === "ar" ? branch.nameAr : branch.nameEn) : "-";
 }
 
+function branchDisplayName(branch) {
+  if (!branch) return "-";
+  return (state.locale === "ar" ? branch.nameAr : branch.nameEn) || branch.nameEn || branch.nameAr || "-";
+}
+
 function campaignTitle(campaign) {
   if (state.locale === "ar") return campaign.titleAr || campaign.titleEn;
   return campaign.titleEn || campaign.titleAr;
