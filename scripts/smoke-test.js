@@ -384,6 +384,7 @@ async function run() {
     }).then((response) => response.json());
     const activeParticipant = afterJoinTwo.participants.find((participant) => participant.campaignId === freshCampaignId && participant.status === "confirmed");
     assert(activeParticipant, "Expected a new confirmed participant after rejoining.");
+    assert(activeParticipant.campaignTitleEn, "Expected the participation row to include a campaign title for clickable campaign links.");
     const visitNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-visit-1");
     assert(visitNotification?.title?.en && visitNotification?.title?.ar, "Notifications should expose bilingual titles.");
     assert(visitNotification?.body?.en && visitNotification?.body?.ar, "Notifications should expose bilingual bodies.");

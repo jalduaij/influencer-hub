@@ -661,6 +661,15 @@ function auditTargetLabel(event) {
   return `${event.targetType || l("Target", "هدف")} #${event.targetId}`;
 }
 
+function renderAuditTarget(event) {
+  if (!event) return escapeHtml(l("Unknown target", "هدف غير معروف"));
+  if (event.targetType === "campaign") {
+    const campaign = currentCampaigns().find((item) => item.id === Number(event.targetId));
+    return renderCampaignTitleLink(campaign, { campaignId: event.targetId, fallback: `${l("Campaign", "حملة")} #${event.targetId}` });
+  }
+  return escapeHtml(auditTargetLabel(event));
+}
+
 function auditMetaValue(key, value) {
   if (value === null || value === undefined || value === "") return "";
   if (["from", "to", "status"].includes(key)) {
@@ -716,7 +725,7 @@ function renderRecentActivityPanel() {
                       <span class="badge">${escapeHtml(formatDateTime(event.at))}</span>
                     </div>
                     <p class="compact">${escapeHtml(auditActorLabel(event))}</p>
-                    <p class="compact">${escapeHtml(auditTargetLabel(event))}</p>
+                    <p class="compact">${renderAuditTarget(event)}</p>
                     ${renderAuditMeta(event)}
                   </article>
                 `
@@ -1840,6 +1849,20 @@ function renderInfluencerProfileTrigger(userId, fullName) {
   return `<button type="button" class="table-link-button" data-action="view-influencer" data-user-id="${userId}">${escapeHtml(fullName || "-")}</button>`;
 }
 
+function renderCampaignTitleLink(source, options = {}) {
+  const campaignId = Number(options.campaignId ?? source?.campaignId ?? source?.id) || null;
+  const label =
+    options.label ??
+    (state.locale === "ar"
+      ? source?.titleAr || source?.campaignTitleAr || source?.titleEn || source?.campaignTitleEn
+      : source?.titleEn || source?.campaignTitleEn || source?.titleAr || source?.campaignTitleAr) ??
+    options.fallback ??
+    "-";
+  if (!campaignId) return escapeHtml(label);
+  const action = state.currentUser?.role === "influencer" ? "preview-campaign" : "view-campaign";
+  return `<button type="button" class="table-link-button" data-action="${action}" data-campaign-id="${campaignId}">${escapeHtml(label)}</button>`;
+}
+
 function selectedInfluencer() {
   return allInfluencers().find((user) => user.id === Number(state.selectedInfluencerId)) || null;
 }
@@ -2107,7 +2130,7 @@ function renderCampaignHealthCards(campaigns) {
           (campaign) => `
             <article class="campaign-card">
               <div class="row">
-                <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                <strong>${renderCampaignTitleLink(campaign)}</strong>
               </div>
               <p>${escapeHtml(campaignAudience(campaign))}</p>
               <div class="row-wrap" style="margin-top: 10px;">
@@ -2134,7 +2157,7 @@ function renderPendingProofList() {
                 <strong>${renderInfluencerProfileTrigger(participant.influencerId, participant.influencerName)}</strong>
                 <span class="badge warning">${l("Proof pending", "الإثبات معلق")}</span>
               </div>
-              <p>${escapeHtml(state.locale === "ar" ? participant.campaignTitleAr : participant.campaignTitleEn)}</p>
+              <p>${renderCampaignTitleLink(participant)}</p>
             </article>
           `
         )
@@ -2249,7 +2272,7 @@ function renderCampaignsPage() {
                       ${renderCampaignBanner(campaign, "thumb")}
                       <div class="row">
                         <div>
-                          <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                          <strong>${renderCampaignTitleLink(campaign)}</strong>
                           <p>${escapeHtml(campaignAudience(campaign))}</p>
                         </div>
                       </div>
@@ -3458,7 +3481,7 @@ function renderCampaignReports(dashboard) {
         <p class="panel-subtitle">${l("One combined view of campaign demand, code availability, and closing urgency across all filtered campaigns.", "عرض موحد لطلب الحملات وتوفر الأكواد ومدى قرب الإغلاق عبر جميع الحملات المفلترة.")}</p>
         ${renderDataTable(
           [
-            { label: l("Campaign", "الحملة"), render: (row) => row.title },
+            { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign, { label: row.title, campaignId: row.campaignId }), html: true },
             { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${campaignStatusTone(row.status)}">${escapeHtml(campaignStatusLabel(row.status))}</span>`, html: true },
             {
               label: l("Demand", "الطلب"),
@@ -3694,7 +3717,7 @@ function renderSubmissionReports(dashboard) {
         <p class="panel-subtitle">${l("This is the clean operational queue of platform influencers who joined a campaign but still have not submitted their proof link. Use the campaign filter above to narrow this queue to one campaign only.", "هذه هي القائمة التشغيلية الواضحة لمؤثري المنصة الذين انضموا إلى حملة لكنهم لم يرسلوا رابط الإثبات بعد. استخدم فلتر الحملة أعلاه لحصر هذه القائمة في حملة واحدة فقط.")}</p>
         ${renderDataTable(
           [
-            { label: l("Campaign", "الحملة"), render: (row) => row.campaign ? campaignTitle(row.campaign) : "-" },
+            { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign || row), html: true },
             {
               label: l("Influencer", "المؤثر"),
               render: (row) =>
@@ -3720,7 +3743,7 @@ function renderSubmissionReports(dashboard) {
         <p class="panel-subtitle">${l("Review each submitted link with its campaign, influencer, platform, and submission date.", "راجع كل رابط تم تسليمه مع الحملة والمؤثر والمنصة وتاريخ التسليم.")}</p>
         ${renderDataTable(
           [
-            { label: l("Campaign", "الحملة"), render: (row) => row.campaign ? campaignTitle(row.campaign) : "-", sortKey: "campaign" },
+            { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign || row), html: true, sortKey: "campaign" },
             {
               label: l("Influencer", "المؤثر"),
               render: (row) => (row.influencerId ? renderInfluencerProfileTrigger(row.influencerId, row.influencerName) : escapeHtml(row.influencerName)),
@@ -3807,7 +3830,14 @@ function renderCodeReports(dashboard) {
         ${renderDataTable(
           [
             { label: l("Code", "الكود"), render: (row) => row.codeValue },
-            { label: l("Campaign", "الحملة"), render: (row) => { const campaign = currentCampaigns().find((item) => item.id === row.campaignId); return campaign ? campaignTitle(campaign) : row.campaignTitleEn; } },
+            {
+              label: l("Campaign", "الحملة"),
+              render: (row) => {
+                const campaign = currentCampaigns().find((item) => item.id === row.campaignId);
+                return renderCampaignTitleLink(campaign || row, { fallback: row.campaignTitleEn || row.campaignTitleAr || "-" });
+              },
+              html: true,
+            },
             { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${statusTone(row.status)}">${escapeHtml(codeStatusLabel(row.status))}</span>`, html: true },
             { label: l("Reservation source", "مصدر الحجز"), render: (row) => row.reservationSource === "offline" ? l("Offline", "أوفلاين") : row.reservationSource === "platform" ? l("Online", "أونلاين") : l("Not reserved", "غير محجوز") },
             { label: l("Assigned to", "مخصص إلى"), render: (row) => row.assignedInfluencer || l("Unassigned", "غير مخصص") },
@@ -3912,7 +3942,7 @@ function renderAvailableCampaignCards(campaigns) {
                 ${(campaign.offerUsageCount || 1) > 1 ? `<span class="offer-uses">${l("Uses", "عدد الاستخدام")}: ${escapeHtml(campaign.offerUsageCount)}</span>` : ""}
               </div>
               <div class="row">
-                <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                <strong>${renderCampaignTitleLink(campaign)}</strong>
                 <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
               </div>
               <p>${escapeHtml(campaignDescription(campaign))}</p>
@@ -3960,7 +3990,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
             ${renderStatusStrip(participant.status)}
             ${renderCampaignBanner(campaign, "wide")}
             <div class="row">
-              <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+              <strong>${renderCampaignTitleLink(campaign)}</strong>
               <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabel(participant.status))}</span>
             </div>
             <p>${escapeHtml(campaignDescription(campaign))}</p>
@@ -4023,7 +4053,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
                 <summary class="campaign-accordion-summary">
                   <div class="campaign-accordion-summary__content">
                     ${renderStatusStrip(participant.status)}
-                    <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                    <strong>${renderCampaignTitleLink(campaign)}</strong>
                   </div>
                   <span class="campaign-accordion-summary__hint">${l("Show details", "عرض التفاصيل")}</span>
                 </summary>
@@ -4274,7 +4304,7 @@ function renderInfluencerProfilePage() {
       <p class="panel-subtitle">${l("See every campaign this influencer joined, the assigned code, and the current proof state.", "اطلع على كل حملة انضم إليها هذا المؤثر والكود المخصص وحالة الإثبات الحالية.")}</p>
       ${renderDataTable(
         [
-          { label: l("Campaign", "الحملة"), render: (row) => row.campaignTitleEn || row.campaignTitleAr || "-" },
+          { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row), html: true },
           { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${participantDisplayTone(row)}">${escapeHtml(participantDisplayStatus(row))}</span>`, html: true },
           { label: l("Code", "الكود"), render: (row) => row.assignedCodeValue || "-" },
           { label: l("Joined", "انضم"), render: (row) => formatDate(row.joinedAt) },
@@ -4289,7 +4319,7 @@ function renderInfluencerProfilePage() {
       <p class="panel-subtitle">${l("Review every submitted social link and feedback from this influencer.", "راجع كل رابط سوشيال وملاحظة تم إرسالها من هذا المؤثر.")}</p>
       ${renderDataTable(
         [
-          { label: l("Campaign", "الحملة"), render: (row) => row.campaignTitleEn || row.campaignTitleAr || "-" },
+          { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row), html: true },
           { label: l("Platform", "المنصة"), render: (row) => row.platform || l("Not set", "غير محدد") },
           { label: l("Submitted", "سلّم"), render: (row) => formatDate(row.submittedAt) },
           {
