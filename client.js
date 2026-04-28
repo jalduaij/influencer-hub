@@ -72,6 +72,7 @@ const state = {
     cityId: "",
     categoryId: "",
     status: "",
+    tag: "",
   },
   reportFilters: defaultReportFilters(),
   campaignSearch: "",
@@ -1299,10 +1300,6 @@ function normalizeTagInput(value) {
     .join(", ");
 }
 
-function validateTagInput(value) {
-  return validateTagInputAgainstLibrary(value);
-}
-
 function validateTagInputAgainstLibrary(value, allowedTags = null) {
   const tags = String(value || "")
     .split(",")
@@ -1350,81 +1347,6 @@ function availableTagValues(selectedTags = []) {
     ...tagRows.filter((tag) => tag.status === "active").map((tag) => sanitizeTagToken(tag.value)),
     ...selected,
   ].filter(Boolean))];
-}
-
-function allowedTagValues(wrapper) {
-  return String(wrapper?.dataset.tagAllowed || "")
-    .split(",")
-    .map((tag) => sanitizeTagToken(tag))
-    .filter(Boolean);
-}
-
-function renderTagInput(name, tags, placeholder = "", allowedTags = []) {
-  const values = Array.isArray(tags) ? tags : tagArray(tags);
-  const normalizedAllowed = [...new Set(allowedTags.map((tag) => sanitizeTagToken(tag)).filter(Boolean))];
-  return `
-    <div class="tag-input" data-tag-input data-tag-controlled="true" data-tag-allowed="${escapeHtml(normalizedAllowed.join(","))}">
-      <input type="hidden" name="${name}" value="${escapeHtml(values.join(", "))}" data-tag-value />
-      <div class="tag-chip-list" data-tag-list>
-        ${values
-          .map(
-            (tag) => `
-              <span class="tag-chip">
-                <span>${escapeHtml(tag)}</span>
-                <button type="button" class="tag-chip-remove" data-tag-remove="${escapeHtml(tag)}" aria-label="${l("Remove tag", "إزالة العلامة")}">×</button>
-              </span>
-            `
-          )
-          .join("")}
-        <input class="tag-editor" type="text" data-tag-editor placeholder="${escapeHtml(placeholder)}" />
-      </div>
-      <small>${escapeHtml(l("Choose from admin-controlled tags only.", "اختر من العلامات المعتمدة من المسؤول فقط."))}</small>
-    </div>
-  `;
-}
-
-function syncTagInput(wrapper, tags) {
-  const normalized = [...new Set(tags.map((tag) => sanitizeTagToken(tag)).filter(Boolean))];
-  const hidden = wrapper.querySelector("[data-tag-value]");
-  const list = wrapper.querySelector("[data-tag-list]");
-  const editor = wrapper.querySelector("[data-tag-editor]");
-  if (!hidden || !list || !editor) return;
-  hidden.value = normalized.join(", ");
-  list.innerHTML = `
-    ${normalized
-      .map(
-        (tag) => `
-          <span class="tag-chip">
-            <span>${escapeHtml(tag)}</span>
-            <button type="button" class="tag-chip-remove" data-tag-remove="${escapeHtml(tag)}" aria-label="${l("Remove tag", "إزالة العلامة")}">×</button>
-          </span>
-        `
-      )
-      .join("")}
-  `;
-  list.append(editor);
-}
-
-function commitTagEditor(editor) {
-  const wrapper = editor.closest("[data-tag-input]");
-  if (!wrapper) return;
-  const existing = tagArray(wrapper.querySelector("[data-tag-value]")?.value || "");
-  const token = sanitizeTagToken(editor.value);
-  if (!token) {
-    editor.value = "";
-    return;
-  }
-  const allowed = allowedTagValues(wrapper);
-  if (wrapper.dataset.tagControlled === "true" && !allowed.includes(token)) {
-    flash(l("Choose a tag from Master Data first.", "اختر العلامة من البيانات الأساسية أولاً."), "error");
-    editor.focus();
-    if (typeof editor.setSelectionRange === "function") {
-      editor.setSelectionRange(0, editor.value.length);
-    }
-    return;
-  }
-  syncTagInput(wrapper, [...existing, token]);
-  editor.value = "";
 }
 
 function validateCampaignTimeline(payload) {
@@ -1849,6 +1771,38 @@ function renderInfluencerProfileTrigger(userId, fullName) {
   return `<button type="button" class="table-link-button" data-action="view-influencer" data-user-id="${userId}">${escapeHtml(fullName || "-")}</button>`;
 }
 
+function renderAdminTagCheckboxField(selectedTags = []) {
+  const normalizedSelected = new Set((selectedTags || []).map((tag) => sanitizeTagToken(tag)).filter(Boolean));
+  const tagRows = (state.data?.tags || [])
+    .filter((tag) => tag.status === "active" || normalizedSelected.has(sanitizeTagToken(tag.value)));
+  return `
+    <div class="field checkbox-field field-span-full">
+      <span>${l("Tags (admin-controlled)", "العلامات المعتمدة")}</span>
+      <div class="row-wrap" style="margin-bottom: 6px;">
+        <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="tags" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+        <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="tags" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+      </div>
+      <div class="option-grid">
+        ${
+          tagRows.length
+            ? tagRows
+                .map(
+                  (tag) => `
+                    <label class="option-pill">
+                      <input type="checkbox" name="tags" value="${escapeHtml(tag.value)}" ${normalizedSelected.has(sanitizeTagToken(tag.value)) ? "checked" : ""} />
+                      <span>${escapeHtml(tag.value)}</span>
+                    </label>
+                  `
+                )
+                .join("")
+            : `<span class="compact">${escapeHtml(l("No admin tags yet. Add them from Master Data first.", "لا توجد علامات معتمدة بعد. أضفها أولاً من البيانات الأساسية."))}</span>`
+        }
+      </div>
+      <small>${escapeHtml(l("Manage the tag library from Master Data.", "إدارة مكتبة العلامات من البيانات الأساسية."))}</small>
+    </div>
+  `;
+}
+
 function renderCampaignTitleLink(source, options = {}) {
   const campaignId = Number(options.campaignId ?? source?.campaignId ?? source?.id) || null;
   const label =
@@ -1981,6 +1935,7 @@ function filteredInfluencers() {
     if (state.influencerFilters.cityId && Number(state.influencerFilters.cityId) !== user.cityId) return false;
     if (state.influencerFilters.categoryId && Number(state.influencerFilters.categoryId) !== user.categoryId) return false;
     if (state.influencerFilters.status && state.influencerFilters.status !== user.status) return false;
+    if (state.influencerFilters.tag && !(user.tags || []).includes(state.influencerFilters.tag)) return false;
     if (!query) return true;
     const haystack = `${user.fullName} ${user.email} ${user.mobile || ""} ${user.instagram || ""} ${user.tiktok || ""} ${user.snapchat || ""} ${(user.tags || []).join(" ")}`.toLowerCase();
     return haystack.includes(query);
@@ -2034,6 +1989,15 @@ function renderInfluencersPage() {
         </label>
         <label class="field"><span>${l("City", "المدينة")}</span>${renderCitySelect("cityId", state.influencerFilters.cityId, true)}</label>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", state.influencerFilters.categoryId, true)}</label>
+        <label class="field"><span>${l("Tag", "العلامة")}</span>
+          <select name="tag">
+            <option value="">${l("All tags", "جميع العلامات")}</option>
+            ${(state.data?.tags || [])
+              .filter((tag) => tag.status === "active")
+              .map((tag) => `<option value="${escapeHtml(tag.value)}" ${state.influencerFilters.tag === tag.value ? "selected" : ""}>${escapeHtml(tag.value)}</option>`)
+              .join("")}
+          </select>
+        </label>
       </form>
     </section>
     <section class="panel">
@@ -2099,9 +2063,9 @@ function renderInfluencersPage() {
                     <p class="compact">${escapeHtml(user.email)}</p>
                     <p class="compact">${escapeHtml(l("Preferred platform", "المنصة المفضلة"))}: ${escapeHtml(user.preferredPlatform || l("Not set", "غير محدد"))}</p>
                     <form class="form-grid two-col admin-influencer-form" data-user-id="${user.id}" style="margin-top: 12px;">
-                      <label class="field"><span>${l("Tags", "العلامات")}</span>${renderTagInput("tags", user.tags || [], l("type tag then press space", "اكتب العلامة ثم اضغط مسافة"), availableTagValues(user.tags || []))}</label>
+                      ${renderAdminTagCheckboxField(user.tags || [])}
                       <label class="field"><span>${l("Notes", "الملاحظات")}</span><input name="notes" value="${escapeHtml((user.notes || []).join(", "))}" placeholder="${l("Internal notes", "ملاحظات داخلية")}" /></label>
-                      <p class="compact" style="grid-column: 1 / -1;">${l("Use comma-separated tags. Each tag must be one word, lowercase, and may use hyphens only.", "استخدم علامات مفصولة بفواصل. كل علامة يجب أن تكون كلمة واحدة وبأحرف صغيرة ويمكن استخدام الشرطة فقط.")}</p>
+                      <p class="compact" style="grid-column: 1 / -1;">${l("Choose approved tags from the list below. Add or deactivate tags from Master Data when needed.", "اختر العلامات المعتمدة من القائمة أدناه. أضف أو عطّل العلامات من البيانات الأساسية عند الحاجة.")}</p>
                       <div class="row-wrap" style="grid-column: 1 / -1;">
                         <button type="submit">${l("Save tags and notes", "حفظ العلامات والملاحظات")}</button>
                         <button type="button" class="secondary" data-action="set-user-status" data-status="${user.status === "active" ? "suspended" : "active"}" data-user-id="${user.id}">${user.status === "active" ? l("Deactivate", "إيقاف") : l("Reactivate", "إعادة تفعيل")}</button>
@@ -4276,7 +4240,7 @@ function renderInfluencerProfilePage() {
       <section class="panel">
         <h3>${l("Manager actions", "إجراءات الإدارة")}</h3>
         <form class="form-grid admin-influencer-form" data-user-id="${user.id}">
-          <label class="field"><span>${l("Tags", "العلامات")}</span>${renderTagInput("tags", user.tags || [], l("type tag then press space", "اكتب العلامة ثم اضغط مسافة"), availableTagValues(user.tags || []))}</label>
+          ${renderAdminTagCheckboxField(user.tags || [])}
           <label class="field"><span>${l("Notes", "الملاحظات")}</span><input name="notes" value="${escapeHtml((user.notes || []).join(", "))}" placeholder="${l("Internal notes", "ملاحظات داخلية")}" /></label>
           <p class="compact">${l("Use tags and notes here to support targeting, follow-up, and internal quality review.", "استخدم العلامات والملاحظات هنا لدعم الاستهداف والمتابعة والمراجعة الداخلية للجودة.")}</p>
           <button type="submit">${l("Save tags and notes", "حفظ العلامات والملاحظات")}</button>
@@ -4439,19 +4403,6 @@ function bindGlobalEvents() {
 }
 
 async function handleClick(event) {
-  const tagRemove = event.target.closest("[data-tag-remove]");
-  if (tagRemove) {
-    const wrapper = tagRemove.closest("[data-tag-input]");
-    const remaining = tagArray(wrapper?.querySelector("[data-tag-value]")?.value || "").filter((tag) => tag !== tagRemove.dataset.tagRemove);
-    if (wrapper) syncTagInput(wrapper, remaining);
-    return;
-  }
-
-  const tagWrapper = event.target.closest("[data-tag-input]");
-  if (tagWrapper && !event.target.closest(".tag-chip-remove")) {
-    tagWrapper.querySelector("[data-tag-editor]")?.focus();
-  }
-
   const target = event.target.closest("[data-action], [data-nav]");
   if (!target) return;
 
@@ -4914,12 +4865,10 @@ async function handleSubmit(event) {
     }
     if (form.classList.contains("admin-influencer-form")) {
       const userId = form.dataset.userId;
-      const values = formDataToObject(new FormData(form));
-      const user = (state.data?.users || []).find((row) => row.id === Number(userId));
-      const tagError = validateTagInputAgainstLibrary(values.tags, availableTagValues(user?.tags || []));
-      if (tagError) throw new Error(tagError);
-      values.tags = normalizeTagInput(values.tags);
-      await mutateAndRefresh(`/api/users/${userId}/admin-update`, values, l("Influencer notes updated.", "تم تحديث ملاحظات المؤثر."), { rethrow: true });
+      const formData = new FormData(form);
+      const tags = formData.getAll("tags");
+      const notes = formData.get("notes");
+      await mutateAndRefresh(`/api/users/${userId}/admin-update`, { tags, notes }, l("Influencer updated.", "تم تحديث المؤثر."), { rethrow: true });
       return;
     }
     if (form.classList.contains("manual-password-form")) {
@@ -5105,6 +5054,7 @@ function handleChange(event) {
       cityId: form.cityId.value,
       categoryId: form.categoryId.value,
       status: form.status.value,
+      tag: form.tag.value,
     };
     render({ preserveFocus: true });
     return;
@@ -5124,10 +5074,6 @@ function handleInput(event) {
   }
   if (event.target.matches("[data-kuwait-mobile]")) {
     event.target.value = kuwaitMobileLocal(event.target.value).slice(0, 8);
-    return;
-  }
-  if (event.target.matches("[data-tag-editor]")) {
-    event.target.value = sanitizeTagToken(event.target.value);
     return;
   }
 
@@ -5150,6 +5096,7 @@ function handleInput(event) {
       cityId: form.cityId.value,
       categoryId: form.categoryId.value,
       status: form.status.value,
+      tag: form.tag.value,
     };
     render({ preserveFocus: true });
     return;
@@ -5157,27 +5104,11 @@ function handleInput(event) {
 }
 
 function handleKeyDown(event) {
-  if (!event.target.matches("[data-tag-editor]")) return;
-  if ([" ", "Enter", ",", "Tab"].includes(event.key)) {
-    if (event.target.value.trim()) {
-      event.preventDefault();
-      commitTagEditor(event.target);
-    }
-    return;
-  }
-  if (event.key === "Backspace" && !event.target.value) {
-    const wrapper = event.target.closest("[data-tag-input]");
-    const existing = tagArray(wrapper?.querySelector("[data-tag-value]")?.value || "");
-    if (!existing.length) return;
-    existing.pop();
-    if (wrapper) syncTagInput(wrapper, existing);
-  }
+  void event;
 }
 
 function handleFocusOut(event) {
-  if (event.target.matches("[data-tag-editor]")) {
-    commitTagEditor(event.target);
-  }
+  void event;
 }
 
 function formDataToObject(formData) {

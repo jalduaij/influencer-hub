@@ -156,6 +156,8 @@ async function run() {
     assert(Array.isArray(payload.auditEvents), "Admin bootstrap should include audit events.");
     const instagramPlatformId = payload.platforms.find((platform) => platform.nameEn === "Instagram")?.id;
     assert(instagramPlatformId, "Expected Instagram platform metadata.");
+    const smokeTag = payload.tags.find((tag) => tag.status === "active")?.value;
+    assert(smokeTag, "Expected at least one active admin-controlled tag for smoke coverage.");
 
     const adminProfileUpdate = await fetch(`${baseUrl}/api/profile/update`, {
       method: "POST",
@@ -298,6 +300,22 @@ async function run() {
       });
       assert(approve.ok, `Approving ${user.email} failed with status ${approve.status}.`);
     }
+
+    const adminTagUpdate = await fetch(`${baseUrl}/api/users/${freshUsers[0].id}/admin-update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tags: [smokeTag], notes: "Smoke tag assignment" }),
+    });
+    assert(adminTagUpdate.ok, `Admin tag update failed with status ${adminTagUpdate.status}.`);
+    const adminBootstrapAfterTag = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    }).then((response) => response.json());
+    const taggedUser = adminBootstrapAfterTag.users.find((row) => row.id === freshUsers[0].id);
+    assert(taggedUser?.tags?.includes(smokeTag), "Admin tag update should persist the tag array on the influencer.");
 
     const influencerLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
