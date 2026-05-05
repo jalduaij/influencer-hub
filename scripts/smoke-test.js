@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..");
 const SERVER_PATH = path.join(ROOT, "server.js");
@@ -213,6 +214,38 @@ async function run() {
     const createdCampaignPayload = await createCampaign.json();
     const freshCampaignId = createdCampaignPayload.campaign.id;
     assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
+    const clientSource = await fs.readFile(path.join(ROOT, "client.js"), "utf8");
+    const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
+    const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign\) \{[\s\S]*?\n\}/)?.[0];
+    assert(campaignDeepLinkSource && generateCampaignShareTextSource, "Expected campaign share helpers to exist in client.js.");
+    const shareSandbox = {
+      state: {
+        locale: "en",
+        data: {
+          branches: [{ id: 1, nameEn: "Smoke Branch", nameAr: "فرع الدخان" }],
+        },
+      },
+      window: { location: { origin: baseUrl } },
+      branchDisplayName: (branch) => branch?.nameEn || branch?.nameAr || "-",
+      l: (en) => en,
+      formatDate: (value) => value || "",
+    };
+    vm.createContext(shareSandbox);
+    vm.runInContext(`${campaignDeepLinkSource}\n${generateCampaignShareTextSource}`, shareSandbox);
+    const shareText = shareSandbox.generateCampaignShareText({
+      id: freshCampaignId,
+      titleEn: "Smoke Hermetic Campaign",
+      titleAr: "حملة اختبار الدخان",
+      offerDescription: "One complimentary cold brew.",
+      branchMode: "selected",
+      branchIds: [1],
+      visitDeadline: freshCampaignPayload.visitDeadline,
+      submissionDeadline: freshCampaignPayload.submissionDeadline,
+    });
+    assert(
+      String(shareText).includes(`Open: ${baseUrl}/?campaign=${freshCampaignId}`),
+      "Generated share text should include the campaign deep link."
+    );
 
     const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },

@@ -65,6 +65,7 @@ const state = {
   authMode: "login",
   generatedLink: "",
   resetToken: new URLSearchParams(window.location.search).get("resetToken") || "",
+  pendingCampaignDeeplink: null,
   reportTab: "campaigns",
   reportSorts: defaultReportSorts(),
   influencerFilters: {
@@ -96,6 +97,11 @@ initialize();
 
 async function initialize() {
   bindGlobalEvents();
+  const campaignParam = Number(new URLSearchParams(window.location.search).get("campaign"));
+  if (campaignParam) {
+    state.pendingCampaignDeeplink = campaignParam;
+    window.history.replaceState({}, "", window.location.pathname);
+  }
   state.publicData = await api("/api/public-metadata").catch(() => ({ cities: [], categories: [], platforms: [], tags: [] }));
   const session = await api("/api/session").catch(() => ({ authenticated: false }));
   if (session.authenticated) {
@@ -605,6 +611,22 @@ function campaignMatchesInfluencer(campaign, influencer) {
 
 function eligibleInfluencerCount(campaign) {
   return allInfluencers().filter((influencer) => campaignMatchesInfluencer(campaign, influencer)).length;
+}
+
+function eligibleInfluencersForCampaign(campaign) {
+  return (state.data?.users || [])
+    .filter((user) => user.role === "influencer" && user.status === "active" && user.mobile)
+    .filter((user) => campaignMatchesInfluencer(campaign, user))
+    .filter(
+      (user) =>
+        !(state.data?.participants || []).some(
+          (participant) =>
+            participant.influencerId === user.id &&
+            participant.campaignId === campaign.id &&
+            participant.status !== "canceled"
+        )
+    )
+    .sort((left, right) => left.fullName.localeCompare(right.fullName));
 }
 
 function notificationCards() {
@@ -1403,6 +1425,14 @@ async function loadBootstrap() {
   state.data = await api("/api/bootstrap");
   state.currentUser = state.data.currentUser;
   state.currentPage = normalizePage(state.currentPage);
+  if (state.pendingCampaignDeeplink) {
+    const target = (state.data?.campaigns || []).find((campaign) => campaign.id === state.pendingCampaignDeeplink);
+    state.pendingCampaignDeeplink = null;
+    if (target) {
+      state.selectedCampaignId = target.id;
+      state.currentPage = state.currentUser?.role === "influencer" ? "campaign-preview" : "campaign-view";
+    }
+  }
   render();
 }
 
@@ -2550,6 +2580,7 @@ function renderCampaignEditPage() {
 function renderCampaignViewPage() {
   const campaign = selectedCampaign();
   if (!campaign) return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
+  const whatsappEligible = eligibleInfluencersForCampaign(campaign).slice(0, 50);
   const participants = campaignParticipants(campaign.id);
   const codes = state.campaignCodesByCampaign[campaign.id] || [];
   const activeParticipants = participants.filter((item) => item.status !== "canceled").length;
@@ -2651,6 +2682,30 @@ function renderCampaignViewPage() {
             <button type="button" class="secondary button-small" data-action="copy-whatsapp-text" data-campaign-id="${campaign.id}">${l("Copy WhatsApp text", "نسخ نص واتساب")}</button>
           </div>
           <pre class="compact" style="white-space: pre-wrap; margin-top: 12px;">${escapeHtml(generateCampaignShareText(campaign))}</pre>
+        </article>
+        <article class="note-card" style="margin-top: 14px;">
+          <div class="row report-toolbar-head">
+            <div>
+              <strong>${l("Send to specific influencers", "إرسال لمؤثرين محددين")}</strong>
+              <p class="panel-subtitle">${l("Click an influencer to open WhatsApp with the share message and deep link pre-filled.", "اضغط على المؤثر لفتح واتساب مع رسالة المشاركة ورابط الانتقال.")}</p>
+            </div>
+          </div>
+          <div class="row-wrap" style="gap: 8px;">
+            ${
+              whatsappEligible.length
+                ? whatsappEligible
+                    .map(
+                      (user) => `
+                        <a class="badge" target="_blank" rel="noreferrer"
+                           href="${buildWhatsAppLink(user.mobile, generateCampaignShareText(campaign))}">
+                          ${escapeHtml(user.fullName)}
+                        </a>
+                      `
+                    )
+                    .join("")
+                : `<span class="compact">${escapeHtml(l("No eligible influencers for this campaign right now.", "لا يوجد مؤثرون مؤهلون لهذه الحملة حالياً."))}</span>`
+            }
+          </div>
         </article>
         <article class="note-card" style="margin-top: 14px;">
           <strong>${l("Email-ready reminder", "نص بريد للتذكير")}</strong>
@@ -4387,14 +4442,26 @@ function renderPlatformSelect(name, selectedValue, includeAll = false) {
   `;
 }
 
+function campaignDeepLink(campaignId, baseUrl = window.location.origin) {
+  const normalizedBaseUrl = String(baseUrl || "").replace(/\/$/, "");
+  return `${normalizedBaseUrl}/?campaign=${campaignId}`;
+}
+
+function buildWhatsAppLink(mobileValue, message) {
+  const digits = String(mobileValue || "").replace(/\D/g, "");
+  const phone = digits.startsWith("965") ? digits : `965${digits}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
 function generateCampaignShareText(campaign) {
   const titleEn = campaign.titleEn || campaign.titleAr || "PICK";
   const titleAr = campaign.titleAr || campaign.titleEn || "PICK";
+  const link = campaignDeepLink(campaign.id);
   const branchLabel =
     campaign.branchMode === "selected"
       ? (campaign.branchIds || []).map((branchId) => branchDisplayName((state.data?.branches || []).find((branch) => branch.id === branchId))).filter(Boolean).join(", ")
       : l("All campaign branches", "كل أفرع الحملة");
-  return [
+  const englishLines = [
     `PICK Campaign`,
     `Title: ${titleEn}`,
     `Offer: ${campaign.offerDescription || "-"}`,
@@ -4403,6 +4470,9 @@ function generateCampaignShareText(campaign) {
     `Submission deadline: ${formatDate(campaign.submissionDeadline)}`,
     `CTA: Confirm your interest to reserve your private code.`,
     ``,
+    `Open: ${link}`,
+  ];
+  const arabicLines = [
     `حملة PICK`,
     `العنوان: ${titleAr}`,
     `العرض: ${campaign.offerDescription || "-"}`,
@@ -4410,7 +4480,10 @@ function generateCampaignShareText(campaign) {
     `آخر موعد للزيارة: ${formatDate(campaign.visitDeadline)}`,
     `آخر موعد للتسليم: ${formatDate(campaign.submissionDeadline)}`,
     `الإجراء: أكد اهتمامك لتحجز كودك الخاص.`,
-  ].join("\n");
+    ``,
+    `افتح: ${link}`,
+  ];
+  return state.locale === "ar" ? arabicLines.join("\n") : englishLines.join("\n");
 }
 
 function generateCampaignEmailText(campaign) {
