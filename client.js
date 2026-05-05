@@ -2305,6 +2305,10 @@ function renderCampaignForm(campaign) {
           <label class="field"><span>Audience (AR)</span><input name="audienceAr" value="${escapeHtml(campaign?.audienceAr || "")}" /></label>
           <label class="field field-span-full"><span>Description (EN) <em class="required-mark">*</em></span><textarea name="descriptionEn" required>${escapeHtml(campaign?.descriptionEn || "")}</textarea></label>
           <label class="field field-span-full"><span>Description (AR)</span><textarea name="descriptionAr">${escapeHtml(campaign?.descriptionAr || "")}</textarea></label>
+          <label class="field field-span-full">
+            <span>${l("Caption guide (optional)", "دليل التعليق (اختياري)")}</span>
+            <textarea name="captionGuide" rows="4" placeholder="${l("Hashtags, mentions, tone, do's and don'ts. The influencer sees this when they're about to post.", "الهاشتاقات والمنشن والنبرة وما يجب وما لا يجب. يراها المؤثر عند نشر المحتوى.")}">${escapeHtml(campaign?.captionGuide || "")}</textarea>
+          </label>
           ${isCreate
             ? `<label class="field field-span-full"><span>${l("Campaign banner", "بانر الحملة")}</span><input type="file" name="banner" accept="image/*" /></label>`
             : ""}
@@ -2628,6 +2632,12 @@ function renderCampaignViewPage() {
         <h3>${escapeHtml(campaignTitle(campaign))}</h3>
         ${renderCampaignBanner(campaign, "hero")}
         <p class="panel-subtitle">${escapeHtml(campaignDescription(campaign))}</p>
+        ${campaign.captionGuide ? `
+          <article class="note-card" style="margin-top: 14px;">
+            <strong>${l("Caption guide", "دليل التعليق")}</strong>
+            <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
+          </article>
+        ` : ""}
         <div class="row-wrap" style="margin-bottom: 16px;">
           <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
           <span class="badge">${escapeHtml(campaignAudience(campaign))}</span>
@@ -3989,6 +3999,12 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           ` : "";
           const pendingForm = participantCanSubmit(participant) && !compactOnly ? `
             <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-top: 14px;">
+              ${campaign.captionGuide ? `
+                <article class="note-card" style="margin: 12px 0; background: rgba(112, 47, 138, 0.04);">
+                  <strong>${l("Posting guide from PICK", "دليل النشر من PICK")}</strong>
+                  <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
+                </article>
+              ` : ""}
               <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
               <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
               <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
@@ -4058,6 +4074,12 @@ function renderInfluencerCampaignPreviewPage() {
         <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
       </div>
       ${renderCampaignOffer(campaign)}
+      ${campaign.captionGuide ? `
+        <article class="note-card" style="margin: 14px 0;">
+          <strong>${l("Caption guide", "دليل التعليق")}</strong>
+          <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
+        </article>
+      ` : ""}
       ${
         participant
           ? `
@@ -4080,6 +4102,12 @@ function renderInfluencerCampaignPreviewPage() {
         participant && participantCanSubmit(participant)
           ? `
             <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-bottom: 16px;">
+              ${campaign.captionGuide ? `
+                <article class="note-card" style="margin: 12px 0; background: rgba(112, 47, 138, 0.04);">
+                  <strong>${l("Posting guide from PICK", "دليل النشر من PICK")}</strong>
+                  <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
+                </article>
+              ` : ""}
               <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
               <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
               <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
@@ -5141,6 +5169,7 @@ function campaignFormPayload(form) {
     submissionDeadline: formData.get("submissionDeadline"),
     descriptionEn: formData.get("descriptionEn"),
     descriptionAr: formData.get("descriptionAr"),
+    captionGuide: formData.get("captionGuide"),
     branchMode: formData.get("branchMode"),
     branchIds: formData.getAll("branchIds"),
     targetCityIds: formData.getAll("targetCityIds"),

@@ -179,6 +179,7 @@ async function run() {
       titleAr: "حملة اختبار الدخان",
       descriptionEn: "Smoke campaign for targeting and lifecycle coverage.",
       descriptionAr: "حملة اختبار للدورة والاستهداف.",
+      captionGuide: "Use #PICKKuwait and tag @pick.kuwait",
       type: "shop_visit",
       status: "live",
       audience: "Smoke",
@@ -211,6 +212,13 @@ async function run() {
     assert(createCampaign.ok, `Campaign creation failed with status ${createCampaign.status}.`);
     const createdCampaignPayload = await createCampaign.json();
     const freshCampaignId = createdCampaignPayload.campaign.id;
+    assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
+
+    const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    }).then((response) => response.json());
+    const adminCampaign = adminBootstrapAfterCampaign.campaigns.find((campaign) => campaign.id === freshCampaignId);
+    assert(adminCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Admin bootstrap should round-trip campaign captionGuide.");
 
     const csvForm = new FormData();
     csvForm.append("codesFile", new Blob(["code\nSMOKE-001\nSMOKE-002\n"], { type: "text/csv" }), "smoke-codes.csv");
@@ -333,6 +341,8 @@ async function run() {
       influencerBootstrap.eligibleCampaignIds?.includes(freshCampaignId),
       "Expected the fresh female influencer to be eligible for the fresh campaign."
     );
+    const influencerCampaign = influencerBootstrap.campaigns.find((campaign) => campaign.id === freshCampaignId);
+    assert(influencerCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Influencer bootstrap should include campaign captionGuide.");
 
     const maleLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",

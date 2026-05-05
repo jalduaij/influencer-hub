@@ -970,6 +970,7 @@ function normalizeStore(store) {
     campaign.targetTags = normalizedTargetTags;
     campaign.offerDescription = text(campaign.offerDescription ?? campaign.offerText);
     campaign.offerUsageCount = Math.max(1, Number(campaign.offerUsageCount ?? campaign.usageCount) || 1);
+    campaign.captionGuide ||= "";
     campaign.targetGender = text(campaign.targetGender || "");
     campaign.minFollowers = Math.max(0, Number(campaign.minFollowers) || 0);
     campaign.targetPlatformIds = parseNumberList(campaign.targetPlatformIds);
@@ -1299,6 +1300,7 @@ function reportBundleForCampaigns(store, campaigns) {
       campaignId: campaign.id,
       titleEn: campaign.titleEn,
       titleAr: campaign.titleAr,
+      captionGuide: campaign.captionGuide || "",
       status: campaign.status,
       joined,
       visited,
@@ -1393,6 +1395,7 @@ function exportRowsForTab(store, tab) {
         "Campaign ID",
         "Campaign title (EN)",
         "Campaign title (AR)",
+        "Caption guide",
         "Status",
         "Joined",
         "Visited",
@@ -1410,6 +1413,7 @@ function exportRowsForTab(store, tab) {
         row.campaignId,
         row.titleEn,
         row.titleAr,
+        row.captionGuide,
         row.status,
         row.joined,
         row.visited,
@@ -1792,6 +1796,7 @@ function campaignPayload(body, existingCampaign = null) {
     titleAr: text(body.titleAr ?? existingCampaign?.titleAr),
     descriptionEn: text(body.descriptionEn ?? existingCampaign?.descriptionEn),
     descriptionAr: text(body.descriptionAr ?? existingCampaign?.descriptionAr),
+    captionGuide: text(body.captionGuide ?? existingCampaign?.captionGuide),
     type: body.type === "product_trial" ? "product_trial" : "shop_visit",
     status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
       ? normalizedStatus
