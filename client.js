@@ -250,6 +250,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function iconSvg(name, extraClass = "") {
+  const iconName = name || "user-circle";
+  const classes = ["icon", extraClass].filter(Boolean).join(" ");
+  return `<svg class="${classes}" aria-hidden="true"><use href="/icons.svg#${iconName}"></use></svg>`;
+}
+
 function flash(message, tone = "info") {
   state.flash = { message, tone };
   syncFlashLayer();
@@ -1573,6 +1579,32 @@ function roleNav(role) {
   ];
 }
 
+const NAV_ICON = {
+  admin: {
+    dashboard: "layout-dashboard",
+    influencers: "users",
+    campaigns: "megaphone",
+    branches: "store",
+    "master-data": "sliders-horizontal",
+    managers: "user-cog",
+    reports: "bar-chart-3",
+    profile: "user-circle",
+  },
+  campaign_manager: {
+    dashboard: "layout-dashboard",
+    influencers: "users",
+    campaigns: "megaphone",
+    reports: "bar-chart-3",
+    profile: "user-circle",
+  },
+  influencer: {
+    dashboard: "home",
+    availableCampaigns: "sparkles",
+    myCampaigns: "clipboard-check",
+    profile: "user-circle",
+  },
+};
+
 function renderShell() {
   return `
     <div class="background-orb orb-one"></div>
@@ -1598,10 +1630,10 @@ function renderShell() {
         <nav class="sidebar-nav">
           ${roleNav(state.currentUser.role)
             .map(
-              ([key, label], index) => `
+              ([key, label]) => `
                 <button class="nav-chip ${navSelected(key) ? "is-active" : ""}" data-nav="${key}">
-                  <span>${label}</span>
-                  <span>0${index + 1}</span>
+                  ${iconSvg(NAV_ICON[state.currentUser.role]?.[key] || "user-circle")}
+                  <span class="nav-chip__label">${label}</span>
                 </button>
               `
             )

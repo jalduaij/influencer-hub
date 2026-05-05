@@ -288,12 +288,24 @@ textarea::placeholder {
 .nav-chip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 12px 14px;
   border-radius: 999px;
   background: rgba(251, 247, 255, 0.08);
   color: rgba(251, 247, 255, 0.92);
   font-size: 0.95rem;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.nav-chip__label {
+  flex: 1;
+  text-align: start;
 }
 
 .sidebar-nav .nav-chip {

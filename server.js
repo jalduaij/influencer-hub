@@ -40,6 +40,7 @@ const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -3277,6 +3278,7 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && pathname === "/branch") return serveFile(res, path.join(ROOT, "branch.html"));
   if (req.method === "GET" && pathname === "/styles.css") return serveFile(res, path.join(ROOT, "styles.css"));
   if (req.method === "GET" && pathname === "/client.js") return serveFile(res, path.join(ROOT, "client.js"));
+  if (req.method === "GET" && pathname === "/icons.svg") return serveFile(res, path.join(ROOT, "icons.svg"));
   if (req.method === "GET" && pathname.startsWith("/uploads/")) {
     return serveFile(res, path.join(UPLOAD_DIR, decodeURIComponent(path.basename(pathname))));
   }
