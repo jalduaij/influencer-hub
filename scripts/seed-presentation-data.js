@@ -76,6 +76,57 @@ function participant({
   };
 }
 
+function influencer({
+  id,
+  fullName,
+  email,
+  mobile,
+  gender,
+  cityId,
+  city,
+  categoryId,
+  category,
+  preferredLanguage,
+  instagram,
+  tiktok,
+  snapchat,
+  followers,
+  preferredPlatform,
+  tags,
+  approvedByUserId,
+  createdAt,
+}) {
+  return {
+    id,
+    role: "influencer",
+    fullName,
+    email,
+    password: "pick123",
+    status: "active",
+    mobile,
+    gender,
+    dateOfBirth: "",
+    cityId,
+    categoryId,
+    city,
+    category,
+    preferredLanguage,
+    instagram,
+    tiktok,
+    snapchat,
+    followers,
+    preferredPlatform,
+    tags,
+    notes: [],
+    avatarName: "",
+    avatarPath: "",
+    createdAt,
+    lastLogin: "",
+    approvedByUserId,
+    passwordResetMode: "",
+  };
+}
+
 function main() {
   const current = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
 
@@ -148,6 +199,69 @@ function main() {
     status: "pending",
     approvedByUserId: null,
   });
+
+  users.push(
+    influencer({
+      id: 43,
+      fullName: "Nouf Coffee Diary",
+      email: "nouf@example.com",
+      mobile: "+96590000043",
+      gender: "female",
+      cityId: 2,
+      city: "Hawally",
+      categoryId: 3,
+      category: "Foodie",
+      preferredLanguage: "ar",
+      instagram: "@noufcoffeediary",
+      tiktok: "@noufcoffeediary",
+      snapchat: "noufcoffee.snap",
+      followers: { instagram: 3980, tiktok: 2610, snapchat: 1840 },
+      preferredPlatform: "Instagram",
+      tags: ["coffee-lovers"],
+      approvedByUserId: 2,
+      createdAt: iso("2026-04-24T10:30:00"),
+    }),
+    influencer({
+      id: 44,
+      fullName: "Faisal Food Trails",
+      email: "faisal@example.com",
+      mobile: "+96590000044",
+      gender: "male",
+      cityId: 4,
+      city: "Farwaniya",
+      categoryId: 3,
+      category: "Foodie",
+      preferredLanguage: "en",
+      instagram: "@faisalfoodtrails",
+      tiktok: "@faisalfoodtrails",
+      snapchat: "faisalfood.snap",
+      followers: { instagram: 5220, tiktok: 3490, snapchat: 2100 },
+      preferredPlatform: "TikTok",
+      tags: ["vip-2"],
+      approvedByUserId: 7,
+      createdAt: iso("2026-04-24T11:00:00"),
+    }),
+    influencer({
+      id: 45,
+      fullName: "Dana Social Bites",
+      email: "dana@example.com",
+      mobile: "+96590000045",
+      gender: "female",
+      cityId: 3,
+      city: "Salmiya",
+      categoryId: 4,
+      category: "Lifestyle",
+      preferredLanguage: "en",
+      instagram: "@danasocialbites",
+      tiktok: "@danasocialbites",
+      snapchat: "danasocial.snap",
+      followers: { instagram: 4670, tiktok: 2880, snapchat: 2340 },
+      preferredPlatform: "Snapchat",
+      tags: ["vip-2"],
+      approvedByUserId: 2,
+      createdAt: iso("2026-04-24T11:20:00"),
+    })
+  );
 
   Object.assign(campaignById.get(201), {
     status: "live",
@@ -297,13 +411,14 @@ function main() {
     campaign: 206,
     code: 6044,
     participant: 9032,
-    user: 43,
+    user: 46,
     branch: current.nextIds.branch,
     city: current.nextIds.city,
     category: current.nextIds.category,
     passwordReset: 1,
     platform: current.nextIds.platform,
     tag: current.nextIds.tag,
+    auditEvent: current.nextIds.auditEvent,
   };
 
   const cleanStore = {

@@ -3,13 +3,14 @@
     "campaign": 206,
     "code": 6044,
     "participant": 9032,
-    "user": 43,
+    "user": 46,
     "branch": 4,
     "city": 6,
     "category": 5,
     "passwordReset": 1,
     "platform": 6,
-    "tag": 4
+    "tag": 5,
+    "auditEvent": 9
   },
   "users": [
     {
@@ -17,7 +18,7 @@
       "role": "admin",
       "fullName": "Sara Al-Harbi",
       "email": "sara@pick.internal",
-      "password": "pick123",
+      "password": "scrypt$16384$62181ddae4216cb34b0216011321db9f$dbd2f89a36472849eca9d1f57e2506ed61a2ed54568202232d5cc0d1cf7cd6947eafb32695d58b1fa4cd86e03d9e3ed4b02285a6ff1caac3b07358b840ae3538",
       "status": "active",
       "city": "Kuwait City",
       "category": "Leadership",
@@ -39,7 +40,7 @@
       "tags": [],
       "notes": [],
       "createdAt": "2026-04-20T15:41:02.308Z",
-      "lastLogin": "2026-04-24T10:43:30.371Z",
+      "lastLogin": "2026-04-28T06:55:11.288Z",
       "approvedByUserId": null,
       "passwordResetMode": "",
       "avatarName": "",
@@ -50,7 +51,7 @@
       "role": "campaign_manager",
       "fullName": "Nasser Al-Mutairi",
       "email": "nasser@pick.internal",
-      "password": "pick123",
+      "password": "scrypt$16384$61ea5d7fff7f1352f1dce94cc96af8bc$09b43df033e5b8a205ecd5c3fb09afccc131b5c24f113fbcd84108f6af6eec3c66099931713189e95e93ebe862ea332e65195c59987174c5d68d1b83ad776bd1",
       "status": "active",
       "city": "Kuwait City",
       "category": "Food & Beverage",
@@ -72,7 +73,7 @@
       "tags": [],
       "notes": [],
       "createdAt": "2026-04-20T15:41:02.308Z",
-      "lastLogin": "2026-04-24T10:42:32.021Z",
+      "lastLogin": "2026-04-30T13:56:10.858Z",
       "approvedByUserId": null,
       "passwordResetMode": "",
       "avatarName": "",
@@ -116,7 +117,7 @@
       "role": "influencer",
       "fullName": "Laila Q8 Bites",
       "email": "laila@example.com",
-      "password": "pick123",
+      "password": "scrypt$16384$2b70cc68e97d7dfe3815ec0b800bcc3c$9d264847d2a1d40719f612efbe9b2698d40c70ac1349eaa9c97cfca3a252580a6c7e96e8157a3c0f301d851bc0f4922c5d75b2e6e37d68442f818ac49afeaa6a",
       "status": "active",
       "mobile": "+96590000003",
       "gender": "female",
@@ -143,7 +144,7 @@
       "avatarName": "IMG_5042.jpg",
       "avatarPath": "/uploads/1776715547291-a468a54f-IMG_5042.jpg",
       "createdAt": "2026-04-20T15:41:02.308Z",
-      "lastLogin": "2026-04-24T16:11:28.227Z",
+      "lastLogin": "2026-04-30T13:55:53.071Z",
       "approvedByUserId": 2,
       "passwordResetMode": ""
     },
@@ -253,6 +254,111 @@
       "lastLogin": "",
       "approvedByUserId": null,
       "passwordResetMode": ""
+    },
+    {
+      "id": 43,
+      "role": "influencer",
+      "fullName": "Nouf Coffee Diary",
+      "email": "nouf@example.com",
+      "password": "pick123",
+      "status": "active",
+      "mobile": "+96590000043",
+      "gender": "female",
+      "dateOfBirth": "",
+      "cityId": 2,
+      "categoryId": 3,
+      "city": "Hawally",
+      "category": "Foodie",
+      "preferredLanguage": "ar",
+      "instagram": "@noufcoffeediary",
+      "tiktok": "@noufcoffeediary",
+      "snapchat": "noufcoffee.snap",
+      "followers": {
+        "instagram": 3980,
+        "tiktok": 2610,
+        "snapchat": 1840
+      },
+      "preferredPlatform": "Instagram",
+      "tags": [
+        "coffee-lovers"
+      ],
+      "notes": [],
+      "avatarName": "",
+      "avatarPath": "",
+      "createdAt": "2026-04-24T10:30:00.000Z",
+      "lastLogin": "",
+      "approvedByUserId": 2,
+      "passwordResetMode": ""
+    },
+    {
+      "id": 44,
+      "role": "influencer",
+      "fullName": "Faisal Food Trails",
+      "email": "faisal@example.com",
+      "password": "pick123",
+      "status": "active",
+      "mobile": "+96590000044",
+      "gender": "male",
+      "dateOfBirth": "",
+      "cityId": 4,
+      "categoryId": 3,
+      "city": "Farwaniya",
+      "category": "Foodie",
+      "preferredLanguage": "en",
+      "instagram": "@faisalfoodtrails",
+      "tiktok": "@faisalfoodtrails",
+      "snapchat": "faisalfood.snap",
+      "followers": {
+        "instagram": 5220,
+        "tiktok": 3490,
+        "snapchat": 2100
+      },
+      "preferredPlatform": "TikTok",
+      "tags": [
+        "vip-2"
+      ],
+      "notes": [],
+      "avatarName": "",
+      "avatarPath": "",
+      "createdAt": "2026-04-24T11:00:00.000Z",
+      "lastLogin": "",
+      "approvedByUserId": 7,
+      "passwordResetMode": ""
+    },
+    {
+      "id": 45,
+      "role": "influencer",
+      "fullName": "Dana Social Bites",
+      "email": "dana@example.com",
+      "password": "pick123",
+      "status": "active",
+      "mobile": "+96590000045",
+      "gender": "female",
+      "dateOfBirth": "",
+      "cityId": 3,
+      "categoryId": 4,
+      "city": "Salmiya",
+      "category": "Lifestyle",
+      "preferredLanguage": "en",
+      "instagram": "@danasocialbites",
+      "tiktok": "@danasocialbites",
+      "snapchat": "danasocial.snap",
+      "followers": {
+        "instagram": 4670,
+        "tiktok": 2880,
+        "snapchat": 2340
+      },
+      "preferredPlatform": "Snapchat",
+      "tags": [
+        "vip-2"
+      ],
+      "notes": [],
+      "avatarName": "",
+      "avatarPath": "",
+      "createdAt": "2026-04-24T11:20:00.000Z",
+      "lastLogin": "",
+      "approvedByUserId": 2,
+      "passwordResetMode": ""
     }
   ],
   "campaigns": [
@@ -291,7 +397,12 @@
       "targetCategoryIds": [
         3
       ],
-      "targetTags": []
+      "targetTags": [],
+      "targetGender": "",
+      "minFollowers": 0,
+      "targetPlatformIds": [],
+      "participantCap": 0,
+      "autoClosedAt": null
     },
     {
       "id": 202,
@@ -327,7 +438,12 @@
       "targetCategoryIds": [
         3
       ],
-      "targetTags": []
+      "targetTags": [],
+      "targetGender": "",
+      "minFollowers": 0,
+      "targetPlatformIds": [],
+      "participantCap": 0,
+      "autoClosedAt": null
     },
     {
       "id": 203,
@@ -360,7 +476,12 @@
       "targetCategoryIds": [],
       "targetTags": [
         "vip-2"
-      ]
+      ],
+      "targetGender": "",
+      "minFollowers": 0,
+      "targetPlatformIds": [],
+      "participantCap": 0,
+      "autoClosedAt": null
     },
     {
       "id": 204,
@@ -396,7 +517,12 @@
       "targetCategoryIds": [
         4
       ],
-      "targetTags": []
+      "targetTags": [],
+      "targetGender": "",
+      "minFollowers": 0,
+      "targetPlatformIds": [],
+      "participantCap": 0,
+      "autoClosedAt": null
     },
     {
       "id": 205,
@@ -426,7 +552,12 @@
       "targetCategoryIds": [],
       "targetTags": [
         "fewe"
-      ]
+      ],
+      "targetGender": "",
+      "minFollowers": 0,
+      "targetPlatformIds": [],
+      "participantCap": 0,
+      "autoClosedAt": null
     }
   ],
   "branches": [
@@ -443,7 +574,10 @@
       "mapLink": "",
       "status": "active",
       "imageName": "",
-      "imagePath": ""
+      "imagePath": "",
+      "pin": "239469",
+      "pinUpdatedAt": "2026-04-28T06:41:04.434Z",
+      "maxVisitsPerDay": 0
     },
     {
       "id": 2,
@@ -458,7 +592,10 @@
       "mapLink": "",
       "status": "active",
       "imageName": "",
-      "imagePath": ""
+      "imagePath": "",
+      "pin": "250841",
+      "pinUpdatedAt": "2026-04-28T06:41:04.434Z",
+      "maxVisitsPerDay": 0
     },
     {
       "id": 3,
@@ -473,7 +610,10 @@
       "mapLink": "",
       "status": "active",
       "imageName": "",
-      "imagePath": ""
+      "imagePath": "",
+      "pin": "604541",
+      "pinUpdatedAt": "2026-04-28T06:41:04.434Z",
+      "maxVisitsPerDay": 0
     }
   ],
   "campaignCodes": [
@@ -1068,6 +1208,12 @@
       "value": "vip-2",
       "status": "active",
       "createdAt": "2026-04-23T19:38:59.911Z"
+    },
+    {
+      "id": 4,
+      "value": "test",
+      "status": "active",
+      "createdAt": "2026-04-28T06:55:33.096Z"
     }
   ]
 }
