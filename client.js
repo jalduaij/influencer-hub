@@ -2371,6 +2371,11 @@ function renderCampaignForm(campaign) {
             <span>${l("Caption guide (optional)", "دليل التعليق (اختياري)")}</span>
             <textarea name="captionGuide" rows="4" placeholder="${l("Hashtags, mentions, tone, do's and don'ts. The influencer sees this when they're about to post.", "الهاشتاقات والمنشن والنبرة وما يجب وما لا يجب. يراها المؤثر عند نشر المحتوى.")}">${escapeHtml(campaign?.captionGuide || "")}</textarea>
           </label>
+          <label class="field field-span-full">
+            <span>${l("WhatsApp message body (optional)", "نص رسالة الواتساب (اختياري)")}</span>
+            <textarea name="whatsappMessage" rows="6" placeholder="${l("Leave empty to use the auto-generated message based on campaign details. The greeting and the deep link are always added automatically.", "اتركها فارغة لاستخدام النص التلقائي. التحية والرابط يُضافان تلقائياً.")}">${escapeHtml(campaign?.whatsappMessage || "")}</textarea>
+            <small style="color: var(--muted);">${l("Greeting and deep link are added automatically — write only the message body here.", "التحية والرابط يُضافان تلقائياً — اكتب نص الرسالة فقط هنا.")}</small>
+          </label>
           ${isCreate
             ? `<label class="field field-span-full"><span>${l("Campaign banner", "بانر الحملة")}</span><input type="file" name="banner" accept="image/*" /></label>`
             : ""}
@@ -2729,7 +2734,7 @@ function renderCampaignViewPage() {
                     .map(
                       (user) => `
                         <a class="badge" target="_blank" rel="noreferrer"
-                           href="${buildWhatsAppLink(user.mobile, generateCampaignShareText(campaign))}">
+                           href="${buildWhatsAppLink(user.mobile, generateCampaignShareText(campaign, { recipientName: user.fullName }))}">
                           ${escapeHtml(user.fullName)}
                         </a>
                       `
@@ -4485,37 +4490,55 @@ function buildWhatsAppLink(mobileValue, message) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-function generateCampaignShareText(campaign) {
-  const titleEn = campaign.titleEn || campaign.titleAr || "PICK";
+function defaultCampaignShareBody(campaign) {
+  const titleEn = campaign.titleEn || "PICK";
   const titleAr = campaign.titleAr || campaign.titleEn || "PICK";
-  const link = campaignDeepLink(campaign.id);
-  const branchLabel =
-    campaign.branchMode === "selected"
-      ? (campaign.branchIds || []).map((branchId) => branchDisplayName((state.data?.branches || []).find((branch) => branch.id === branchId))).filter(Boolean).join(", ")
-      : l("All campaign branches", "كل أفرع الحملة");
-  const englishLines = [
-    `PICK Campaign`,
-    `Title: ${titleEn}`,
-    `Offer: ${campaign.offerDescription || "-"}`,
-    `Branches: ${branchLabel || "-"}`,
-    `Visit deadline: ${formatDate(campaign.visitDeadline)}`,
-    `Submission deadline: ${formatDate(campaign.submissionDeadline)}`,
-    `CTA: Confirm your interest to reserve your private code.`,
-    ``,
-    `Open: ${link}`,
-  ];
-  const arabicLines = [
-    `حملة PICK`,
-    `العنوان: ${titleAr}`,
-    `العرض: ${campaign.offerDescription || "-"}`,
-    `الأفرع: ${branchLabel || "-"}`,
-    `آخر موعد للزيارة: ${formatDate(campaign.visitDeadline)}`,
-    `آخر موعد للتسليم: ${formatDate(campaign.submissionDeadline)}`,
-    `الإجراء: أكد اهتمامك لتحجز كودك الخاص.`,
-    ``,
-    `افتح: ${link}`,
-  ];
-  return state.locale === "ar" ? arabicLines.join("\n") : englishLines.join("\n");
+  const offer = campaign.offerDescription || "";
+  const branchSummary =
+    campaign.branchMode === "all"
+      ? l("All branches", "جميع الأفرع")
+      : ((campaign.branchIds || [])
+          .map((branchId) => (state.data?.branches || []).find((branch) => branch.id === branchId))
+          .map((branch) => branchDisplayName(branch))
+          .filter(Boolean)
+          .join(state.locale === "ar" ? "، " : ", ")) || "";
+  const visitDate = formatDate(campaign.visitDeadline);
+  const submitDate = formatDate(campaign.submissionDeadline);
+
+  if (state.locale === "ar") {
+    return [
+      `حملة PICK: ${titleAr}`,
+      offer ? `العرض: ${offer}` : "",
+      `الأفرع: ${branchSummary}`,
+      `الزيارة قبل: ${visitDate}`,
+      `التسليم قبل: ${submitDate}`,
+      "",
+      "أكّد اهتمامك من تطبيق PICK Influence Hub لحجز كود خاص بك.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return [
+    `PICK Campaign: ${titleEn}`,
+    offer ? `Offer: ${offer}` : "",
+    `Branches: ${branchSummary}`,
+    `Visit by: ${visitDate}`,
+    `Submit by: ${submitDate}`,
+    "",
+    "Confirm interest in the PICK Influence Hub to reserve your private one-time code.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function generateCampaignShareText(campaign, options = {}) {
+  const recipient = options.recipientName ? String(options.recipientName).trim().split(/\s+/)[0] : "";
+  const greeting = state.locale === "ar" ? (recipient ? `مرحبا ${recipient} 💜` : "مرحبا 💜") : recipient ? `Hi ${recipient} 💜` : "Hi 💜";
+  const body = campaign.whatsappMessage && campaign.whatsappMessage.trim() ? campaign.whatsappMessage.trim() : defaultCampaignShareBody(campaign);
+  const linkLabel = state.locale === "ar" ? "افتح" : "Open";
+  const deepLink = campaignDeepLink(campaign.id);
+  return `${greeting}\n\n${body}\n\n${linkLabel}: ${deepLink}`;
 }
 
 function generateCampaignEmailText(campaign) {
@@ -5275,6 +5298,7 @@ function campaignFormPayload(form) {
     descriptionEn: formData.get("descriptionEn"),
     descriptionAr: formData.get("descriptionAr"),
     captionGuide: formData.get("captionGuide"),
+    whatsappMessage: formData.get("whatsappMessage"),
     branchMode: formData.get("branchMode"),
     branchIds: formData.getAll("branchIds"),
     targetCityIds: formData.getAll("targetCityIds"),

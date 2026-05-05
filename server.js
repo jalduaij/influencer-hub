@@ -972,6 +972,7 @@ function normalizeStore(store) {
     campaign.offerDescription = text(campaign.offerDescription ?? campaign.offerText);
     campaign.offerUsageCount = Math.max(1, Number(campaign.offerUsageCount ?? campaign.usageCount) || 1);
     campaign.captionGuide ||= "";
+    campaign.whatsappMessage ||= "";
     campaign.targetGender = text(campaign.targetGender || "");
     campaign.minFollowers = Math.max(0, Number(campaign.minFollowers) || 0);
     campaign.targetPlatformIds = parseNumberList(campaign.targetPlatformIds);
@@ -1302,6 +1303,7 @@ function reportBundleForCampaigns(store, campaigns) {
       titleEn: campaign.titleEn,
       titleAr: campaign.titleAr,
       captionGuide: campaign.captionGuide || "",
+      whatsappMessage: campaign.whatsappMessage || "",
       status: campaign.status,
       joined,
       visited,
@@ -1397,6 +1399,7 @@ function exportRowsForTab(store, tab) {
         "Campaign title (EN)",
         "Campaign title (AR)",
         "Caption guide",
+        "WhatsApp message",
         "Status",
         "Joined",
         "Visited",
@@ -1415,6 +1418,7 @@ function exportRowsForTab(store, tab) {
         row.titleEn,
         row.titleAr,
         row.captionGuide,
+        row.whatsappMessage,
         row.status,
         row.joined,
         row.visited,
@@ -1798,6 +1802,7 @@ function campaignPayload(body, existingCampaign = null) {
     descriptionEn: text(body.descriptionEn ?? existingCampaign?.descriptionEn),
     descriptionAr: text(body.descriptionAr ?? existingCampaign?.descriptionAr),
     captionGuide: text(body.captionGuide ?? existingCampaign?.captionGuide),
+    whatsappMessage: text(body.whatsappMessage ?? existingCampaign?.whatsappMessage),
     type: body.type === "product_trial" ? "product_trial" : "shop_visit",
     status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
       ? normalizedStatus

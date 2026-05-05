@@ -181,6 +181,7 @@ async function run() {
       descriptionEn: "Smoke campaign for targeting and lifecycle coverage.",
       descriptionAr: "حملة اختبار للدورة والاستهداف.",
       captionGuide: "Use #PICKKuwait and tag @pick.kuwait",
+      whatsappMessage: "Custom body for smoke",
       type: "shop_visit",
       status: "live",
       audience: "Smoke",
@@ -214,10 +215,12 @@ async function run() {
     const createdCampaignPayload = await createCampaign.json();
     const freshCampaignId = createdCampaignPayload.campaign.id;
     assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
+    assert(createdCampaignPayload.campaign.whatsappMessage === "Custom body for smoke", "Created campaign should return its whatsappMessage.");
     const clientSource = await fs.readFile(path.join(ROOT, "client.js"), "utf8");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
-    const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign\) \{[\s\S]*?\n\}/)?.[0];
-    assert(campaignDeepLinkSource && generateCampaignShareTextSource, "Expected campaign share helpers to exist in client.js.");
+    const defaultCampaignShareBodySource = clientSource.match(/function defaultCampaignShareBody\(campaign\) \{[\s\S]*?\n\}/)?.[0];
+    const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
+    assert(campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource, "Expected campaign share helpers to exist in client.js.");
     const shareSandbox = {
       state: {
         locale: "en",
@@ -231,17 +234,20 @@ async function run() {
       formatDate: (value) => value || "",
     };
     vm.createContext(shareSandbox);
-    vm.runInContext(`${campaignDeepLinkSource}\n${generateCampaignShareTextSource}`, shareSandbox);
+    vm.runInContext(`${campaignDeepLinkSource}\n${defaultCampaignShareBodySource}\n${generateCampaignShareTextSource}`, shareSandbox);
     const shareText = shareSandbox.generateCampaignShareText({
       id: freshCampaignId,
       titleEn: "Smoke Hermetic Campaign",
       titleAr: "حملة اختبار الدخان",
       offerDescription: "One complimentary cold brew.",
+      whatsappMessage: "Custom body for smoke",
       branchMode: "selected",
       branchIds: [1],
       visitDeadline: freshCampaignPayload.visitDeadline,
       submissionDeadline: freshCampaignPayload.submissionDeadline,
-    });
+    }, { recipientName: "Laila Q8 Bites" });
+    assert(String(shareText).startsWith("Hi Laila 💜"), "Generated share text should personalize the greeting for direct sends.");
+    assert(String(shareText).includes("Custom body for smoke"), "Generated share text should use the campaign whatsappMessage when present.");
     assert(
       String(shareText).includes(`Open: ${baseUrl}/?campaign=${freshCampaignId}`),
       "Generated share text should include the campaign deep link."
@@ -252,6 +258,7 @@ async function run() {
     }).then((response) => response.json());
     const adminCampaign = adminBootstrapAfterCampaign.campaigns.find((campaign) => campaign.id === freshCampaignId);
     assert(adminCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Admin bootstrap should round-trip campaign captionGuide.");
+    assert(adminCampaign?.whatsappMessage === "Custom body for smoke", "Admin bootstrap should round-trip campaign whatsappMessage.");
 
     const csvForm = new FormData();
     csvForm.append("codesFile", new Blob(["code\nSMOKE-001\nSMOKE-002\n"], { type: "text/csv" }), "smoke-codes.csv");
@@ -523,7 +530,10 @@ async function run() {
       "Campaign CSV export should return text/csv."
     );
     const exportBody = await exportResponse.text();
-    assert(exportBody.includes("Campaign ID,Campaign title (EN),Campaign title (AR),Status"), "Campaign CSV export should include the expected header columns.");
+    assert(
+      exportBody.includes("Campaign ID,Campaign title (EN),Campaign title (AR),Caption guide,Status"),
+      "Campaign CSV export should include the expected header columns."
+    );
 
     const finalBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },
