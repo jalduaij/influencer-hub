@@ -90,7 +90,11 @@ async function run() {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  let stdout = "";
   let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString();
+  });
   child.stderr.on("data", (chunk) => {
     stderr += chunk.toString();
   });
@@ -100,6 +104,7 @@ async function run() {
 
     const health = await fetch(`${baseUrl}/health`).then((response) => response.json());
     assert(health.ok, "Health endpoint did not return ok.");
+    assert(stdout.includes("PICK Social Club running on"), "Server startup log should use the PICK Social Club brand.");
 
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
@@ -377,6 +382,7 @@ async function run() {
     const influencerBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: influencerCookie.split(";")[0] },
     }).then((response) => response.json());
+    assert(influencerBootstrap.currentUser?.role === "influencer", "Underlying role identifier should remain 'influencer'.");
     assert(
       influencerBootstrap.eligibleCampaignIds?.includes(freshCampaignId),
       "Expected the fresh female influencer to be eligible for the fresh campaign."

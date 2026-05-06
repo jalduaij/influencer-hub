@@ -1594,10 +1594,10 @@ function generateNotifications(store, user) {
         makeNotification(
           `pending-${pendingApprovals}`,
           "warning",
-          "Pending influencer approvals",
-          "طلبات اعتماد المؤثرين المعلقة",
-          `${pendingApprovals} influencer sign-up request${pendingApprovals === 1 ? "" : "s"} need review.`,
-          `${pendingApprovals} طلب${pendingApprovals === 1 ? "" : ""} تسجيل مؤثر بحاجة إلى مراجعة.`
+          "Pending member requests",
+          "طلبات الأعضاء المعلقة",
+          `${pendingApprovals} member request${pendingApprovals === 1 ? "" : "s"} need review.`,
+          `${pendingApprovals} طلب عضوية بحاجة إلى مراجعة.`
         )
       );
     }
@@ -1612,8 +1612,8 @@ function generateNotifications(store, user) {
           "warning",
           "Awaiting branch visit",
           "بانتظار زيارة الفرع",
-          `${awaitingVisit} platform influencer${awaitingVisit === 1 ? "" : "s"} still need${awaitingVisit === 1 ? "s" : ""} a cashier-confirmed branch visit.`,
-          `${awaitingVisit} مؤثر${awaitingVisit === 1 ? "" : ""} من المنصة ما زال بحاجة إلى زيارة فرع مؤكدة من الكاشير.`
+          `${awaitingVisit} member${awaitingVisit === 1 ? "" : "s"} still need${awaitingVisit === 1 ? "s" : ""} a cashier-confirmed branch visit.`,
+          `${awaitingVisit} عضو ما زال بحاجة إلى زيارة فرع مؤكدة من الكاشير.`
         )
       );
     }
@@ -1628,8 +1628,8 @@ function generateNotifications(store, user) {
           "info",
           "Pending proof submissions",
           "إثباتات تسليم معلقة",
-          `${pendingProof} platform influencer${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
-          `${pendingProof} مؤثر${pendingProof === 1 ? "" : ""} من المنصة ما زال بحاجة إلى تسليم الإثبات عبر الحملات المباشرة.`
+          `${pendingProof} member${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
+          `${pendingProof} عضو ما زال بحاجة إلى تسليم الإثبات عبر الحملات المباشرة.`
         )
       );
     }
@@ -2138,7 +2138,7 @@ async function handleUserStatus(req, res, store, actor, userId) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
   const user = userById(store, userId);
-  if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Influencer not found." });
+  if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Member not found." });
   if (!["active", "pending", "rejected", "suspended"].includes(body.status)) {
     return sendJson(res, 422, { error: "Invalid status." });
   }
@@ -2157,14 +2157,14 @@ async function handleAdminUpdateInfluencer(req, res, store, actor, userId) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
   const user = userById(store, userId);
-  if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Influencer not found." });
+  if (!user || user.role !== "influencer") return sendJson(res, 404, { error: "Member not found." });
 
   const tags = parseTags(body.tags);
   if (invalidTags(tags).length) {
     return sendJson(res, 422, { error: "Tags must be comma-separated, lowercase, and use only letters, numbers, or hyphens." });
   }
   if (unknownTags(store, tags).length) {
-    return sendJson(res, 422, { error: "Choose influencer tags from the admin tag library." });
+    return sendJson(res, 422, { error: "Choose member tags from the admin tag library." });
   }
   user.tags = tags;
   user.notes = parseList(body.notes);
@@ -2811,7 +2811,7 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
   if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
   const eligibleIds = new Set(eligibleCampaignsFor(store, actor).map((item) => item.id));
   if (!eligibleIds.has(campaign.id)) {
-    return sendJson(res, 409, { error: "This campaign is not available for this influencer." });
+    return sendJson(res, 409, { error: "This campaign is not available for this member." });
   }
   const activeParticipants = store.participants.filter(
     (participant) => participant.campaignId === campaign.id && participant.status !== "canceled"
@@ -2868,7 +2868,7 @@ async function handleManualReserveCode(req, res, store, actor, codeId) {
 
   const body = jsonOrForm(await readBody(req), req);
   const offlineName = text(body.offlineName);
-  if (!offlineName) return sendJson(res, 422, { error: "Offline influencer name is required." });
+  if (!offlineName) return sendJson(res, 422, { error: "Offline member name is required." });
 
   const now = new Date().toISOString();
   const participant = {
@@ -2926,7 +2926,7 @@ async function handleSelfCancelParticipant(req, res, store, actor, participantId
   );
   if (!participant) return sendJson(res, 404, { error: "Participation not found." });
   if (participant.status !== "confirmed") {
-    return sendJson(res, 409, { error: "Only reserved campaign visits can be canceled by the influencer." });
+    return sendJson(res, 409, { error: "Only reserved campaign visits can be canceled by the member." });
   }
   cancelParticipant(store, participant, "Canceled by influencer", "available");
   participant.assignedCodeId = null;
@@ -3315,5 +3315,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`PICK Influence Hub running on ${APP_BASE_URL}`);
+  console.log(`PICK Social Club running on ${APP_BASE_URL}`);
 });

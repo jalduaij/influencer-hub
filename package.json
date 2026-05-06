@@ -1,8 +1,8 @@
 {
-  "name": "pick-influence-hub",
+  "name": "pick-social-club",
   "private": true,
   "version": "0.1.0",
-  "description": "PICK influencer management staging app",
+  "description": "PICK Social Club staging app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

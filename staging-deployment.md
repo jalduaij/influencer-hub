@@ -1,4 +1,4 @@
-# PICK Stage Deployment Guide
+# PICK Social Club Stage Deployment Guide
 
 This app is ready for a **stage deployment** with the current file-based store.
 
@@ -120,4 +120,3 @@ Move to:
 2. object storage for banners, avatars, and uploads
 3. stronger authentication and reset flow
 4. POS used-code reconciliation upload
-

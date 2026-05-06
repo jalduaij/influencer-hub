@@ -178,7 +178,7 @@ function restoreFocusedField(snapshot) {
 function roleLabel(role) {
   if (role === "admin") return l("Admin", "مدير النظام");
   if (role === "campaign_manager") return l("Campaign Manager", "مدير الحملات");
-  return l("Influencer", "مؤثر");
+  return l("Member", "عضو");
 }
 
 function campaignStatusLabel(status) {
@@ -970,7 +970,7 @@ function managerName(userId) {
 
 function reportTabLabel(tab) {
   if (tab === "campaigns") return l("Campaigns", "الحملات");
-  if (tab === "influencers") return l("Influencers", "المؤثرون");
+  if (tab === "influencers") return l("Members", "الأعضاء");
   if (tab === "submissions") return l("Submissions", "التسليمات");
   return l("Codes", "الأكواد");
 }
@@ -1181,7 +1181,7 @@ function reportFilterEntries(tab, filters) {
     if (filters.managerId) entries.push({ label: l("Manager", "المدير"), value: managerName(filters.managerId) });
   }
   if (tab === "influencers") {
-    if (filters.query) entries.push({ label: l("Influencer", "المؤثر"), value: filters.query });
+    if (filters.query) entries.push({ label: l("Member", "العضو"), value: filters.query });
     if (filters.cityId) entries.push({ label: l("City", "المدينة"), value: cityName(filters.cityId) });
     if (filters.categoryId) entries.push({ label: l("Category", "الفئة"), value: categoryName(filters.categoryId) });
     if (filters.status) entries.push({ label: l("Status", "الحالة"), value: filters.status });
@@ -1195,7 +1195,7 @@ function reportFilterEntries(tab, filters) {
     }
     if (filters.influencerId) {
       const influencer = allInfluencers().find((item) => item.id === Number(filters.influencerId));
-      if (influencer) entries.push({ label: l("Influencer", "المؤثر"), value: influencer.fullName });
+      if (influencer) entries.push({ label: l("Member", "العضو"), value: influencer.fullName });
     }
     if (filters.platform) entries.push({ label: l("Platform", "المنصة"), value: filters.platform });
   }
@@ -1448,15 +1448,42 @@ function render(options = {}) {
   document.body.classList.toggle("rtl", state.locale === "ar");
   if (!state.currentUser) {
     document.body.classList.toggle("nav-locked", false);
+    document.title = "PICK Social Club";
     app.innerHTML = renderAuth();
     syncFlashLayer();
     if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
     return;
   }
+  document.title = currentDocumentTitle();
   app.innerHTML = renderShell();
   document.body.classList.toggle("nav-locked", state.mobileNavOpen);
   syncFlashLayer();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
+}
+
+function currentDocumentTitle() {
+  const pageTitles = {
+    dashboard:
+      state.currentUser?.role === "influencer"
+        ? l("PICK Social Club — Member Dashboard", "نادي بك — لوحة العضو")
+        : l("PICK Social Club — Dashboard", "نادي بك — لوحة التحكم"),
+    influencers: l("PICK Social Club — Members", "نادي بك — الأعضاء"),
+    "influencer-profile": l("PICK Social Club — Member Profile", "نادي بك — ملف العضو"),
+    campaigns: l("PICK Social Club — Campaigns", "نادي بك — الحملات"),
+    "campaign-edit": l("PICK Social Club — Edit Campaign", "نادي بك — تعديل الحملة"),
+    "campaign-view": l("PICK Social Club — Campaign View", "نادي بك — عرض الحملة"),
+    "campaign-preview": l("PICK Social Club — Campaign Preview", "نادي بك — معاينة الحملة"),
+    branches: l("PICK Social Club — Branches", "نادي بك — الأفرع"),
+    "branch-edit": l("PICK Social Club — Branch", "نادي بك — الفرع"),
+    "master-data": l("PICK Social Club — Master Data", "نادي بك — البيانات الأساسية"),
+    managers: l("PICK Social Club — Managers", "نادي بك — مديرو الحملات"),
+    "manager-edit": l("PICK Social Club — Manager", "نادي بك — مدير الحملات"),
+    reports: l("PICK Social Club — Reports", "نادي بك — التقارير"),
+    availableCampaigns: l("PICK Social Club — Available Campaigns", "نادي بك — الحملات المتاحة"),
+    myCampaigns: l("PICK Social Club — My Campaigns", "نادي بك — حملاتي"),
+    profile: l("PICK Social Club — Profile", "نادي بك — الملف الشخصي"),
+  };
+  return pageTitles[state.currentPage] || "PICK Social Club";
 }
 
 function renderAuth() {
@@ -1469,11 +1496,11 @@ function renderAuth() {
     <section class="login-shell">
       <article class="login-card">
         <p class="eyebrow">PICK Internal</p>
-        <h1>${l("PICK Influence Hub", "منصة PICK لإدارة المؤثرين")}</h1>
-        <p class="login-copy">${l("Sign in, request access, or reset your password.", "سجّل الدخول أو اطلب حساباً أو أعد تعيين كلمة المرور.")}</p>
+        <h1>${l("PICK Social Club", "نادي بك")}</h1>
+        <p class="login-copy">${l("Sign in or join the club. Welcome back 💜", "سجّل دخولك أو انضم للنادي. أهلاً بعودتك 💜")}</p>
         <div class="row-wrap" style="margin-bottom: 18px;">
           <button class="${state.authMode === "login" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="login">${l("Sign In", "تسجيل الدخول")}</button>
-          <button class="${state.authMode === "signup" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="signup">${l("Sign Up", "تسجيل جديد")}</button>
+          <button class="${state.authMode === "signup" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="signup">${l("Become a Member", "كن عضواً")}</button>
           <button class="${state.authMode === "forgot" ? "" : "secondary"}" data-action="set-auth-mode" data-mode="forgot">${l("Forgot Password", "نسيت كلمة المرور")}</button>
         </div>
         <label class="field" style="margin-bottom: 16px;">
@@ -1489,7 +1516,7 @@ function renderAuth() {
       <article class="login-sidecard">
         <p class="eyebrow">${l("Demo accounts", "حسابات تجريبية")}</p>
         <h2>PICK</h2>
-        <p class="brand-copy">${l("Internal campaign operations with reserved POS code flows.", "تشغيل داخلي للحملات مع تدفق أكواد نقاط البيع المحجوزة.")}</p>
+        <p class="brand-copy">${l("PICK Social Club brings our favorite people closer. Visit a branch, share your moment, stay connected.", "نادي بك يقرّب أصدقاءنا المفضلين أكثر. زورونا، شاركوا لحظاتكم، وابقوا معنا.")}</p>
         <div class="stack">
           <div class="list-card"><strong>${roleLabel("admin")}</strong><p>sara@pick.internal</p><p class="compact">pick123</p></div>
           <div class="list-card"><strong>${roleLabel("campaign_manager")}</strong><p>nasser@pick.internal</p><p class="compact">pick123</p></div>
@@ -1528,7 +1555,7 @@ function renderSignupForm() {
       <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" min="0" value="0" /></label>
       <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", "")}</label>
       <p class="compact field-span-full">${l("Follower counts help us match you with relevant campaigns. You can update them later in your profile.", "أعداد المتابعين تساعدنا على مطابقتك مع الحملات المناسبة. يمكنك تحديثها لاحقاً من ملفك الشخصي.")}</p>
-      <button type="submit" style="grid-column: 1 / -1;">${l("Create influencer request", "إرسال طلب التسجيل")}</button>
+      <button type="submit" style="grid-column: 1 / -1;">${l("Send my request", "إرسال طلبي")}</button>
     </form>
   `;
 }
@@ -1556,7 +1583,7 @@ function roleNav(role) {
   if (role === "admin") {
     return [
       ["dashboard", l("Dashboard", "لوحة التحكم")],
-      ["influencers", l("Influencer Management", "إدارة المؤثرين")],
+      ["influencers", l("Members", "الأعضاء")],
       ["campaigns", l("Campaigns", "الحملات")],
       ["branches", l("Branches", "الأفرع")],
       ["master-data", l("Master Data", "البيانات الأساسية")],
@@ -1568,7 +1595,7 @@ function roleNav(role) {
   if (role === "campaign_manager") {
     return [
       ["dashboard", l("Dashboard", "لوحة التحكم")],
-      ["influencers", l("Influencer Management", "إدارة المؤثرين")],
+      ["influencers", l("Members", "الأعضاء")],
       ["campaigns", l("Campaigns", "الحملات")],
       ["reports", l("Reports", "التقارير")],
       ["profile", l("Profile", "الملف الشخصي")],
@@ -1620,15 +1647,15 @@ function renderShell() {
           ${iconSvg("menu")}
         </button>
         <div class="mobile-brand">
-          <strong>PICK Influence Hub</strong>
+          <strong>${l("PICK Social Club", "نادي بك")}</strong>
         </div>
         <div class="mobile-spacer"></div>
       </header>
       <aside class="sidebar">
         <div class="brand-block">
           <p class="eyebrow">PICK Internal</p>
-          <h1>PICK Influence Hub</h1>
-          <p class="brand-copy">${l("Internal influencer campaign operations for PICK.", "تشغيل داخلي لحملات المؤثرين في PICK.")}</p>
+          <h1>${l("PICK Social Club", "نادي بك")}</h1>
+          <p class="brand-copy">${l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد.")}</p>
         </div>
         <div class="control-panel">
           <label class="field">
@@ -1904,7 +1931,7 @@ function influencerBackLabel(page) {
   if (page === "reports") return l("Back to reports", "العودة إلى التقارير");
   if (page === "campaign-view") return l("Back to campaign", "العودة إلى الحملة");
   if (page === "dashboard") return l("Back to dashboard", "العودة إلى لوحة التحكم");
-  return l("Back to influencer management", "العودة إلى إدارة المؤثرين");
+  return l("Back to members", "العودة إلى الأعضاء");
 }
 
 function metricGrid(items) {
@@ -1977,7 +2004,7 @@ function renderOperationsDashboard() {
   return `
     ${pageHeader(
       l("Operations Dashboard", "لوحة التشغيل"),
-      l("Manage campaigns, influencers, codes, and deadlines from one place.", "إدارة الحملات والمؤثرين والأكواد والمواعيد من مكان واحد."),
+      l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد."),
       { showNotifications: true }
     )}
     ${metricGrid([
@@ -1997,7 +2024,7 @@ function renderOperationsDashboard() {
       </section>
     </section>
     <section class="panel">
-      <h3>${l("Influencer Snapshot", "ملخص المؤثرين")}</h3>
+      <h3>${l("Member Snapshot", "ملخص الأعضاء")}</h3>
       ${renderInfluencerTable(allInfluencers().slice(0, 6), false)}
     </section>
     ${renderRecentActivityPanel()}
@@ -2027,22 +2054,22 @@ function renderInfluencersPage() {
   const pendingProof = (state.data?.reports?.influencers || []).reduce((sum, item) => sum + (item.pending || 0), 0);
   return `
     ${pageHeader(
-      l("Influencer Management", "إدارة المؤثرين"),
-      l("Approve sign-ups, manage access, update internal tags and notes, and reset passwords from one operational page.", "اعتمد التسجيلات وأدر الوصول وحدّث العلامات والملاحظات الداخلية وأعد تعيين كلمات المرور من صفحة تشغيل واحدة."),
+      l("Members", "الأعضاء"),
+      l("Welcome new members, manage access, update club tags and notes, and help everyone stay connected.", "رحّب بالأعضاء الجدد وأدر الوصول وحدّث العلامات والملاحظات وساعد الجميع على البقاء على تواصل."),
       { hideHeroStats: true }
     )}
     ${metricGrid([
-      { label: l("Total influencers", "إجمالي المؤثرين"), value: allInfluencers().length, note: l("All influencer accounts in the platform.", "كل حسابات المؤثرين الموجودة في المنصة.") },
-      { label: l("Pending approvals", "طلبات بانتظار الاعتماد"), value: pending.length, note: l("New sign-ups waiting for approval or rejection.", "طلبات تسجيل جديدة بانتظار الاعتماد أو الرفض.") },
-      { label: l("Active accounts", "الحسابات النشطة"), value: activeCount, note: l("Influencers who can currently log in and join campaigns.", "مؤثرون يمكنهم الدخول والانضمام للحملات حالياً.") },
+      { label: l("Total members", "إجمالي الأعضاء"), value: allInfluencers().length, note: l("All member accounts in the club.", "جميع حسابات الأعضاء في النادي.") },
+      { label: l("Pending requests", "طلبات بانتظار الاعتماد"), value: pending.length, note: l("New member requests waiting for approval or rejection.", "طلبات أعضاء جديدة بانتظار الاعتماد أو الرفض.") },
+      { label: l("Active accounts", "الحسابات النشطة"), value: activeCount, note: l("Members who can currently log in and join campaigns.", "أعضاء يمكنهم الدخول والانضمام للحملات حالياً.") },
       { label: l("Pending proof", "إثباتات معلقة"), value: pendingProof, note: l("Platform joins still waiting for proof links.", "انضمامات المنصة التي ما زالت بانتظار روابط الإثبات.") },
     ])}
     ${state.generatedLink ? `<article class="note-card" style="margin-bottom: 18px;"><strong>${l("Generated reset link", "رابط إعادة التعيين المولد")}</strong><p>${escapeHtml(state.generatedLink)}</p></article>` : ""}
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
-          <h3>${l("Filter influencers", "فلترة المؤثرين")}</h3>
-          <p class="panel-subtitle">${l("Use these filters to find the right influencer record before taking action.", "استخدم هذه الفلاتر للوصول إلى سجل المؤثر الصحيح قبل تنفيذ أي إجراء.")}</p>
+          <h3>${l("Filter members", "فلترة الأعضاء")}</h3>
+          <p class="panel-subtitle">${l("Use these filters to find the right member record before taking action.", "استخدم هذه الفلاتر للوصول إلى سجل العضو الصحيح قبل تنفيذ أي إجراء.")}</p>
         </div>
         <div class="row-wrap">
           <span class="badge">${rows.length} ${escapeHtml(l("matching records", "سجل مطابق"))}</span>
@@ -2078,8 +2105,8 @@ function renderInfluencersPage() {
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
-          <h3>${l("Pending approvals", "طلبات بانتظار الاعتماد")}</h3>
-          <p class="panel-subtitle">${l("Approve or reject new influencer sign-ups before they can access the platform.", "اعتمد أو ارفض تسجيلات المؤثرين الجديدة قبل أن يتمكنوا من الوصول إلى المنصة.")}</p>
+          <h3>${l("Pending member requests", "طلبات الأعضاء المعلقة")}</h3>
+          <p class="panel-subtitle">${l("Review new member requests before they step into the club.", "راجع طلبات الأعضاء الجدد قبل دخولهم إلى النادي.")}</p>
         </div>
         <span class="badge ${pending.length ? "warning" : "success"}">${pending.length} ${escapeHtml(l("pending", "معلق"))}</span>
       </div>
@@ -2105,14 +2132,14 @@ function renderInfluencersPage() {
                 `
               )
               .join("")
-          : `<div class="empty-state">${l("No pending sign-ups right now.", "لا توجد طلبات تسجيل معلقة الآن.")}</div>`}
+          : `<div class="empty-state">${l("Nobody waiting at the door.", "لا أحد ينتظر.")}</div>`}
       </div>
     </section>
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
-          <h3>${l("All influencers", "كل المؤثرين")}</h3>
-          <p class="panel-subtitle">${l("Review each influencer record, update internal notes, and take direct account actions from the same page.", "راجع كل سجل مؤثر وحدّث الملاحظات الداخلية ونفّذ إجراءات الحساب مباشرة من الصفحة نفسها.")}</p>
+          <h3>${l("All Members", "جميع الأعضاء")}</h3>
+          <p class="panel-subtitle">${l("Review each member record, update internal notes, and take direct account actions from the same page.", "راجع كل سجل عضو وحدّث الملاحظات الداخلية ونفّذ إجراءات الحساب مباشرة من الصفحة نفسها.")}</p>
         </div>
       </div>
       <div class="stack">
@@ -2156,7 +2183,7 @@ function renderInfluencersPage() {
                 `;
               })
               .join("")
-          : `<div class="empty-state">${l("No influencers match the current filter.", "لا يوجد مؤثرون مطابقون للفلاتر الحالية.")}</div>`}
+          : `<div class="empty-state">${l("No members match the current filter.", "لا يوجد أعضاء مطابقون للفلاتر الحالية.")}</div>`}
       </div>
     </section>
   `;
@@ -2182,7 +2209,7 @@ function renderCampaignHealthCards(campaigns) {
           `
         )
         .join("")}</div>`
-    : `<div class="empty-state">${l("No campaigns yet.", "لا توجد حملات بعد.")}</div>`;
+    : `<div class="empty-state">${l("Quiet here for now. New campaigns will show up here.", "هادئ هنا حالياً. الحملات الجديدة ستظهر هنا.")}</div>`;
 }
 
 function renderPendingProofList() {
@@ -2330,7 +2357,7 @@ function renderCampaignsPage() {
                   `
                 )
                 .join("")
-            : `<div class="empty-state">${l("No campaigns yet.", "لا توجد حملات بعد.")}</div>`}
+            : `<div class="empty-state">${l("Quiet here for now. New campaigns will show up here.", "هادئ هنا حالياً. الحملات الجديدة ستظهر هنا.")}</div>`}
         </div>
       </section>
       <section class="panel">
@@ -2358,7 +2385,7 @@ function renderCampaignForm(campaign) {
       <section class="form-section">
         <div class="form-section-header">
           <h4>${l("Basic setup", "الإعداد الأساسي")}</h4>
-          <p>${l("Name the campaign, choose its type, and set the main messaging managers and influencers will see.", "قم بتسمية الحملة وحدد نوعها واضبط الرسائل الأساسية التي سيشاهدها المديرون والمؤثرون.")}</p>
+          <p>${l("Name the campaign, choose its type, and set the main messaging managers and members will see.", "قم بتسمية الحملة وحدد نوعها واضبط الرسائل الأساسية التي سيشاهدها المديرون والأعضاء.")}</p>
         </div>
         <div class="form-grid two-col">
           <label class="field"><span>Title (EN) <em class="required-mark">*</em></span><input name="titleEn" required value="${escapeHtml(campaign?.titleEn || "")}" /></label>
@@ -2382,7 +2409,7 @@ function renderCampaignForm(campaign) {
           <label class="field field-span-full"><span>Description (AR)</span><textarea name="descriptionAr">${escapeHtml(campaign?.descriptionAr || "")}</textarea></label>
           <label class="field field-span-full">
             <span>${l("Caption guide (optional)", "دليل التعليق (اختياري)")}</span>
-            <textarea name="captionGuide" rows="4" placeholder="${l("Hashtags, mentions, tone, do's and don'ts. The influencer sees this when they're about to post.", "الهاشتاقات والمنشن والنبرة وما يجب وما لا يجب. يراها المؤثر عند نشر المحتوى.")}">${escapeHtml(campaign?.captionGuide || "")}</textarea>
+            <textarea name="captionGuide" rows="4" placeholder="${l("Hashtags, mentions, tone, do's and don'ts. Members see this when they're about to post.", "الهاشتاقات والمنشن والنبرة وما يجب وما لا يجب. يراها العضو عند نشر المحتوى.")}">${escapeHtml(campaign?.captionGuide || "")}</textarea>
           </label>
           <label class="field field-span-full">
             <span>${l("WhatsApp message body (optional)", "نص رسالة الواتساب (اختياري)")}</span>
@@ -2397,7 +2424,7 @@ function renderCampaignForm(campaign) {
       <section class="form-section form-section--accent">
         <div class="form-section-header">
           <h4>${l("Offer details", "تفاصيل العرض")}</h4>
-          <p>${l("Define clearly what the influencer gets when the assigned code is used in the campaign.", "حدد بوضوح ما الذي سيحصل عليه المؤثر عند استخدام الكود المخصص ضمن الحملة.")}</p>
+          <p>${l("Define clearly what the member gets when the assigned code is used in the campaign.", "حدد بوضوح ما الذي سيحصل عليه العضو عند استخدام الكود المخصص ضمن الحملة.")}</p>
         </div>
         <div class="form-grid two-col">
           <label class="field"><span>${l("Offer usage count", "عدد استخدام العرض")} <em class="required-mark">*</em></span><input name="offerUsageCount" type="number" min="1" required value="${escapeHtml(campaign?.offerUsageCount || 1)}" /></label>
@@ -2509,7 +2536,7 @@ function renderCampaignForm(campaign) {
                 .join("")}
             </div>
           </div>
-          <p class="compact">${l("A matching influencer needs at least one of the selected tags.", "يكفي أن يطابق المؤثر علامة واحدة على الأقل من العلامات المحددة.")}</p>
+          <p class="compact">${l("A matching member needs at least one of the selected tags.", "يكفي أن يطابق العضو علامة واحدة على الأقل من العلامات المحددة.")}</p>
         </div>
       </section>
       <section class="form-section">
@@ -2679,8 +2706,8 @@ function renderCampaignViewPage() {
         label: l("Join rate", "معدل الانضمام"),
         value: `${eligibleJoinRate}%`,
         note: l(
-          `Eligible influencers ${eligibleCount} · Platform joined ${platformJoined} · Offline reserved ${offlineReserved}`,
-          `المؤثرون المؤهلون ${eligibleCount} · انضموا عبر المنصة ${platformJoined} · حجز خارجي ${offlineReserved}`
+          `Eligible members ${eligibleCount} · Platform joined ${platformJoined} · Offline reserved ${offlineReserved}`,
+          `الأعضاء المؤهلون ${eligibleCount} · انضموا عبر المنصة ${platformJoined} · حجز خارجي ${offlineReserved}`
         ),
       },
       {
@@ -2737,7 +2764,7 @@ function renderCampaignViewPage() {
           <div class="row report-toolbar-head">
             <div>
               <strong>${l("Send to specific influencers", "إرسال لمؤثرين محددين")}</strong>
-              <p class="panel-subtitle">${l("Click an influencer to open WhatsApp with the share message and deep link pre-filled.", "اضغط على المؤثر لفتح واتساب مع رسالة المشاركة ورابط الانتقال.")}</p>
+              <p class="panel-subtitle">${l("Click a member to open WhatsApp with the share message and deep link pre-filled.", "اضغط على العضو لفتح واتساب مع رسالة المشاركة ورابط الانتقال.")}</p>
             </div>
           </div>
           <div class="row-wrap" style="gap: 8px;">
@@ -2804,7 +2831,7 @@ function renderCampaignViewPage() {
                           ${state.manualReserveCodeId === code.id
                             ? `
                               <form class="form-grid manual-reserve-form" data-code-id="${code.id}">
-                                <label class="field"><span>${l("Influencer name", "اسم المؤثر")} <em class="required-mark">*</em></span><input name="offlineName" required /></label>
+                                <label class="field"><span>${l("Member name", "اسم العضو")} <em class="required-mark">*</em></span><input name="offlineName" required /></label>
                                 <label class="field"><span>${l("Mobile", "الهاتف")}</span><input name="offlineMobile" /></label>
                                 <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", "")}</label>
                                 <label class="field"><span>${l("Notes", "ملاحظات")}</span><textarea name="offlineNotes"></textarea></label>
@@ -2857,12 +2884,12 @@ function renderCampaignViewPage() {
                     ${participant.socialLink ? `<p><a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a></p>` : ""}
                     ${participant.feedback ? `<p>${escapeHtml(participant.feedback)}</p>` : ""}
                     <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
-                    ${participant.status !== "canceled" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="remove-participant" data-participant-id="${participant.id}">${l("Remove influencer from campaign", "إزالة المؤثر من الحملة")}</button></div>` : ""}
+                    ${participant.status !== "canceled" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="remove-participant" data-participant-id="${participant.id}">${l("Remove member from campaign", "إزالة العضو من الحملة")}</button></div>` : ""}
                   </article>
                 `
               )
               .join("")
-          : `<div class="empty-state">${l("No participants yet.", "لا يوجد مشاركون بعد.")}</div>`}
+          : `<div class="empty-state">${l("No members joined yet.", "لم ينضم أي عضو بعد.")}</div>`}
       </div>
     </section>
   `;
@@ -3185,7 +3212,7 @@ function renderMasterDataPage() {
       <div class="row report-toolbar-head">
         <div>
           <h3>${l("Tags", "العلامات")}</h3>
-          <p class="panel-subtitle">${l("Control the allowed tag library here so campaigns and influencer profiles only use approved tags.", "تحكم في مكتبة العلامات المسموح بها هنا حتى تستخدم الحملات وملفات المؤثرين العلامات المعتمدة فقط.")}</p>
+          <p class="panel-subtitle">${l("Control the allowed tag library here so campaigns and member profiles only use approved tags.", "تحكم في مكتبة العلامات المسموح بها هنا حتى تستخدم الحملات وملفات الأعضاء العلامات المعتمدة فقط.")}</p>
         </div>
         <div class="row-wrap">
           <span class="badge">${visibleTags.length} ${escapeHtml(l("visible", "ظاهر"))}</span>
@@ -3384,7 +3411,7 @@ function renderCampaignFilters(filters) {
       <div class="row report-toolbar-head">
         <div>
           <h3>${l("Campaign Filters", "فلاتر الحملات")}</h3>
-          <p class="panel-subtitle">${l("Use campaign-only filters to review campaign performance without mixing influencer or posting conditions.", "استخدم فلاتر الحملات فقط لمراجعة أداء الحملات دون خلط شروط المؤثرين أو النشر.")}</p>
+          <p class="panel-subtitle">${l("Use campaign-only filters to review campaign performance without mixing member or posting conditions.", "استخدم فلاتر الحملات فقط لمراجعة أداء الحملات دون خلط شروط الأعضاء أو النشر.")}</p>
         </div>
         <button type="button" class="secondary" data-action="clear-report-filters">${l("Clear filters", "مسح الفلاتر")}</button>
       </div>
@@ -3420,13 +3447,13 @@ function renderInfluencerFilters(filters) {
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
-          <h3>${l("Influencer Filters", "فلاتر المؤثرين")}</h3>
-          <p class="panel-subtitle">${l("Review influencer activity by profile and participation history only.", "راجع نشاط المؤثرين حسب الملف الشخصي وسجل المشاركة فقط.")}</p>
+          <h3>${l("Member Filters", "فلاتر الأعضاء")}</h3>
+          <p class="panel-subtitle">${l("Review member activity by profile and participation history only.", "راجع نشاط الأعضاء حسب الملف الشخصي وسجل المشاركة فقط.")}</p>
         </div>
         <button type="button" class="secondary" data-action="clear-report-filters">${l("Clear filters", "مسح الفلاتر")}</button>
       </div>
       <form class="form-grid reports-filter-grid" id="reportFilterForm">
-        <label class="field"><span>${l("Influencer", "المؤثر")}</span><input name="query" value="${escapeHtml(filters.query || "")}" placeholder="${l("Search by name or email", "ابحث بالاسم أو البريد")}" /></label>
+        <label class="field"><span>${l("Member", "العضو")}</span><input name="query" value="${escapeHtml(filters.query || "")}" placeholder="${l("Search by name or email", "ابحث بالاسم أو البريد")}" /></label>
         <label class="field"><span>${l("City", "المدينة")}</span>${renderCitySelect("cityId", filters.cityId, true)}</label>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", filters.categoryId, true)}</label>
         <label class="field"><span>${l("Tag", "العلامة")}</span><input name="tag" value="${escapeHtml(filters.tag || "")}" placeholder="${l("Example: vip", "مثال: vip")}" /></label>
@@ -3465,9 +3492,9 @@ function renderSubmissionFilters(filters) {
             ${currentCampaigns().map((campaign) => `<option value="${campaign.id}" ${Number(filters.campaignId) === campaign.id ? "selected" : ""}>${escapeHtml(campaignTitle(campaign))}</option>`).join("")}
           </select>
         </label>
-        <label class="field"><span>${l("Influencer", "المؤثر")}</span>
+        <label class="field"><span>${l("Member", "العضو")}</span>
           <select name="influencerId">
-            <option value="">${l("All influencers", "كل المؤثرين")}</option>
+            <option value="">${l("All members", "كل الأعضاء")}</option>
             ${allInfluencers().map((influencer) => `<option value="${influencer.id}" ${Number(filters.influencerId) === influencer.id ? "selected" : ""}>${escapeHtml(influencer.fullName)}</option>`).join("")}
           </select>
         </label>
@@ -3641,22 +3668,22 @@ function renderInfluencerReports(dashboard) {
   const totalSubmitted = rows.reduce((sum, row) => sum + row.submitted, 0);
   const proofRate = safePercent(totalSubmitted, totalJoins);
   return {
-    copy: l("Influencer reporting focused on participation quality, completion, and follow-up needs.", "تقارير المؤثرين تركز على جودة المشاركة والاكتمال واحتياجات المتابعة."),
+    copy: l("Member reporting focused on participation quality, completion, and follow-up needs.", "تقارير الأعضاء تركز على جودة المشاركة والاكتمال واحتياجات المتابعة."),
     heroStats: [
-      { label: l("Influencer total", "إجمالي المؤثرين"), value: String(rows.length), note: l("Number of influencers included in this influencer report after filters.", "عدد المؤثرين المشمولين في تقرير المؤثرين بعد تطبيق الفلاتر.") },
-      { label: l("Campaign joins", "انضمام الحملات"), value: String(totalJoins), note: l("How many times the filtered influencers clicked interested and joined campaigns.", "عدد المرات التي ضغط فيها المؤثرون المفلترون على الاهتمام وانضموا إلى الحملات.") },
-      { label: l("Proof rate", "معدل الإثبات"), value: `${proofRate}%`, note: l("Share of influencer joins that turned into submitted proof links.", "نسبة انضمامات المؤثرين التي تحولت إلى روابط إثبات مُرسلة.") },
+      { label: l("Member total", "إجمالي الأعضاء"), value: String(rows.length), note: l("Number of members included in this report after filters.", "عدد الأعضاء المشمولين في هذا التقرير بعد تطبيق الفلاتر.") },
+      { label: l("Campaign joins", "انضمام الحملات"), value: String(totalJoins), note: l("How many times the filtered members clicked interested and joined campaigns.", "عدد المرات التي ضغط فيها الأعضاء المفلترون على الاهتمام وانضموا إلى الحملات.") },
+      { label: l("Proof rate", "معدل الإثبات"), value: `${proofRate}%`, note: l("Share of member joins that turned into submitted proof links.", "نسبة انضمامات الأعضاء التي تحولت إلى روابط إثبات مُرسلة.") },
     ],
     body: `
       ${renderInfluencerFilters(filters)}
       <section class="panel">
-        <h3>${l("Influencer report", "تقرير المؤثرين")}</h3>
-        <p class="panel-subtitle">${l("A table-first report showing influencer profile filters, campaign joins, proof submissions, pending proof, and a direct link back to the influencer management page.", "تقرير يعتمد على الجدول أولاً ويعرض فلاتر ملف المؤثر وانضمام الحملات وإثباتات النشر والإثباتات المعلقة ورابطاً مباشراً للعودة إلى صفحة إدارة المؤثرين.")}</p>
-        <p class="compact"><strong>${rows.length}</strong> ${l("influencers in this filtered report.", "مؤثراً ضمن هذا التقرير بعد الفلترة.")}</p>
+        <h3>${l("Member report", "تقرير الأعضاء")}</h3>
+        <p class="panel-subtitle">${l("A table-first report showing member profile filters, campaign joins, proof submissions, pending proof, and a direct link back to the members page.", "تقرير يعتمد على الجدول أولاً ويعرض فلاتر ملف العضو وانضمام الحملات وإثباتات النشر والإثباتات المعلقة ورابطاً مباشراً للعودة إلى صفحة الأعضاء.")}</p>
+        <p class="compact"><strong>${rows.length}</strong> ${l("members in this filtered report.", "عضواً ضمن هذا التقرير بعد الفلترة.")}</p>
         ${renderDataTable(
           [
             {
-              label: l("Influencer", "المؤثر"),
+              label: l("Member", "العضو"),
               render: (row) => `<button type="button" class="table-link-button" data-action="view-influencer" data-user-id="${row.influencerId}">${escapeHtml(row.fullName)}</button>`,
               html: true,
               sortKey: "fullName",
@@ -3697,7 +3724,7 @@ function renderInfluencerReports(dashboard) {
             { label: l("Last activity", "آخر نشاط"), render: (row) => formatDate(row.lastActivityDate), sortKey: "lastActivity" },
           ],
           rows,
-          l("No influencer rows match the current influencer filters.", "لا توجد بيانات مؤثرين مطابقة لفلاتر المؤثرين الحالية."),
+          l("No member rows match the current member filters.", "لا توجد بيانات أعضاء مطابقة لفلاتر الأعضاء الحالية."),
           { tableId: "influencers", sort }
         )}
       </section>
@@ -3793,12 +3820,12 @@ function renderSubmissionReports(dashboard) {
       </section>
       <section class="panel">
         <h3>${l("Pending proof queue", "قائمة الإثباتات المعلقة")}</h3>
-        <p class="panel-subtitle">${l("This is the clean operational queue of platform influencers who joined a campaign but still have not submitted their proof link. Use the campaign filter above to narrow this queue to one campaign only.", "هذه هي القائمة التشغيلية الواضحة لمؤثري المنصة الذين انضموا إلى حملة لكنهم لم يرسلوا رابط الإثبات بعد. استخدم فلتر الحملة أعلاه لحصر هذه القائمة في حملة واحدة فقط.")}</p>
+        <p class="panel-subtitle">${l("This is the clean operational queue of members who joined a campaign but still have not submitted their proof link. Use the campaign filter above to narrow this queue to one campaign only.", "هذه هي القائمة التشغيلية الواضحة للأعضاء الذين انضموا إلى حملة لكنهم لم يرسلوا رابط الإثبات بعد. استخدم فلتر الحملة أعلاه لحصر هذه القائمة في حملة واحدة فقط.")}</p>
         ${renderDataTable(
           [
             { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign || row), html: true },
             {
-              label: l("Influencer", "المؤثر"),
+              label: l("Member", "العضو"),
               render: (row) =>
                 row.influencerId
                   ? `<button type="button" class="table-link-button" data-action="view-influencer" data-user-id="${row.influencerId}">${escapeHtml(row.influencerName || "-")}</button>`
@@ -3819,12 +3846,12 @@ function renderSubmissionReports(dashboard) {
       </section>
       <section class="panel">
         <h3>${l("Submission log", "سجل التسليمات")}</h3>
-        <p class="panel-subtitle">${l("Review each submitted link with its campaign, influencer, platform, and submission date.", "راجع كل رابط تم تسليمه مع الحملة والمؤثر والمنصة وتاريخ التسليم.")}</p>
+        <p class="panel-subtitle">${l("Review each submitted link with its campaign, member, platform, and submission date.", "راجع كل رابط تم تسليمه مع الحملة والعضو والمنصة وتاريخ التسليم.")}</p>
         ${renderDataTable(
           [
             { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign || row), html: true, sortKey: "campaign" },
             {
-              label: l("Influencer", "المؤثر"),
+              label: l("Member", "العضو"),
               render: (row) => (row.influencerId ? renderInfluencerProfileTrigger(row.influencerId, row.influencerName) : escapeHtml(row.influencerName)),
               html: true,
               sortKey: "influencer",
@@ -3884,12 +3911,12 @@ function renderCodeReports(dashboard) {
           {
             label: l("Available", "متاح"),
             value: String(summary.available),
-            note: l("Codes still open for the next reservation or influencer join.", "أكواد ما زالت مفتوحة للحجز أو لانضمام مؤثر جديد."),
+            note: l("Codes still open for the next reservation or member join.", "أكواد ما زالت مفتوحة للحجز أو لانضمام عضو جديد."),
           },
           {
             label: l("Online reserved", "محجوز أونلاين"),
             value: String(summary.onlineReserved),
-            note: l("Codes reserved by influencers who joined inside the platform.", "أكواد حجزها مؤثرون انضموا من داخل المنصة."),
+            note: l("Codes reserved by members who joined inside the platform.", "أكواد حجزها أعضاء انضموا من داخل المنصة."),
           },
           {
             label: l("Offline reserved", "محجوز أوفلاين"),
@@ -3975,8 +4002,8 @@ function renderInfluencerDashboard() {
   const participants = state.data.participants || [];
   return `
     ${pageHeader(
-      l("Influencer Dashboard", "لوحة المؤثر"),
-      l("See eligible campaigns, your assigned codes, and proof tasks that still need action.", "شاهد الحملات المؤهلة لك وأكوادك المخصصة والمهام التي ما زالت تحتاج إجراء."),
+      l("Member Dashboard", "لوحة العضو"),
+      l("Your campaigns, your codes, your moments. All in one place 💜", "حملاتك، أكوادك، لحظاتك. كلها في مكان واحد 💜"),
       { showNotifications: true }
     )}
     ${metricGrid([
@@ -4038,12 +4065,12 @@ function renderAvailableCampaignCards(campaigns) {
           `
         )
         .join("")}</div>`
-    : `<div class="empty-state">${l("No eligible campaigns right now.", "لا توجد حملات مؤهلة الآن.")}</div>`;
+    : `<div class="empty-state">${l("No campaigns matching you right now — we'll be in touch when there's something for you 💜", "لا توجد حملات تناسبك حالياً — سنخبرك عند توفر شيء يناسبك 💜")}</div>`;
 }
 
 function renderMyCampaignsPage() {
   return `
-    ${pageHeader(l("My Campaigns", "حملاتي"), l("Track reserved codes and submit social links from one page.", "تابع الأكواد المحجوزة وأرسل روابط السوشيال من صفحة واحدة."))}
+    ${pageHeader(l("My Campaigns", "حملاتي"), l("Your campaigns, your codes, your moments. All in one place 💜", "حملاتك، أكوادك، لحظاتك. كلها في مكان واحد 💜"))}
     <section class="panel">
       <h3>${l("Joined Campaigns", "الحملات المنضم لها")}</h3>
       ${renderMyCampaignCards(state.data.participants || [], false, false)}
@@ -4272,7 +4299,7 @@ function renderProfilePage() {
     <section class="panel">
       <h3>${l("Profile Details", "تفاصيل الملف")}</h3>
       <p class="panel-subtitle">${isInfluencer
-        ? l("Required fields are marked with *. For influencer profiles, full name, mobile, gender, city, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات المؤثرين فإن الاسم الكامل والهاتف والجنس والمدينة وإنستغرام مطلوبة.")
+        ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, city, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس والمدينة وإنستغرام مطلوبة.")
         : l("Required fields are marked with *. Everything else on this page is optional.", "الحقول المطلوبة مميزة بعلامة *. وكل ما عدا ذلك في هذه الصفحة اختياري.")}</p>
       <form id="profileForm" class="form-grid two-col" enctype="multipart/form-data">
         <div class="profile-image-panel" style="grid-column: 1 / -1;">
@@ -4304,7 +4331,7 @@ function renderProfilePage() {
 
 function renderInfluencerProfilePage() {
   const user = selectedInfluencer();
-  if (!user) return renderEmptyCampaignPage(l("No influencer selected.", "لا يوجد مؤثر محدد."));
+  if (!user) return renderEmptyCampaignPage(l("No member selected.", "لا يوجد عضو محدد."));
   const participants = (state.data?.participants || [])
     .filter((participant) => participant.influencerId === user.id)
     .slice()
@@ -4325,8 +4352,8 @@ function renderInfluencerProfilePage() {
   };
   return `
     ${pageHeader(
-      l("Influencer Profile", "ملف المؤثر"),
-      l("Review the full influencer profile, performance, and campaign history from one page.", "راجع الملف الكامل للمؤثر والأداء وسجل الحملات من صفحة واحدة."),
+      l("Member Profile", "ملف العضو"),
+      l("Review the full member profile, performance, and campaign history from one page.", "راجع الملف الكامل للعضو والأداء وسجل الحملات من صفحة واحدة."),
       {
         heroStats: [
           { label: l("Account status", "حالة الحساب"), value: `<span class="hero-status-badge badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>`, allowHtml: true },
@@ -4337,10 +4364,10 @@ function renderInfluencerProfilePage() {
       }
     )}
     ${metricGrid([
-      { label: l("Campaign joins", "انضمام الحملات"), value: String(summary.joined || 0), note: l("How many times this influencer joined a campaign.", "عدد المرات التي انضم فيها هذا المؤثر إلى حملة.") },
-      { label: l("Submitted proofs", "الإثباتات المرسلة"), value: String(summary.submitted || 0), note: l("Proof links already submitted by this influencer.", "روابط الإثبات التي أرسلها هذا المؤثر بالفعل.") },
-      { label: l("Pending proof", "إثباتات معلقة"), value: String(summary.pending || 0), note: l("Joined campaigns still waiting for this influencer's proof.", "الحملات المنضم إليها التي ما زالت بانتظار إثبات هذا المؤثر.") },
-      { label: l("Proof rate", "معدل الإثبات"), value: `${summary.completionRate || 0}%`, note: l("Share of this influencer's joins that turned into proof submissions.", "نسبة انضمامات هذا المؤثر التي تحولت إلى إثباتات مرسلة.") },
+      { label: l("Campaign joins", "انضمام الحملات"), value: String(summary.joined || 0), note: l("How many times this member joined a campaign.", "عدد المرات التي انضم فيها هذا العضو إلى حملة.") },
+      { label: l("Submitted proofs", "الإثباتات المرسلة"), value: String(summary.submitted || 0), note: l("Proof links already submitted by this member.", "روابط الإثبات التي أرسلها هذا العضو بالفعل.") },
+      { label: l("Pending proof", "إثباتات معلقة"), value: String(summary.pending || 0), note: l("Joined campaigns still waiting for this member's proof.", "الحملات المنضم إليها التي ما زالت بانتظار إثبات هذا العضو.") },
+      { label: l("Proof rate", "معدل الإثبات"), value: `${summary.completionRate || 0}%`, note: l("Share of this member's joins that turned into proof submissions.", "نسبة انضمامات هذا العضو التي تحولت إلى إثباتات مرسلة.") },
     ])}
     ${state.generatedLink ? `<article class="note-card" style="margin-bottom: 18px;"><strong>${l("Generated reset link", "رابط إعادة التعيين المولد")}</strong><p>${escapeHtml(state.generatedLink)}</p></article>` : ""}
     <section class="content-grid">
@@ -4398,7 +4425,7 @@ function renderInfluencerProfilePage() {
     </section>
     <section class="panel">
       <h3>${l("Campaign history", "سجل الحملات")}</h3>
-      <p class="panel-subtitle">${l("See every campaign this influencer joined, the assigned code, and the current proof state.", "اطلع على كل حملة انضم إليها هذا المؤثر والكود المخصص وحالة الإثبات الحالية.")}</p>
+      <p class="panel-subtitle">${l("See every campaign this member joined, the assigned code, and the current proof state.", "اطلع على كل حملة انضم إليها هذا العضو والكود المخصص وحالة الإثبات الحالية.")}</p>
       ${renderDataTable(
         [
           { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row), html: true },
@@ -4408,12 +4435,12 @@ function renderInfluencerProfilePage() {
           { label: l("Submitted", "سلّم"), render: (row) => formatDate(row.submittedAt) },
         ],
         participants,
-        l("No campaign history yet for this influencer.", "لا يوجد سجل حملات لهذا المؤثر بعد.")
+        l("No campaign history yet for this member.", "لا يوجد سجل حملات لهذا العضو بعد.")
       )}
     </section>
     <section class="panel">
       <h3>${l("Submitted posts", "المنشورات المرسلة")}</h3>
-      <p class="panel-subtitle">${l("Review every submitted social link and feedback from this influencer.", "راجع كل رابط سوشيال وملاحظة تم إرسالها من هذا المؤثر.")}</p>
+      <p class="panel-subtitle">${l("Review every submitted social link and feedback from this member.", "راجع كل رابط سوشيال وملاحظة تم إرسالها من هذا العضو.")}</p>
       ${renderDataTable(
         [
           { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row), html: true },
@@ -4430,7 +4457,7 @@ function renderInfluencerProfilePage() {
           { label: l("Feedback", "الملاحظات"), render: (row) => row.feedback || "-" },
         ],
         submittedRows,
-        l("No submitted posts yet for this influencer.", "لا توجد منشورات مرسلة لهذا المؤثر بعد.")
+        l("No submitted posts yet for this member.", "لا توجد منشورات مرسلة لهذا العضو بعد.")
       )}
     </section>
   `;
@@ -4520,26 +4547,26 @@ function defaultCampaignShareBody(campaign) {
 
   if (state.locale === "ar") {
     return [
-      `حملة PICK: ${titleAr}`,
+      `من نادي بك: ${titleAr}`,
       offer ? `العرض: ${offer}` : "",
       `الأفرع: ${branchSummary}`,
       `الزيارة قبل: ${visitDate}`,
       `التسليم قبل: ${submitDate}`,
       "",
-      "أكّد اهتمامك من تطبيق PICK Influence Hub لحجز كود خاص بك.",
+      "أكّد اهتمامك من نادي بك لحجز كود خاص بك.",
     ]
       .filter(Boolean)
       .join("\n");
   }
 
   return [
-    `PICK Campaign: ${titleEn}`,
+    `From PICK Social Club: ${titleEn}`,
     offer ? `Offer: ${offer}` : "",
     `Branches: ${branchSummary}`,
     `Visit by: ${visitDate}`,
     `Submit by: ${submitDate}`,
     "",
-    "Confirm interest in the PICK Influence Hub to reserve your private one-time code.",
+    "Confirm interest in PICK Social Club to reserve your private one-time code.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -4632,17 +4659,17 @@ async function handleClick(event) {
   }
 
   if (action === "approve-user") {
-    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: "active" }, l("Influencer approved.", "تم اعتماد المؤثر."));
+    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: "active" }, l("Welcome them in 💜", "أهلاً به في النادي 💜"));
     return;
   }
 
   if (action === "reject-user") {
-    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: "rejected" }, l("Influencer rejected.", "تم رفض المؤثر."));
+    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: "rejected" }, l("Member request rejected.", "تم رفض طلب العضوية."));
     return;
   }
 
   if (action === "set-user-status") {
-    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: target.dataset.status }, l("Influencer status updated.", "تم تحديث حالة المؤثر."));
+    await mutateAndRefresh(`/api/users/${target.dataset.userId}/status`, { status: target.dataset.status }, l("Member status updated.", "تم تحديث حالة العضو."));
     return;
   }
 
@@ -4878,7 +4905,7 @@ async function handleClick(event) {
       );
       if (!confirmed) return;
     }
-    await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your private code has been reserved.", "تم حجز كودك الخاص."));
+    await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"));
     return;
   }
 
@@ -4904,8 +4931,8 @@ async function handleClick(event) {
   }
 
   if (action === "remove-participant") {
-    if (!window.confirm(l("Remove this influencer from the campaign?", "هل تريد إزالة هذا المؤثر من الحملة؟"))) return;
-    await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/remove`, {}, l("Influencer removed from campaign.", "تمت إزالة المؤثر من الحملة."));
+    if (!window.confirm(l("Remove this member from the campaign?", "هل تريد إزالة هذا العضو من الحملة؟"))) return;
+    await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/remove`, {}, l("Member removed from campaign.", "تمت إزالة العضو من الحملة."));
     return;
   }
 
@@ -4955,7 +4982,7 @@ async function handleSubmit(event) {
       }
       await api("/api/signup", { method: "POST", body: JSON.stringify(values) });
       state.authMode = "login";
-      flash(l("Your signup request was created and is waiting for approval.", "تم إنشاء طلب التسجيل وهو بانتظار الاعتماد."), "success");
+      flash(l("We got your request. The team will review it and welcome you in soon.", "وصلنا طلبك. سنرحب بك قريباً بعد المراجعة."), "success");
       render();
       return;
     }
@@ -5051,7 +5078,7 @@ async function handleSubmit(event) {
       const formData = new FormData(form);
       const tags = formData.getAll("tags");
       const notes = formData.get("notes");
-      await mutateAndRefresh(`/api/users/${userId}/admin-update`, { tags, notes }, l("Influencer updated.", "تم تحديث المؤثر."), { rethrow: true });
+      await mutateAndRefresh(`/api/users/${userId}/admin-update`, { tags, notes }, l("Member updated.", "تم تحديث العضو."), { rethrow: true });
       return;
     }
     if (form.classList.contains("manual-password-form")) {
@@ -5096,7 +5123,7 @@ async function handleSubmit(event) {
           throw new Error(message);
         }
       }
-      await mutateAndRefresh("/api/profile/update", formData, l("Profile updated.", "تم تحديث الملف."), { rethrow: true });
+      await mutateAndRefresh("/api/profile/update", formData, l("Saved 💜", "تم الحفظ 💜"), { rethrow: true });
       return;
     }
     if (form.id === "createManagerForm") {

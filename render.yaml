@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pick-influence-hub-stage
+    name: pick-social-club-stage
     runtime: node
     plan: starter
     buildCommand: npm install

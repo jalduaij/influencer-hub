@@ -1,4 +1,4 @@
-# PICK Go-Live Checklist
+# PICK Social Club Go-Live Checklist
 
 ## Stage Before Production
 

@@ -1,4 +1,4 @@
-# PICK Influence Hub Prototype
+# PICK Social Club Prototype
 
 This workspace now contains:
 
@@ -17,8 +17,8 @@ The app is intentionally framework-free so it can run in the current environment
 It includes:
 
 - cookie-based login with role-driven dashboard routing
-- seeded campaigns, influencers, and branches
-- influencer approvals
+- seeded campaigns, members, and branches
+- member approvals
 - campaign creation
 - campaign editing for admin and campaign manager
 - campaign code CSV upload by campaign manager
@@ -69,15 +69,15 @@ The current architecture is ready for **stage testing**. It is still file-based,
 
 - Admin: `sara@pick.internal` / `pick123`
 - Campaign Manager: `nasser@pick.internal` / `pick123`
-- Influencer: `laila@example.com` / `pick123`
+- Member: `laila@example.com` / `pick123`
 
 ## Code Logic
 
-Campaign capacity is driven by uploaded code count. If a campaign has 200 uploaded CSV codes, it can support 200 influencer participations.
+Campaign capacity is driven by uploaded code count. If a campaign has 200 uploaded CSV codes, it can support 200 member participations.
 
-When an influencer confirms interest:
+When a member confirms interest:
 
 - one available code is reserved immediately
-- that code becomes private to that influencer
+- that code becomes private to that member
 - the code cannot be assigned to anyone else
-- after the branch visit, the influencer confirms the visit and the code becomes used
+- after the branch visit, the member confirms the visit and the code becomes used

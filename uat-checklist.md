@@ -1,9 +1,9 @@
-# PICK Influence Hub UAT Checklist
+# PICK Social Club UAT Checklist
 
-Use this checklist on the stage environment:
+Use this checklist on the PICK Social Club stage environment:
 
 - Stage URL: `https://pick-influence-hub-stage.onrender.com`
-- Goal: validate the end-to-end MVP before wider pilot use
+- Goal: validate the end-to-end member and campaign experience before wider pilot use
 
 ## Test Accounts
 
@@ -59,7 +59,7 @@ Use this checklist on the stage environment:
 - Change manager password manually
 - Activate or deactivate manager if needed
 
-### Influencer Management
+### Members
 
 - Open `Influencer Management`
 - Confirm pending approvals appear clearly
@@ -118,7 +118,7 @@ Use this checklist on the stage environment:
 - Change a campaign to `Deactivated`
 - Confirm status behavior makes sense from manager perspective
 
-## 3. Influencer UAT
+## 3. Member UAT
 
 ### Login And Profile
 
