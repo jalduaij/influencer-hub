@@ -318,6 +318,7 @@ textarea::placeholder {
 
 .mobile-nav-backdrop {
   display: none;
+  border-radius: 0;
 }
 
 body.nav-locked {
