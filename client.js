@@ -4534,7 +4534,8 @@ function defaultCampaignShareBody(campaign) {
 
 function generateCampaignShareText(campaign, options = {}) {
   const recipient = options.recipientName ? String(options.recipientName).trim().split(/\s+/)[0] : "";
-  const greeting = state.locale === "ar" ? (recipient ? `مرحبا ${recipient} 💜` : "مرحبا 💜") : recipient ? `Hi ${recipient} 💜` : "Hi 💜";
+  const heart = "\u{1F49C}";
+  const greeting = state.locale === "ar" ? (recipient ? `مرحبا ${recipient} ${heart}` : `مرحبا ${heart}`) : recipient ? `Hi ${recipient} ${heart}` : `Hi ${heart}`;
   const body = campaign.whatsappMessage && campaign.whatsappMessage.trim() ? campaign.whatsappMessage.trim() : defaultCampaignShareBody(campaign);
   const linkLabel = state.locale === "ar" ? "افتح" : "Open";
   const deepLink = campaignDeepLink(campaign.id);
