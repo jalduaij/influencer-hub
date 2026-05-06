@@ -55,6 +55,7 @@ const state = {
   publicData: { cities: [], categories: [], platforms: [], tags: [] },
   flash: null,
   currentPage: null,
+  mobileNavOpen: false,
   selectedCampaignId: null,
   selectedBranchId: null,
   selectedInfluencerId: null,
@@ -1446,12 +1447,14 @@ function render(options = {}) {
   const focusSnapshot = options.preserveFocus ? captureFocusedField() : null;
   document.body.classList.toggle("rtl", state.locale === "ar");
   if (!state.currentUser) {
+    document.body.classList.toggle("nav-locked", false);
     app.innerHTML = renderAuth();
     syncFlashLayer();
     if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
     return;
   }
   app.innerHTML = renderShell();
+  document.body.classList.toggle("nav-locked", state.mobileNavOpen);
   syncFlashLayer();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
@@ -1611,7 +1614,16 @@ function renderShell() {
     <div class="background-orb orb-two"></div>
     <div id="global-loading-bar" data-global-loading-bar class="${state.apiInflightCount > 0 ? "is-active" : ""}"></div>
     <div class="flash-layer" data-flash-layer></div>
-    <div class="app-shell">
+    <div class="app-shell ${state.mobileNavOpen ? "mobile-nav-open" : ""}">
+      <header class="mobile-topbar">
+        <button type="button" class="mobile-burger" data-action="toggle-mobile-nav" aria-label="${escapeHtml(l("Open menu", "فتح القائمة"))}">
+          ${iconSvg("menu")}
+        </button>
+        <div class="mobile-brand">
+          <strong>PICK Influence Hub</strong>
+        </div>
+        <div class="mobile-spacer"></div>
+      </header>
       <aside class="sidebar">
         <div class="brand-block">
           <p class="eyebrow">PICK Internal</p>
@@ -1649,6 +1661,7 @@ function renderShell() {
           <button class="secondary" data-action="logout">${l("Log out", "تسجيل الخروج")}</button>
         </div>
       </aside>
+      <button type="button" class="mobile-nav-backdrop" data-action="close-mobile-nav" aria-label="${escapeHtml(l("Close menu", "إغلاق القائمة"))}"></button>
       <main class="main-stage">
         ${renderPage()}
       </main>
@@ -4564,12 +4577,25 @@ async function handleClick(event) {
   if (!target) return;
 
   if (target.dataset.nav) {
+    state.mobileNavOpen = false;
     state.currentPage = normalizePage(target.dataset.nav);
     render();
     return;
   }
 
   const action = target.dataset.action;
+  if (action === "toggle-mobile-nav") {
+    state.mobileNavOpen = !state.mobileNavOpen;
+    render();
+    return;
+  }
+
+  if (action === "close-mobile-nav") {
+    state.mobileNavOpen = false;
+    render();
+    return;
+  }
+
   if (action === "set-auth-mode") {
     state.authMode = target.dataset.mode;
     if (state.authMode !== "reset") state.generatedLink = "";
@@ -5261,7 +5287,10 @@ function handleInput(event) {
 }
 
 function handleKeyDown(event) {
-  void event;
+  if (event.key === "Escape" && state.mobileNavOpen) {
+    state.mobileNavOpen = false;
+    render();
+  }
 }
 
 function handleFocusOut(event) {

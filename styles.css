@@ -285,6 +285,45 @@ textarea::placeholder {
   gap: 12px;
 }
 
+.mobile-topbar {
+  display: none;
+}
+
+.mobile-burger {
+  background: transparent;
+  border: 0;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--accent-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.mobile-burger:hover {
+  background: rgba(112, 47, 138, 0.08);
+}
+
+.mobile-brand {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+
+.mobile-spacer {
+  width: 40px;
+}
+
+.mobile-nav-backdrop {
+  display: none;
+}
+
+body.nav-locked {
+  overflow: hidden;
+}
+
 .nav-chip {
   display: flex;
   align-items: center;
@@ -1489,15 +1528,68 @@ button:disabled {
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 1fr;
+    position: relative;
   }
 
   .login-shell {
     grid-template-columns: 1fr;
   }
 
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--panel-strong);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
   .sidebar {
-    position: static;
-    min-height: auto;
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 280px;
+    max-width: 85vw;
+    min-height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    z-index: 50;
+    overflow-y: auto;
+    background: var(--panel-strong);
+    box-shadow: 4px 0 20px rgba(15, 23, 42, 0.18);
+  }
+
+  .rtl .sidebar {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    transform: translateX(100%);
+    box-shadow: -4px 0 20px rgba(15, 23, 42, 0.18);
+  }
+
+  .app-shell.mobile-nav-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
+
+  .app-shell.mobile-nav-open .mobile-nav-backdrop {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .hero-card,
@@ -1550,5 +1642,17 @@ button:disabled {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+  }
+}
+
+@media (min-width: 1181px) {
+  .mobile-topbar,
+  .mobile-nav-backdrop {
+    display: none;
+  }
+
+  .sidebar {
+    transform: none !important;
+    position: static;
   }
 }
