@@ -1558,7 +1558,8 @@ button:disabled {
     transition: transform 220ms ease;
     z-index: 50;
     overflow-y: auto;
-    background: var(--panel-strong);
+    background: linear-gradient(180deg, rgba(74, 31, 93, 0.98), rgba(47, 19, 61, 1));
+    border-radius: 0;
     box-shadow: 4px 0 20px rgba(15, 23, 42, 0.18);
   }
 
