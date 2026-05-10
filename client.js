@@ -2659,6 +2659,21 @@ function renderCampaignViewPage() {
   if (!campaign) return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
   const whatsappEligible = eligibleInfluencersForCampaign(campaign).slice(0, 50);
   const participants = campaignParticipants(campaign.id);
+  const submittedRowsBase = participants
+    .filter((participant) => ["submitted", "completed"].includes(participant.status))
+    .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")));
+  const submissionsTableId = `campaign-${campaign.id}-submissions`;
+  const submissionsSort = state.reportSorts[submissionsTableId] || { key: "submittedAt", direction: "desc" };
+  const submissionsSortValueFor = (row, key) => {
+    if (key === "influencer") return row.influencerName || "";
+    if (key === "platform") return row.platform || "";
+    if (key === "submittedAt") return dateValue(row.submittedAt) || 0;
+    return row[key];
+  };
+  const submittedRows = submittedRowsBase.slice().sort((left, right) => {
+    const result = compareValues(submissionsSortValueFor(left, submissionsSort.key), submissionsSortValueFor(right, submissionsSort.key));
+    return submissionsSort.direction === "asc" ? result : -result;
+  });
   const codes = state.campaignCodesByCampaign[campaign.id] || [];
   const activeParticipants = participants.filter((item) => item.status !== "canceled").length;
   const platformJoined = participants.filter((item) => item.status !== "canceled" && item.source !== "offline").length;
@@ -2788,6 +2803,60 @@ function renderCampaignViewPage() {
           <strong>${l("Email-ready reminder", "نص بريد للتذكير")}</strong>
           <p>${escapeHtml(generateCampaignEmailText(campaign))}</p>
         </article>
+        <section class="panel" style="margin-top: 14px; padding: 0; border: 0; box-shadow: none; background: transparent;">
+          <div class="row report-toolbar-head">
+            <div>
+              <h3>${l("Submissions", "التسليمات")}</h3>
+              <p class="panel-subtitle">${l("All members who submitted proof for this campaign.", "كل الأعضاء الذين سلّموا إثبات هذه الحملة.")}</p>
+            </div>
+            <div class="row-wrap">
+              <span class="badge">${submittedRows.length} ${l("submitted", "تسليم")}</span>
+              <button type="button" class="secondary" data-action="export-campaign-submissions" data-campaign-id="${campaign.id}">${l("Export CSV", "تصدير CSV")}</button>
+            </div>
+          </div>
+          ${renderDataTable(
+            [
+              {
+                label: l("Member", "العضو"),
+                render: (row) => row.influencerId ? renderInfluencerProfileTrigger(row.influencerId, row.influencerName) : escapeHtml(row.influencerName || "-"),
+                html: true,
+                sortKey: "influencer",
+              },
+              { label: l("Platform", "المنصة"), render: (row) => row.platform || l("Not set", "غير محدد"), sortKey: "platform" },
+              { label: l("Submitted", "سلّم"), render: (row) => formatDate(row.submittedAt), sortKey: "submittedAt" },
+              {
+                label: l("Link", "الرابط"),
+                render: (row) =>
+                  row.socialLink
+                    ? `<a class="table-link-button" href="${escapeHtml(row.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open post", "فتح المنشور"))}</a>`
+                    : "-",
+                html: true,
+              },
+              {
+                label: l("Images", "الصور"),
+                render: (row) =>
+                  Array.isArray(row.images) && row.images.length
+                    ? `<span class="badge">${row.images.length}</span>`
+                    : row.imagePath
+                      ? `<span class="badge">1</span>`
+                      : "-",
+                html: true,
+              },
+              {
+                label: l("Feedback", "الملاحظات"),
+                render: (row) => {
+                  if (!row.feedback) return "-";
+                  const feedback = String(row.feedback);
+                  return escapeHtml(feedback.slice(0, 120) + (feedback.length > 120 ? "…" : ""));
+                },
+                html: true,
+              },
+            ],
+            submittedRows,
+            l("No submissions for this campaign yet.", "لا توجد تسليمات لهذه الحملة بعد."),
+            { tableId: submissionsTableId, sort: submissionsSort }
+          )}
+        </section>
         <div class="row-wrap" style="margin-top: 16px;">
           <button class="secondary" data-action="back-to-campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
           <button data-action="edit-campaign" data-campaign-id="${campaign.id}">${l("Edit campaign", "تعديل الحملة")}</button>
@@ -2881,7 +2950,7 @@ function renderCampaignViewPage() {
                         ${participant.offlineNotes ? `<p>${escapeHtml(participant.offlineNotes)}</p>` : ""}
                       `
                       : ""}
-                    ${participant.socialLink ? `<p><a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a></p>` : ""}
+                    ${participant.socialLink ? `<div class="row-wrap" style="margin-top: 8px;"><a class="table-link-button" href="${escapeHtml(participant.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open post", "فتح المنشور"))}</a></div>` : ""}
                     ${participant.feedback ? `<p>${escapeHtml(participant.feedback)}</p>` : ""}
                     <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
                     ${participant.status !== "canceled" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="remove-participant" data-participant-id="${participant.id}">${l("Remove member from campaign", "إزالة العضو من الحملة")}</button></div>` : ""}
@@ -4847,6 +4916,13 @@ async function handleClick(event) {
 
   if (action === "export-report-csv") {
     window.location.assign(`/api/reports/export.csv?tab=${encodeURIComponent(state.reportTab)}`);
+    return;
+  }
+
+  if (action === "export-campaign-submissions") {
+    const cid = target.dataset.campaignId;
+    if (!cid) return;
+    window.location.href = `/api/reports/export.csv?tab=submissions&campaignId=${encodeURIComponent(cid)}`;
     return;
   }
 

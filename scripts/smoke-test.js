@@ -537,8 +537,40 @@ async function run() {
     );
     const exportBody = await exportResponse.text();
     assert(
-      exportBody.includes("Campaign ID,Campaign title (EN),Campaign title (AR),Caption guide,Status"),
+      exportBody.includes("Campaign ID,Campaign title (EN),Campaign title (AR),Caption guide,WhatsApp message,Status"),
       "Campaign CSV export should include the expected header columns."
+    );
+
+    const scopedSubmissionsExport = await fetch(`${baseUrl}/api/reports/export.csv?tab=submissions&campaignId=${freshCampaignId}`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    });
+    assert(scopedSubmissionsExport.ok, `Scoped submissions CSV export failed with status ${scopedSubmissionsExport.status}.`);
+    assert(
+      String(scopedSubmissionsExport.headers.get("content-type") || "").includes("text/csv"),
+      "Scoped submissions CSV export should return text/csv."
+    );
+    assert(
+      String(scopedSubmissionsExport.headers.get("content-disposition") || "").includes(`pick-submissions-campaign-${freshCampaignId}.csv`),
+      "Scoped submissions CSV export should include the campaign-specific filename."
+    );
+    const scopedSubmissionsBody = await scopedSubmissionsExport.text();
+    assert(
+      scopedSubmissionsBody.includes("Smoke Hermetic Campaign"),
+      "Scoped submissions CSV export should include the smoke campaign rows."
+    );
+
+    const allSubmissionsExport = await fetch(`${baseUrl}/api/reports/export.csv?tab=submissions`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    });
+    assert(allSubmissionsExport.ok, `All submissions CSV export failed with status ${allSubmissionsExport.status}.`);
+    const allSubmissionsBody = await allSubmissionsExport.text();
+    assert(
+      allSubmissionsBody.includes("Participant ID,Campaign title (EN),Campaign title (AR),Influencer,Status,Platform,Social link,Feedback,Has image,Submitted at"),
+      "All submissions CSV export should keep the report-wide submissions header."
+    );
+    assert(
+      allSubmissionsBody.includes("Smoke Hermetic Campaign"),
+      "All submissions CSV export should still include the smoke campaign rows without a campaign filter."
     );
 
     const finalBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {

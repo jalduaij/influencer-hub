@@ -1389,7 +1389,7 @@ function reportBundleForCampaigns(store, campaigns) {
   };
 }
 
-function exportRowsForTab(store, tab) {
+function exportRowsForTab(store, tab, options = {}) {
   const reports = reportBundleForCampaigns(store, store.campaigns);
 
   if (tab === "campaigns") {
@@ -1476,6 +1476,10 @@ function exportRowsForTab(store, tab) {
   }
 
   if (tab === "submissions") {
+    const filterCampaignId = Number(options.campaignId) || null;
+    const rows = filterCampaignId
+      ? reports.submissions.filter((row) => row.campaignId === filterCampaignId)
+      : reports.submissions;
     return buildCsv(
       [
         "Participant ID",
@@ -1489,7 +1493,7 @@ function exportRowsForTab(store, tab) {
         "Has image",
         "Submitted at",
       ],
-      reports.submissions.map((row) => [
+      rows.map((row) => [
         row.participantId,
         row.campaignTitleEn,
         row.campaignTitleAr,
@@ -1776,8 +1780,13 @@ function handleExportReportCsv(req, res, store, actor, searchParams) {
   if (!["campaigns", "influencers", "submissions", "codes"].includes(tab)) {
     return sendJson(res, 422, { error: "A valid report tab is required." });
   }
-  const body = exportRowsForTab(store, tab);
-  return sendCsv(res, `pick-${tab}-report.csv`, body);
+  const campaignId = Number(searchParams.get("campaignId")) || null;
+  const body = exportRowsForTab(store, tab, { campaignId });
+  const fileName =
+    tab === "submissions" && campaignId
+      ? `pick-submissions-campaign-${campaignId}.csv`
+      : `pick-${tab}-report.csv`;
+  return sendCsv(res, fileName, body);
 }
 
 function publicMetadata(store) {
