@@ -2750,8 +2750,7 @@ function renderCampaignViewPage() {
         ),
       },
     ])}
-    <section class="content-grid">
-      <section class="panel panel-wide">
+    <section class="panel panel-wide">
         <h3>${escapeHtml(campaignTitle(campaign))}</h3>
         ${renderCampaignBanner(campaign, "hero")}
         <p class="panel-subtitle">${escapeHtml(campaignDescription(campaign))}</p>
@@ -2803,67 +2802,67 @@ function renderCampaignViewPage() {
           <strong>${l("Email-ready reminder", "نص بريد للتذكير")}</strong>
           <p>${escapeHtml(generateCampaignEmailText(campaign))}</p>
         </article>
-        <section class="panel" style="margin-top: 14px; padding: 0; border: 0; box-shadow: none; background: transparent;">
-          <div class="row report-toolbar-head">
-            <div>
-              <h3>${l("Submissions", "التسليمات")}</h3>
-              <p class="panel-subtitle">${l("All members who submitted proof for this campaign.", "كل الأعضاء الذين سلّموا إثبات هذه الحملة.")}</p>
-            </div>
-            <div class="row-wrap">
-              <span class="badge">${submittedRows.length} ${l("submitted", "تسليم")}</span>
-              <button type="button" class="secondary" data-action="export-campaign-submissions" data-campaign-id="${campaign.id}">${l("Export CSV", "تصدير CSV")}</button>
-            </div>
-          </div>
-          ${renderDataTable(
-            [
-              {
-                label: l("Member", "العضو"),
-                render: (row) => row.influencerId ? renderInfluencerProfileTrigger(row.influencerId, row.influencerName) : escapeHtml(row.influencerName || "-"),
-                html: true,
-                sortKey: "influencer",
-              },
-              { label: l("Platform", "المنصة"), render: (row) => row.platform || l("Not set", "غير محدد"), sortKey: "platform" },
-              { label: l("Submitted", "سلّم"), render: (row) => formatDate(row.submittedAt), sortKey: "submittedAt" },
-              {
-                label: l("Link", "الرابط"),
-                render: (row) =>
-                  row.socialLink
-                    ? `<a class="table-link-button" href="${escapeHtml(row.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open post", "فتح المنشور"))}</a>`
-                    : "-",
-                html: true,
-              },
-              {
-                label: l("Images", "الصور"),
-                render: (row) =>
-                  Array.isArray(row.images) && row.images.length
-                    ? `<span class="badge">${row.images.length}</span>`
-                    : row.imagePath
-                      ? `<span class="badge">1</span>`
-                      : "-",
-                html: true,
-              },
-              {
-                label: l("Feedback", "الملاحظات"),
-                render: (row) => {
-                  if (!row.feedback) return "-";
-                  const feedback = String(row.feedback);
-                  return escapeHtml(feedback.slice(0, 120) + (feedback.length > 120 ? "…" : ""));
-                },
-                html: true,
-              },
-            ],
-            submittedRows,
-            l("No submissions for this campaign yet.", "لا توجد تسليمات لهذه الحملة بعد."),
-            { tableId: submissionsTableId, sort: submissionsSort }
-          )}
-        </section>
         <div class="row-wrap" style="margin-top: 16px;">
           <button class="secondary" data-action="back-to-campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
           <button data-action="edit-campaign" data-campaign-id="${campaign.id}">${l("Edit campaign", "تعديل الحملة")}</button>
           <button class="secondary" data-action="duplicate-campaign" data-campaign-id="${campaign.id}">${l("Duplicate", "نسخ")}</button>
         </div>
-      </section>
-      <section class="panel">
+    </section>
+    <section class="panel">
+      <div class="row report-toolbar-head">
+        <div>
+          <h3>${l("Submissions", "التسليمات")}</h3>
+          <p class="panel-subtitle">${l("All members who submitted proof for this campaign.", "كل الأعضاء الذين سلّموا إثبات هذه الحملة.")}</p>
+        </div>
+        <div class="row-wrap">
+          <span class="badge">${submittedRows.length} ${l("submitted", "تسليم")}</span>
+          <button type="button" class="secondary" data-action="export-campaign-submissions" data-campaign-id="${campaign.id}">${l("Export CSV", "تصدير CSV")}</button>
+        </div>
+      </div>
+      ${renderDataTable(
+        [
+          {
+            label: l("Member", "العضو"),
+            render: (row) => row.influencerId ? renderInfluencerProfileTrigger(row.influencerId, row.influencerName) : escapeHtml(row.influencerName || "-"),
+            html: true,
+            sortKey: "influencer",
+          },
+          { label: l("Platform", "المنصة"), render: (row) => row.platform || l("Not set", "غير محدد"), sortKey: "platform" },
+          { label: l("Submitted", "سلّم"), render: (row) => formatDate(row.submittedAt), sortKey: "submittedAt" },
+          {
+            label: l("Link", "الرابط"),
+            render: (row) =>
+              row.socialLink
+                ? `<a class="table-link-button" href="${escapeHtml(row.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open post", "فتح المنشور"))}</a>`
+                : "-",
+            html: true,
+          },
+          {
+            label: l("Images", "الصور"),
+            render: (row) =>
+              Array.isArray(row.images) && row.images.length
+                ? `<span class="badge">${row.images.length}</span>`
+                : row.imagePath
+                  ? `<span class="badge">1</span>`
+                  : "-",
+            html: true,
+          },
+          {
+            label: l("Feedback", "الملاحظات"),
+            render: (row) => {
+              if (!row.feedback) return "-";
+              const feedback = String(row.feedback);
+              return escapeHtml(feedback.slice(0, 120) + (feedback.length > 120 ? "…" : ""));
+            },
+            html: true,
+          },
+        ],
+        submittedRows,
+        l("No submissions for this campaign yet.", "لا توجد تسليمات لهذه الحملة بعد."),
+        { tableId: submissionsTableId, sort: submissionsSort }
+      )}
+    </section>
+    <section class="panel">
         <h3>${l("Uploaded Codes", "الأكواد المرفوعة")}</h3>
         ${campaign.offerDescription || campaign.offerUsageCount
           ? `
@@ -2916,7 +2915,6 @@ function renderCampaignViewPage() {
                 .join("")
             : `<div class="empty-state">${l("No uploaded codes yet.", "لا توجد أكواد مرفوعة بعد.")}</div>`}
         </div>
-      </section>
     </section>
     <section class="panel">
       <h3>${l("Participants", "المشاركون")}</h3>
