@@ -144,6 +144,8 @@ a {
 .login-sidecard {
   background: linear-gradient(180deg, rgba(74, 31, 93, 0.96), rgba(47, 19, 61, 0.98));
   color: #fbf7ff;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .login-copy {

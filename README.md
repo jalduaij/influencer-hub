@@ -67,12 +67,22 @@ The current architecture is ready for **stage testing**. It is still file-based,
 
 ## Demo Credentials
 
-- Admin: `sara@pick.internal` / `pick123`
-- Campaign Manager: `nasser@pick.internal` / `pick123`
-- Campaign Manager 2: `jalduaij@kdigtc.com` / `123`
-- Member: `laila@example.com` / `member123`
-- Member: `maha@example.com` / `member123`
-- Member: `abdullah@example.com` / `member123`
+Team accounts:
+
+- Sara — Admin — `sara@pick.internal` / `pick123`
+- Nasser — Campaign Manager — `nasser@pick.internal` / `pick123`
+- Jassem — Campaign Manager — `jalduaij@kdigtc.com` / `123`
+
+Member accounts:
+
+- Laila — everything-state Member — `laila@example.com` / `member123`
+- Maha — 23k followers, VIP — `maha@example.com` / `member123`
+- Dana — 47k followers, beauty/VIP — `dana@example.com` / `member123`
+- Abdullah — 18k followers, fitness, male — `abdullah@example.com` / `member123`
+- Bader — incomplete profile (0 followers) — `bader@example.com` / `member123`
+- Youssef — tagged family — `youssef@example.com` / `member123`
+- Nada — pending (approve me) — `nada@example.com` / `member123`
+- Maryam — suspended (try reactivating) — `maryam@example.com` / `member123`
 
 ## UAT Seed
 

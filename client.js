@@ -1526,13 +1526,59 @@ function renderAuth() {
         ${state.generatedLink ? `<article class="note-card" style="margin-top: 18px;"><strong>${l("Generated link", "الرابط المولد")}</strong><p>${escapeHtml(state.generatedLink)}</p></article>` : ""}
       </article>
       <article class="login-sidecard">
-        <p class="eyebrow">${l("Demo accounts", "حسابات تجريبية")}</p>
-        <h2>PICK</h2>
-        <p class="brand-copy">${l("PICK Social Club brings our favorite people closer. Visit a branch, share your moment, stay connected.", "نادي بك يقرّب أصدقاءنا المفضلين أكثر. زورونا، شاركوا لحظاتكم، وابقوا معنا.")}</p>
+        <p class="eyebrow">${l("UAT demo accounts", "حسابات الاختبار")}</p>
+        <h2>${l("PICK Social Club", "نادي بك")}</h2>
+        <p class="brand-copy">${l("Use any account below to test. Passwords are case-sensitive.", "استخدم أي حساب أدناه للاختبار. كلمات المرور حساسة لحالة الأحرف.")}</p>
+        <p class="eyebrow" style="margin-top: 18px;">${l("Team", "الفريق")} · ${l("password", "كلمة المرور")} pick123</p>
         <div class="stack">
-          <div class="list-card"><strong>${roleLabel("admin")}</strong><p>sara@pick.internal</p><p class="compact">pick123</p></div>
-          <div class="list-card"><strong>${roleLabel("campaign_manager")}</strong><p>nasser@pick.internal</p><p class="compact">pick123</p></div>
-          <div class="list-card"><strong>${roleLabel("influencer")}</strong><p>laila@example.com</p><p class="compact">pick123</p></div>
+          <div class="list-card">
+            <strong>Sara — ${l("Admin", "مسؤول")}</strong>
+            <p>sara@pick.internal</p>
+          </div>
+          <div class="list-card">
+            <strong>Nasser — ${l("Campaign Manager", "مدير حملات")}</strong>
+            <p>nasser@pick.internal</p>
+          </div>
+          <div class="list-card">
+            <strong>Jassem — ${l("Campaign Manager", "مدير حملات")}</strong>
+            <p>jalduaij@kdigtc.com</p>
+            <p class="compact">${l("password 123", "كلمة المرور 123")}</p>
+          </div>
+        </div>
+        <p class="eyebrow" style="margin-top: 18px;">${l("Members", "الأعضاء")} · ${l("password", "كلمة المرور")} member123</p>
+        <div class="stack">
+          <div class="list-card">
+            <strong>Laila — ${l("everything-state Member", "عضو بكل الحالات")}</strong>
+            <p>laila@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Maha — ${l("23k followers, VIP", "23 ألف متابع، VIP")}</strong>
+            <p>maha@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Dana — ${l("47k beauty / VIP", "47 ألف بيوتي / VIP")}</strong>
+            <p>dana@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Abdullah — ${l("18k, fitness, male", "18 ألف، رياضة، ذكر")}</strong>
+            <p>abdullah@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Bader — ${l("incomplete profile (0 followers)", "ملف ناقص (0 متابع)")}</strong>
+            <p>bader@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Youssef — ${l("tagged family", "موسوم family")}</strong>
+            <p>youssef@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Nada — ${l("pending approval", "بانتظار الاعتماد")}</strong>
+            <p>nada@example.com</p>
+          </div>
+          <div class="list-card">
+            <strong>Maryam — ${l("suspended", "موقوفة")}</strong>
+            <p>maryam@example.com</p>
+          </div>
         </div>
       </article>
     </section>
