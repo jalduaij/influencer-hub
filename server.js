@@ -30,6 +30,7 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/heic",
   "image/heif",
 ]);
+const CASHIER_VISIT_FLOW_ENABLED = false;
 const rateLimitBuckets = new Map();
 const CSRF_EXEMPT_PATHS = new Set(["/api/visits/confirm"]);
 
@@ -444,7 +445,9 @@ function releaseAssignedCode(store, participant) {
 
 function participantCanSubmitOnServer(participant) {
   if (!participant) return { ok: false, reason: "Participation not found." };
-  if (participant.status === "visited") return { ok: true, editingExisting: false };
+  if (participant.status === "confirmed" || participant.status === "visited") {
+    return { ok: true, editingExisting: false };
+  }
   if (participant.status === "submitted") {
     const submittedAt = participant.submittedAt ? new Date(participant.submittedAt).getTime() : 0;
     if (submittedAt && Date.now() - submittedAt <= 24 * 60 * 60 * 1000) {
@@ -454,9 +457,6 @@ function participantCanSubmitOnServer(participant) {
   }
   if (participant.status === "completed") {
     return { ok: false, reason: "Submitted proof is view-only and can no longer be edited." };
-  }
-  if (participant.status === "confirmed") {
-    return { ok: false, reason: "Visit must be confirmed at the branch before proof submission." };
   }
   return { ok: false, reason: "This campaign is not ready for proof submission." };
 }
@@ -1611,24 +1611,8 @@ function generateNotifications(store, user) {
       );
     }
 
-    const awaitingVisit = store.participants.filter(
-      (participant) => participant.source !== "offline" && participant.status === "confirmed"
-    ).length;
-    if (awaitingVisit) {
-      notifications.push(
-        makeNotification(
-          `visit-${awaitingVisit}`,
-          "warning",
-          "Awaiting branch visit",
-          "بانتظار زيارة الفرع",
-          `${awaitingVisit} member${awaitingVisit === 1 ? "" : "s"} still need${awaitingVisit === 1 ? "s" : ""} a cashier-confirmed branch visit.`,
-          `${awaitingVisit} عضو ما زال بحاجة إلى زيارة فرع مؤكدة من الكاشير.`
-        )
-      );
-    }
-
     const pendingProof = store.participants.filter(
-      (participant) => participant.source !== "offline" && participant.status === "visited"
+      (participant) => participant.source !== "offline" && ["confirmed", "visited"].includes(participant.status)
     ).length;
     if (pendingProof) {
       notifications.push(
@@ -1637,32 +1621,16 @@ function generateNotifications(store, user) {
           "info",
           "Pending proof submissions",
           "إثباتات تسليم معلقة",
-          `${pendingProof} member${pendingProof === 1 ? "" : "s"} still need${pendingProof === 1 ? "s" : ""} proof submission across live campaigns.`,
-          `${pendingProof} عضو ما زال بحاجة إلى تسليم الإثبات عبر الحملات المباشرة.`
+          `${pendingProof} member${pendingProof === 1 ? "" : "s"} reserved code${pendingProof === 1 ? "" : "s"} but ${pendingProof === 1 ? "has" : "have"} not submitted proof yet.`,
+          `${pendingProof} عضو لديه كود محجوز لكنه لم يرسل الإثبات بعد.`
         )
       );
     }
   }
 
   if (user.role === "influencer") {
-    const awaitingVisit = store.participants.filter(
-      (participant) => participant.influencerId === user.id && participant.status === "confirmed"
-    );
-    if (awaitingVisit.length) {
-      notifications.push(
-        makeNotification(
-          `my-visit-${awaitingVisit.length}`,
-          "warning",
-          "Visit your branch",
-          "قم بزيارة فرعك",
-          `${awaitingVisit.length} campaign${awaitingVisit.length === 1 ? "" : "s"} still need${awaitingVisit.length === 1 ? "s" : ""} a branch visit confirmation.`,
-          `${awaitingVisit.length} حملة ما زالت بحاجة إلى تأكيد زيارة الفرع.`
-        )
-      );
-    }
-
     const pendingProof = store.participants.filter(
-      (participant) => participant.influencerId === user.id && participant.status === "visited"
+      (participant) => participant.influencerId === user.id && ["confirmed", "visited"].includes(participant.status)
     );
     if (pendingProof.length) {
       notifications.push(
@@ -3138,7 +3106,9 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && pathname === "/api/signup") return handleSignup(req, res, store);
   if (req.method === "POST" && pathname === "/api/password/forgot") return handleForgotPassword(req, res, store);
   if (req.method === "POST" && pathname === "/api/password/reset") return handleResetPassword(req, res, store);
-  if (req.method === "POST" && pathname === "/api/visits/confirm") return handleVisitConfirm(req, res, store);
+  if (CASHIER_VISIT_FLOW_ENABLED) {
+    if (req.method === "POST" && pathname === "/api/visits/confirm") return handleVisitConfirm(req, res, store);
+  }
 
   const actor = getSessionUser(req, store);
   if (req.method === "GET" && pathname === "/api/bootstrap") {
@@ -3227,10 +3197,12 @@ async function requestHandler(req, res) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateBranch(req, res, store, actor, branchMatch[0]);
   }
-  const branchRotatePinMatch = routeMatch(pathname, /^\/api\/branches\/(\d+)\/rotate-pin$/);
-  if (req.method === "POST" && branchRotatePinMatch) {
-    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
-    return handleRotateBranchPin(req, res, store, actor, branchRotatePinMatch[0]);
+  if (CASHIER_VISIT_FLOW_ENABLED) {
+    const branchRotatePinMatch = routeMatch(pathname, /^\/api\/branches\/(\d+)\/rotate-pin$/);
+    if (req.method === "POST" && branchRotatePinMatch) {
+      if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+      return handleRotateBranchPin(req, res, store, actor, branchRotatePinMatch[0]);
+    }
   }
   const userStatusMatch = routeMatch(pathname, /^\/api\/users\/(\d+)\/status$/);
   if (req.method === "POST" && userStatusMatch) {
@@ -3319,7 +3291,9 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
     return serveFile(res, path.join(ROOT, "index.html"));
   }
-  if (req.method === "GET" && pathname === "/branch") return serveFile(res, path.join(ROOT, "branch.html"));
+  if (CASHIER_VISIT_FLOW_ENABLED) {
+    if (req.method === "GET" && pathname === "/branch") return serveFile(res, path.join(ROOT, "branch.html"));
+  }
   if (req.method === "GET" && pathname === "/styles.css") return serveFile(res, path.join(ROOT, "styles.css"));
   if (req.method === "GET" && pathname === "/client.js") return serveFile(res, path.join(ROOT, "client.js"));
   if (req.method === "GET" && pathname === "/icons.svg") return serveFile(res, path.join(ROOT, "icons.svg"));

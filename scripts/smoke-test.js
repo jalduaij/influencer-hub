@@ -310,6 +310,8 @@ async function run() {
       ...freshCampaignPayload,
       titleEn: "Smoke Closed Visit Campaign",
       titleAr: "حملة زيارة مغلقة للدخان",
+      startDate: isoDateDaysFromNow(-7),
+      endDate: isoDateDaysFromNow(-2),
       visitDeadline: isoDateDaysFromNow(-1),
       submissionDeadline: isoDateDaysFromNow(1),
       participantCap: 0,
@@ -579,33 +581,19 @@ async function run() {
     const activeParticipant = afterJoinTwo.participants.find((participant) => participant.campaignId === freshCampaignId && participant.status === "confirmed");
     assert(activeParticipant, "Expected a new confirmed participant after rejoining.");
     assert(activeParticipant.campaignTitleEn, "Expected the participation row to include a campaign title for clickable campaign links.");
-    const visitNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-visit-1");
-    assert(visitNotification?.title?.en && visitNotification?.title?.ar, "Notifications should expose bilingual titles.");
-    assert(visitNotification?.body?.en && visitNotification?.body?.ar, "Notifications should expose bilingual bodies.");
-    const storeAfterRejoin = JSON.parse(await fs.readFile(storePath, "utf8"));
-    const campaign = storeAfterRejoin.campaigns.find((item) => item.id === freshCampaignId);
-    const branchId = campaign.branchMode === "all" ? storeAfterRejoin.branches[0].id : campaign.branchIds[0];
-    const branch = storeAfterRejoin.branches.find((item) => item.id === branchId);
-    assert(branch?.pin, "Expected a branch PIN for cashier confirmation.");
-    const assignedCode = storeAfterRejoin.campaignCodes.find((code) => code.id === activeParticipant.assignedCodeId);
-    assert(assignedCode?.codeValue, "Expected an assigned code for cashier confirmation.");
+    const proofNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-proof-1");
+    assert(proofNotification?.title?.en && proofNotification?.title?.ar, "Notifications should expose bilingual titles.");
+    assert(proofNotification?.body?.en && proofNotification?.body?.ar, "Notifications should expose bilingual bodies.");
+
+    const branchPage = await fetch(`${baseUrl}/branch`);
+    assert(branchPage.status === 404, `Mothballed branch page should return 404, got ${branchPage.status}.`);
 
     const visitConfirm = await fetch(`${baseUrl}/api/visits/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: assignedCode.codeValue, pin: branch.pin }),
+      body: JSON.stringify({ code: "SMOKE-001", pin: "100001" }),
     });
-    assert(visitConfirm.ok, `Visit confirm failed with status ${visitConfirm.status}.`);
-
-    const visitPayload = await visitConfirm.json();
-    assert(visitPayload.receipt?.codeValue === assignedCode.codeValue, "Visit receipt should echo the confirmed code.");
-
-    const doubleUse = await fetch(`${baseUrl}/api/visits/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: assignedCode.codeValue, pin: branch.pin }),
-    });
-    assert(doubleUse.status === 409, `Second visit confirm should be rejected with 409, got ${doubleUse.status}.`);
+    assert(visitConfirm.status === 404, `Mothballed visit confirm should return 404, got ${visitConfirm.status}.`);
 
     const duplicateCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/duplicate`, {
       method: "POST",

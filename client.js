@@ -1813,14 +1813,13 @@ function statusTone(status) {
 
 function statusCardTone(status) {
   if (["completed"].includes(status)) return "status-strip-success";
-  if (["visited", "submitted", "offline_reserved"].includes(status)) return "status-strip-warning";
-  if (["confirmed"].includes(status)) return "status-strip-warning";
+  if (["confirmed", "visited", "submitted", "offline_reserved"].includes(status)) return "status-strip-warning";
   if (["canceled", "rejected", "suspended"].includes(status)) return "status-strip-danger";
   return "";
 }
 
 function participantNeedsProof(status) {
-  return status === "visited";
+  return ["confirmed", "visited"].includes(status);
 }
 
 function participantNeedsVisit(status) {
@@ -1829,7 +1828,7 @@ function participantNeedsVisit(status) {
 
 function participantCanSubmit(participant) {
   if (!participant) return false;
-  if (participant.status === "visited") return true;
+  if (participant.status === "confirmed" || participant.status === "visited") return true;
   if (participant.status === "submitted" && participant.submittedAt) {
     return Date.now() - new Date(participant.submittedAt).getTime() <= 24 * 60 * 60 * 1000;
   }
@@ -1846,8 +1845,8 @@ function participantPriority(participant) {
 
 function participantStatusLabel(status) {
   if (status === "offline_reserved") return l("Offline reservation", "حجز خارجي");
-  if (status === "confirmed") return l("Awaiting branch visit", "بانتظار زيارة الفرع");
-  if (status === "visited") return l("Pending proof submission", "بانتظار إرسال الإثبات");
+  if (status === "confirmed") return l("Code reserved — ready to submit", "الكود محجوز — جاهز للإرسال");
+  if (status === "visited") return l("Code reserved — ready to submit", "الكود محجوز — جاهز للإرسال");
   if (status === "submitted") return l("Proof submitted", "تم إرسال الإثبات");
   if (status === "completed") return l("Completed", "مكتمل");
   if (status === "canceled") return l("Campaign canceled", "تم إلغاء الحملة");
@@ -3041,15 +3040,7 @@ function renderBranchForm(branch) {
       </label>
       <label class="field"><span>Address (EN)</span><input name="addressEn" value="${escapeHtml(branch?.addressEn || "")}" /></label>
       <label class="field"><span>Address (AR)</span><input name="addressAr" value="${escapeHtml(branch?.addressAr || "")}" /></label>
-      <label class="field"><span>${l("Daily visit cap", "الحد اليومي للزيارات")}</span><input name="maxVisitsPerDay" type="number" min="0" value="${escapeHtml(branch?.maxVisitsPerDay || 0)}" /></label>
-      <div class="field">
-        <span>${l("Cashier PIN", "رمز الكاشير")}</span>
-        <div class="row-wrap">
-          <span class="badge">${escapeHtml(branch?.pin || l("Auto-generated after save", "يُنشأ تلقائياً بعد الحفظ"))}</span>
-          ${branch?.pin ? `<button type="button" class="secondary button-small" data-action="copy-branch-pin" data-pin="${escapeHtml(branch.pin)}">${l("Copy", "نسخ")}</button>` : ""}
-          ${branch ? `<button type="button" class="secondary button-small" data-action="rotate-branch-pin" data-branch-id="${branch.id}">${l("Rotate PIN", "تدوير الرمز")}</button>` : ""}
-        </div>
-      </div>
+      ${"" /* Cashier PIN and daily-cap controls are mothballed pending POS reconciliation. */}
       <label class="field field-span-full"><span>${l("Google Maps link", "رابط جوجل ماب")}</span><input name="mapLink" type="url" value="${escapeHtml(branch?.mapLink || "")}" /></label>
       <label class="field field-span-full"><span>${l("Branch image", "صورة الفرع")}</span><input name="image" type="file" accept="image/*" /></label>
       <button type="submit">${branch ? l("Save branch", "حفظ الفرع") : l("Create branch", "إنشاء الفرع")}</button>
@@ -3100,15 +3091,6 @@ function renderBranchesPage() {
             },
             { label: l("City", "المدينة"), render: (row) => cityName(row.cityId) || "-" },
             { label: l("Address", "العنوان"), render: (row) => (state.locale === "ar" ? row.addressAr : row.addressEn) || row.addressEn || "-" },
-            {
-              label: l("Cashier PIN", "رمز الكاشير"),
-              render: (row) =>
-                row.pin
-                  ? `<div class="row-wrap"><span class="badge">${escapeHtml(row.pin)}</span><button type="button" class="secondary button-small" data-action="copy-branch-pin" data-pin="${escapeHtml(row.pin)}">${l("Copy", "نسخ")}</button></div>`
-                  : "-",
-              html: true,
-            },
-            { label: l("Daily cap", "الحد اليومي"), render: (row) => Number(row.maxVisitsPerDay || 0) > 0 ? String(row.maxVisitsPerDay) : l("Unlimited", "غير محدود") },
             { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${statusTone(row.status)}">${escapeHtml(row.status)}</span>`, html: true },
             { label: l("Map", "الخريطة"), render: (row) => row.mapLink ? `<a class="table-link-button" href="${escapeHtml(row.mapLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open map", "فتح الخريطة"))}</a>` : "-", html: true },
           ],
@@ -4125,7 +4107,6 @@ function renderReportCards(rows) {
 function renderInfluencerDashboard() {
   const participants = state.data.participants || [];
   const readyToSubmitParticipants = participants.filter((participant) => participantCanSubmit(participant));
-  const awaitingVisitParticipants = participants.filter((participant) => participant.status === "confirmed");
   return `
     ${pageHeader(
       l("Member Dashboard", "لوحة العضو"),
@@ -4134,14 +4115,13 @@ function renderInfluencerDashboard() {
     )}
     ${metricGrid([
       { label: l("Eligible campaigns", "الحملات المؤهلة"), value: eligibleCampaigns().length, note: l("Available to join", "متاحة للانضمام") },
-      { label: l("Awaiting branch visit", "بانتظار زيارة الفرع"), value: awaitingVisitParticipants.length, note: l("Visit a branch to unlock proof", "زر الفرع لفتح إرسال الإثبات") },
-      { label: l("Ready to submit proof", "جاهزة لإرسال الإثبات"), value: readyToSubmitParticipants.length, note: l("Cashier confirmed your visit", "أكّد الكاشير زيارتك") },
-      { label: l("Submitted links", "روابط مرسلة"), value: participants.filter((item) => ["submitted", "completed"].includes(item.status)).length, note: l("Already delivered", "تم تسليمها") },
+      { label: l("Ready to submit", "جاهزة للإرسال"), value: participants.filter((participant) => participantCanSubmit(participant) && participant.status !== "submitted").length, note: l("Code reserved — post and submit", "الكود محجوز — انشر ثم سلّم") },
+      { label: l("Submitted", "تم الإرسال"), value: participants.filter((item) => ["submitted", "completed"].includes(item.status)).length, note: l("Already delivered", "تم تسليمها") },
     ])}
     <section class="content-grid">
       <section class="panel panel-wide">
         <h3>${l("Submit your proof", "أرسل إثباتك")}</h3>
-        <p class="panel-subtitle">${l("Your visit is confirmed for these campaigns. Submit your post link, feedback, and images here.", "تم تأكيد زيارتك لهذه الحملات. أرسل رابط منشورك وملاحظاتك والصور هنا.")}</p>
+        <p class="panel-subtitle">${l("Your codes are reserved. Visit any PICK branch to redeem your offer, then submit your post link below.", "أكوادك محجوزة. زر أي فرع PICK لاستلام عرضك، ثم أرسل رابط منشورك أدناه.")}</p>
         ${readyToSubmitParticipants.length
           ? renderMyCampaignCards(readyToSubmitParticipants, false, true)
           : `<div class="empty-state">${l("No campaigns waiting on your proof right now. Nice work 💜", "لا توجد حملات تنتظر إثباتك حالياً. عمل رائع 💜")}</div>`}
@@ -4151,15 +4131,6 @@ function renderInfluencerDashboard() {
         ${renderAvailableCampaignCards(eligibleCampaigns().slice(0, 4))}
       </section>
     </section>
-    ${awaitingVisitParticipants.length
-      ? `
-        <section class="panel">
-          <h3>${l("Awaiting branch visit", "بانتظار زيارة الفرع")}</h3>
-          <p class="panel-subtitle">${l("These campaigns reserved a code for you. Show your code to the cashier at the branch.", "هذه الحملات حجزت لك كوداً. اعرض الكود على الكاشير في الفرع.")}</p>
-          ${renderMyCampaignCards(awaitingVisitParticipants, false, false)}
-        </section>
-      `
-      : ""}
   `;
 }
 
@@ -4260,11 +4231,12 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View campaign", "عرض الحملة")}</button>
             </div>
           `;
-          const visitNote = participantNeedsVisit(participant.status) && !compactOnly ? `
+          const visitNote = ["confirmed", "visited"].includes(participant.status) && !compactOnly ? `
             <article class="note-card" style="margin-top: 14px;">
-              <strong>${l("Show your code at the branch", "اعرض الكود عند الفرع")}</strong>
-              <p>${l("Your code is reserved. Visit an eligible branch and ask the cashier to confirm the visit using the branch PIN.", "تم حجز كودك. زر أحد الأفرع المؤهلة واطلب من الكاشير تأكيد الزيارة باستخدام رمز الفرع.")}</p>
-              ${participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
+              <strong>${l("Your reserved code", "كودك المحجوز")}</strong>
+              <p>${l("Show this code at any PICK branch to redeem your offer. After your visit and post, submit your proof below.", "اعرض هذا الكود في أي فرع PICK لاستلام عرضك. بعد الزيارة والنشر، أرسل إثباتك أدناه.")}</p>
+              <div style="font-size: 22px; font-weight: 600; margin-top: 6px;">${escapeHtml(participant.assignedCodeValue || "")}</div>
+              ${participant.status === "confirmed" && participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
             </article>
           ` : "";
           const pendingForm = participantCanSubmit(participant) && !compactOnly ? `
@@ -4323,7 +4295,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           `;
         })
         .join("")}</div>`
-    : `<div class="empty-state">${l("You have not joined any campaign yet.", "لم تنضم إلى أي حملة بعد.")}</div>`;
+    : `<div class="empty-state">${proofOnly ? l("No campaigns waiting on your proof right now. Nice work 💜", "لا توجد حملات تنتظر إثباتك حالياً. عمل رائع 💜") : l("You have not joined any campaign yet.", "لم تنضم إلى أي حملة بعد.")}</div>`;
 }
 
 function renderInfluencerCampaignPreviewPage() {
@@ -4361,8 +4333,7 @@ function renderInfluencerCampaignPreviewPage() {
               </div>
               ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
               ${["submitted", "completed"].includes(participant.status) ? `<p class="compact">${l("Your proof has already been submitted and is now view-only.", "تم إرسال الإثبات الخاص بك وهو الآن للعرض فقط.")}</p>` : ""}
-              ${participantNeedsVisit(participant.status) ? `<p class="compact">${l("Visit an eligible branch and show your code to the cashier first.", "قم بزيارة فرع مؤهل واعرض كودك على الكاشير أولاً.")}</p>` : ""}
-              ${participantNeedsProof(participant.status) ? `<p class="compact">${l("Your branch visit is confirmed. You can now submit your proof link.", "تم تأكيد زيارتك للفرع. يمكنك الآن إرسال رابط الإثبات.")}</p>` : ""}
+              ${["confirmed", "visited"].includes(participant.status) ? `<p class="compact">${l("Your code is reserved. Visit any PICK branch to redeem your offer, then submit your proof link here.", "كودك محجوز. زر أي فرع PICK لاستلام عرضك، ثم أرسل رابط الإثبات هنا.")}</p>` : ""}
               ${participant.status === "canceled" ? `<p class="compact">${l("This participation was canceled.", "تم إلغاء هذه المشاركة.")}</p>` : ""}
             </article>
           `
@@ -4392,12 +4363,13 @@ function renderInfluencerCampaignPreviewPage() {
           : ""
       }
       ${
-        participant && participantNeedsVisit(participant.status)
+        participant && ["confirmed", "visited"].includes(participant.status)
           ? `
             <article class="note-card" style="margin-bottom: 16px;">
-              <strong>${l("Show your code to the cashier", "اعرض كودك على الكاشير")}</strong>
-              <p>${l("Your code is already reserved. Once the cashier confirms your visit at an eligible branch, proof submission will unlock here.", "تم حجز كودك بالفعل. بمجرد أن يؤكد الكاشير زيارتك في فرع مؤهل، سيفتح نموذج إرسال الإثبات هنا.")}</p>
-              ${participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
+              <strong>${l("Your reserved code", "كودك المحجوز")}</strong>
+              <p>${l("Show this code at any PICK branch to redeem your offer. After your visit and post, submit your proof below.", "اعرض هذا الكود في أي فرع PICK لاستلام عرضك. بعد الزيارة والنشر، أرسل إثباتك أدناه.")}</p>
+              <div style="font-size: 22px; font-weight: 600; margin-top: 6px;">${escapeHtml(participant.assignedCodeValue || "")}</div>
+              ${participant.status === "confirmed" && participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
             </article>
           `
           : ""
