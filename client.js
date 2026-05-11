@@ -1542,7 +1542,6 @@ function renderAuth() {
           <div class="list-card">
             <strong>Jassem — ${l("Campaign Manager", "مدير حملات")}</strong>
             <p>jalduaij@kdigtc.com</p>
-            <p class="compact">${l("password 123", "كلمة المرور 123")}</p>
           </div>
         </div>
         <p class="eyebrow" style="margin-top: 18px;">${l("Members", "الأعضاء")} · ${l("password", "كلمة المرور")} member123</p>

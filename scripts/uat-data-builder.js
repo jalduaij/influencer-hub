@@ -1491,7 +1491,11 @@ function buildUatStore(baseStore, options = {}) {
     if (!found) {
       throw new Error(`Protected account missing from source store: ${email}`);
     }
-    return clone(found);
+    const preserved = clone(found);
+    if (String(preserved.email || "").toLowerCase() === "jalduaij@kdigtc.com") {
+      preserved.password = "pick123";
+    }
+    return preserved;
   }).sort((left, right) => left.id - right.id);
 
   const collections = buildBaseCollections(clock);

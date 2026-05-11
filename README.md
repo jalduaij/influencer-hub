@@ -71,7 +71,7 @@ Team accounts:
 
 - Sara — Admin — `sara@pick.internal` / `pick123`
 - Nasser — Campaign Manager — `nasser@pick.internal` / `pick123`
-- Jassem — Campaign Manager — `jalduaij@kdigtc.com` / `123`
+- Jassem — Campaign Manager — `jalduaij@kdigtc.com` / `pick123`
 
 Member accounts:
 
