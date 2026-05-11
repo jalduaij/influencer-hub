@@ -4261,6 +4261,18 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               <button type="submit">${l("Submit proof", "إرسال الإثبات")}</button>
             </form>
           ` : "";
+          const dashboardBodyBlock = `
+            <p class="compact" style="margin-top: 10px;">
+              ${l("Show your code at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض كودك في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
+            </p>
+            ${pendingForm}
+            <div class="row-wrap" style="margin-top: 12px;">
+              <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View full campaign", "عرض الحملة كاملة")}</button>
+              ${participant.status === "confirmed" && participant.source !== "offline" ? `
+                <button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button>
+              ` : ""}
+            </div>
+          `;
           const submittedBlock = ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant) && !proofOnly ? `
             <article class="note-card" style="margin-top: 14px;">
               <strong>${l("Submitted Proof", "الإثبات المرسل")}</strong>
@@ -4278,18 +4290,22 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
                 <summary class="campaign-accordion-summary">
                   <div class="campaign-accordion-summary__content">
                     ${renderStatusStrip(participant.status)}
-                    <strong>${escapeHtml(campaignTitle(campaign))}</strong>
-                    <p class="compact">
+                    <div class="row" style="justify-content: space-between; align-items: center;">
+                      <strong>${renderCampaignTitleLink(campaign)}</strong>
                       <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabel(participant.status))}</span>
-                      ${participant.assignedCodeValue ? `<span class="badge">${l("Code", "الكود")}: ${escapeHtml(participant.assignedCodeValue)}</span>` : ""}
+                    </div>
+                    <div class="dashboard-card-meta">
+                      <span class="dashboard-card-code">
+                        <span class="dashboard-card-code__label">${l("Code", "الكود")}</span>
+                        <code>${escapeHtml(participant.assignedCodeValue || "—")}</code>
+                      </span>
                       <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
-                    </p>
+                    </div>
                   </div>
-                  <span class="campaign-accordion-summary__hint">${l("Show details", "عرض التفاصيل")}</span>
+                  <span class="campaign-accordion-summary__hint">${l("Open to submit", "افتح للإرسال")}</span>
                 </summary>
                 <div class="campaign-accordion-body">
-                  ${accordionBodyBlock}
-                  ${contentBlock}
+                  ${dashboardBodyBlock}
                 </div>
               </details>
             `;
