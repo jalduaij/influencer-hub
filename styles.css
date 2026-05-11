@@ -956,37 +956,34 @@ body.nav-locked {
   padding: 16px 18px;
 }
 
-.campaign-accordion-summary::-webkit-details-marker {
-  display: none;
-}
-
-.campaign-accordion-summary::marker {
-  display: none;
-}
-
 .campaign-accordion-summary__content {
   display: grid;
   gap: 0;
 }
 
-.campaign-accordion-summary__hint {
-  display: inline-flex;
-  margin-top: 12px;
-  font-size: 0.84rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.campaign-accordion[open] .campaign-accordion-summary__hint::after {
-  content: " ↑";
-}
-
-.campaign-accordion:not([open]) .campaign-accordion-summary__hint::after {
-  content: " ↓";
-}
-
 .campaign-accordion-body {
   padding: 0 18px 18px;
+}
+
+.dashboard-summary {
+  padding: 14px 16px;
+}
+
+.dashboard-summary__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-summary__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-card-meta {
@@ -1020,6 +1017,12 @@ body.nav-locked {
   font-weight: 700;
   color: var(--accent-dark);
   letter-spacing: 0.4px;
+}
+
+@media (max-width: 720px) {
+  .dashboard-summary__title {
+    white-space: normal;
+  }
 }
 
 .list-card p,

@@ -1853,6 +1853,16 @@ function participantStatusLabel(status) {
   return status;
 }
 
+function participantStatusLabelShort(status) {
+  if (status === "confirmed") return l("Ready", "جاهز");
+  if (status === "visited") return l("Ready", "جاهز");
+  if (status === "submitted") return l("Submitted", "تم الإرسال");
+  if (status === "completed") return l("Done", "مكتمل");
+  if (status === "canceled") return l("Canceled", "ملغاة");
+  if (status === "offline_reserved") return l("Offline", "خارجي");
+  return status;
+}
+
 function participantDisplayStatus(participant) {
   if (participant?.source === "offline") return l("Offline reservation", "حجز خارجي");
   return participantStatusLabel(participant?.status || "");
@@ -4195,15 +4205,13 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
     const rightDate = new Date(right.submittedAt || right.joinedAt || 0).getTime();
     return rightDate - leftDate;
   });
-  const useAccordion = proofOnly && sortedParticipants.length > 1;
-  const firstAccordionId = useAccordion ? sortedParticipants[0]?.id || null : null;
+  const useAccordion = proofOnly;
 
   return participants.length
     ? `<div class="stack">${sortedParticipants
         .map((participant) => {
           const campaign = currentCampaigns().find((item) => item.id === participant.campaignId);
           if (!campaign) return "";
-          const isFirstActionable = participant.id === firstAccordionId;
           const headerBlock = `
             ${renderStatusStrip(participant.status)}
             ${renderCampaignBanner(campaign, "wide")}
@@ -4286,13 +4294,12 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
 
           if (useAccordion) {
             return `
-              <details class="timeline-card campaign-accordion" ${isFirstActionable ? "open" : ""}>
-                <summary class="campaign-accordion-summary">
+              <details class="timeline-card campaign-accordion">
+                <summary class="campaign-accordion-summary dashboard-summary">
                   <div class="campaign-accordion-summary__content">
-                    ${renderStatusStrip(participant.status)}
-                    <div class="row" style="justify-content: space-between; align-items: center;">
-                      <strong>${renderCampaignTitleLink(campaign)}</strong>
-                      <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabel(participant.status))}</span>
+                    <div class="dashboard-summary__row">
+                      <strong class="dashboard-summary__title">${escapeHtml(campaignTitle(campaign))}</strong>
+                      <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabelShort(participant.status))}</span>
                     </div>
                     <div class="dashboard-card-meta">
                       <span class="dashboard-card-code">
@@ -4302,7 +4309,6 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
                       <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
                     </div>
                   </div>
-                  <span class="campaign-accordion-summary__hint">${l("Open to submit", "افتح للإرسال")}</span>
                 </summary>
                 <div class="campaign-accordion-body">
                   ${dashboardBodyBlock}
