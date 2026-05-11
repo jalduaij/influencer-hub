@@ -8,6 +8,7 @@
     "start": "node server.js",
     "check": "node --check server.js && node --check client.js",
     "seed:demo": "node scripts/seed-demo-data.js",
+    "seed:uat": "node scripts/seed-uat-data.js",
     "smoke": "node scripts/smoke-test.js"
   },
   "engines": {

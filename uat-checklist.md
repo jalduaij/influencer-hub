@@ -10,9 +10,15 @@ Use this checklist on the PICK Social Club stage environment:
 - Admin: `sara@pick.internal` / `pick123`
 - Campaign Manager: `nasser@pick.internal` / `pick123`
 - Campaign Manager 2: `jalduaij@kdigtc.com` / `123`
-- Influencer 1: `laila@example.com` / `pick123`
-- Influencer 2: `maha@example.com` / `pick123`
-- Influencer 3: `abdullah@example.com` / `pick123`
+- Member 1: `laila@example.com` / `member123`
+- Member 2: `maha@example.com` / `member123`
+- Member 3: `abdullah@example.com` / `member123`
+
+## Branch PINs
+
+- `PICK The Avenues`: `100001`
+- `PICK 360 Mall`: `100002`
+- `PICK Al Kout`: `100003`
 
 ## How To Use This Checklist
 

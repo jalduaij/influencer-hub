@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
+const { buildUatStore, UAT_RESET_CONFIRM } = require("./scripts/uat-data-builder");
 
 const ROOT = __dirname;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
@@ -3094,6 +3095,22 @@ async function handleSubmission(req, res, store, actor, participantId) {
   return sendJson(res, 200, { ok: true });
 }
 
+async function handleResetUatData(req, res, store, actor) {
+  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
+  const body = jsonOrForm(await readBody(req), req);
+  if (text(body.confirm) !== UAT_RESET_CONFIRM) {
+    return sendJson(res, 400, { error: "Exact confirmation text is required before resetting UAT data." });
+  }
+  const { store: nextStore, summary } = buildUatStore(store);
+  appendAuditEvent(nextStore, actor, "admin.uat_data_seeded", "user", actor.id, {
+    members: summary.members,
+    campaigns: summary.campaigns,
+    participations: summary.participations,
+  });
+  await writeStore(nextStore);
+  return sendJson(res, 200, { ok: true, ...summary });
+}
+
 async function requestHandler(req, res) {
   applySecurityHeaders(res);
   await ensureRuntimeFiles();
@@ -3234,6 +3251,10 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && userResetLinkMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleGenerateResetLink(req, res, store, actor, userResetLinkMatch[0]);
+  }
+  if (req.method === "POST" && pathname === "/api/admin/reset-uat-data") {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleResetUatData(req, res, store, actor);
   }
   if (req.method === "POST" && pathname === "/api/campaigns") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });

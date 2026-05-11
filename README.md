@@ -69,7 +69,46 @@ The current architecture is ready for **stage testing**. It is still file-based,
 
 - Admin: `sara@pick.internal` / `pick123`
 - Campaign Manager: `nasser@pick.internal` / `pick123`
-- Member: `laila@example.com` / `pick123`
+- Campaign Manager 2: `jalduaij@kdigtc.com` / `123`
+- Member: `laila@example.com` / `member123`
+- Member: `maha@example.com` / `member123`
+- Member: `abdullah@example.com` / `member123`
+
+## UAT Seed
+
+Use the rich UAT seed when the QA team needs a clean, repeatable dataset with varied campaigns, members, submissions, and audit history.
+
+Generate the bundled dataset locally:
+
+```bash
+node scripts/seed-uat-data.js
+```
+
+Write the same dataset to another file for inspection:
+
+```bash
+node scripts/seed-uat-data.js --out /tmp/test-uat-store.json
+```
+
+On staging with a persistent disk, an admin can reseed runtime data without a redeploy:
+
+```bash
+curl -X POST "$APP_BASE_URL/api/admin/reset-uat-data" \
+  -H "Content-Type: application/json" \
+  -H "Origin: $APP_BASE_URL" \
+  -b "<admin session cookie>" \
+  -d '{"confirm":"yes-overwrite-staging"}'
+```
+
+Seeded member password:
+
+- All seeded members use `member123`
+
+Deterministic branch PINs for cashier and branch-flow UAT:
+
+- `PICK The Avenues`: `100001`
+- `PICK 360 Mall`: `100002`
+- `PICK Al Kout`: `100003`
 
 ## Code Logic
 

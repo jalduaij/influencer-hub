@@ -64,8 +64,37 @@ function isoDateDaysFromNow(offset) {
   return date.toISOString().slice(0, 10);
 }
 
+async function runNodeScript(scriptPath, args = []) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: ROOT,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
 async function run() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pick-smoke-"));
+  const uatSeedPath = path.join(tempRoot, "uat-store.json");
+  const uatSeedRun = await runNodeScript(path.join(ROOT, "scripts", "seed-uat-data.js"), ["--out", uatSeedPath]);
+  assert(uatSeedRun.code === 0, `UAT seed script should exit cleanly, got ${uatSeedRun.code}. ${uatSeedRun.stderr}`);
+  const seededUatStore = JSON.parse(await fs.readFile(uatSeedPath, "utf8"));
+  assert(seededUatStore.users.length === 23, `UAT seed should produce 23 users, got ${seededUatStore.users.length}.`);
+  assert(seededUatStore.campaigns.length === 10, `UAT seed should produce 10 campaigns, got ${seededUatStore.campaigns.length}.`);
+
   const dataDir = path.join(tempRoot, "data");
   const uploadsDir = path.join(tempRoot, "uploads");
   const storePath = path.join(dataDir, "store.json");

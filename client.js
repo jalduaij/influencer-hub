@@ -666,8 +666,10 @@ function auditActionLabel(action) {
     "campaign.duplicated": l("Duplicated campaign", "نسخ الحملة"),
     "participant.removed": l("Removed participant", "أزال مشاركاً"),
     "participant.self_canceled": l("Canceled participation", "ألغى المشاركة"),
+    "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+    "admin.uat_data_seeded": l("Reset UAT data", "أعاد ضبط بيانات UAT"),
   };
   return labels[action] || action || l("Unknown action", "إجراء غير معروف");
 }
