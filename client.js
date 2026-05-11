@@ -4197,6 +4197,28 @@ function renderMyCampaignsPage() {
   `;
 }
 
+function renderMemberCardSummary(participant, campaign) {
+  return `
+    <summary class="campaign-accordion-summary dashboard-summary">
+      <div class="campaign-accordion-summary__content">
+        <div class="dashboard-summary__row">
+          <strong class="dashboard-summary__title">${escapeHtml(campaignTitle(campaign))}</strong>
+          <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabelShort(participant.status))}</span>
+        </div>
+        <div class="dashboard-card-meta">
+          ${participant.assignedCodeValue ? `
+            <span class="dashboard-card-code">
+              <span class="dashboard-card-code__label">${l("Code", "الكود")}</span>
+              <code>${escapeHtml(participant.assignedCodeValue)}</code>
+            </span>
+          ` : ""}
+          <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
+        </div>
+      </div>
+    </summary>
+  `;
+}
+
 function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
   const sortedParticipants = [...participants].sort((left, right) => {
     const priorityDiff = participantPriority(left) - participantPriority(right);
@@ -4205,47 +4227,13 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
     const rightDate = new Date(right.submittedAt || right.joinedAt || 0).getTime();
     return rightDate - leftDate;
   });
-  const useAccordion = proofOnly;
+  const useAccordion = true;
 
   return participants.length
     ? `<div class="stack">${sortedParticipants
         .map((participant) => {
           const campaign = currentCampaigns().find((item) => item.id === participant.campaignId);
           if (!campaign) return "";
-          const headerBlock = `
-            ${renderStatusStrip(participant.status)}
-            ${renderCampaignBanner(campaign, "wide")}
-            <div class="row">
-              <strong>${renderCampaignTitleLink(campaign)}</strong>
-              <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabel(participant.status))}</span>
-            </div>
-            <p>${escapeHtml(campaignDescription(campaign))}</p>
-            ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
-            ${participant.canceledReason ? `<p class="compact">${l("Canceled reason", "سبب الإلغاء")}: ${escapeHtml(participant.canceledReason)}</p>` : ""}
-            <div class="row-wrap" style="margin-top: 12px;">
-              <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
-              <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
-            </div>
-          `;
-          const accordionBodyBlock = `
-            ${renderCampaignBanner(campaign, "wide")}
-            <p>${escapeHtml(campaignDescription(campaign))}</p>
-            ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
-            ${participant.canceledReason ? `<p class="compact">${l("Canceled reason", "سبب الإلغاء")}: ${escapeHtml(participant.canceledReason)}</p>` : ""}
-            <div class="row-wrap" style="margin-top: 12px;">
-              <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
-              <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
-            </div>
-          `;
-          const actionBlock = "";
-          const visitNote = ["confirmed", "visited"].includes(participant.status) && !compactOnly ? `
-            <article class="note-card" style="margin-top: 14px;">
-              <strong>${l("Your reserved code", "كودك المحجوز")}</strong>
-              <p>${l("Show this code at any PICK branch to redeem your offer. After your visit and post, submit your proof below.", "اعرض هذا الكود في أي فرع PICK لاستلام عرضك. بعد الزيارة والنشر، أرسل إثباتك أدناه.")}</p>
-              <div style="font-size: 22px; font-weight: 600; margin-top: 6px;">${escapeHtml(participant.assignedCodeValue || "")}</div>
-              ${participant.status === "confirmed" && participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
-            </article>
-          ` : "";
           const pendingForm = participantCanSubmit(participant) && !compactOnly ? `
             <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-top: 14px;">
               ${campaign.captionGuide ? `
@@ -4285,57 +4273,35 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
             </article>
           ` : "";
-          const contentBlock = `${actionBlock}${visitNote}${pendingForm}${submittedBlock}`;
+          const richMyCampaignsBody = `
+            ${renderCampaignBanner(campaign, "wide")}
+            <p>${escapeHtml(campaignDescription(campaign))}</p>
+            ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
+            ${participant.canceledReason ? `<p class="compact">${l("Canceled reason", "سبب الإلغاء")}: ${escapeHtml(participant.canceledReason)}</p>` : ""}
+            <div class="row-wrap" style="margin-top: 12px;">
+              <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
+              <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
+            </div>
+            ${pendingForm}
+            ${submittedBlock}
+            ${participant.status === "confirmed" && participant.source !== "offline" ? `
+              <div class="row-wrap" style="margin-top: 12px;">
+                <button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button>
+              </div>
+            ` : ""}
+          `;
+          const accordionBody = proofOnly ? dashboardBodyBlock : richMyCampaignsBody;
 
           if (useAccordion) {
             return `
               <details class="timeline-card campaign-accordion">
-                <summary class="campaign-accordion-summary dashboard-summary">
-                  <div class="campaign-accordion-summary__content">
-                    <div class="dashboard-summary__row">
-                      <strong class="dashboard-summary__title">${escapeHtml(campaignTitle(campaign))}</strong>
-                      <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabelShort(participant.status))}</span>
-                    </div>
-                    <div class="dashboard-card-meta">
-                      <span class="dashboard-card-code">
-                        <span class="dashboard-card-code__label">${l("Code", "الكود")}</span>
-                        <code>${escapeHtml(participant.assignedCodeValue || "—")}</code>
-                      </span>
-                      <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
-                    </div>
-                  </div>
-                </summary>
+                ${renderMemberCardSummary(participant, campaign)}
                 <div class="campaign-accordion-body">
-                  ${dashboardBodyBlock}
+                  ${accordionBody}
                 </div>
               </details>
             `;
           }
-
-          if (["submitted", "completed"].includes(participant.status) && !proofOnly) {
-            return `
-              <details class="timeline-card campaign-accordion">
-                <summary class="campaign-accordion-summary">
-                  <div class="campaign-accordion-summary__content">
-                    ${renderStatusStrip(participant.status)}
-                    <strong>${renderCampaignTitleLink(campaign)}</strong>
-                  </div>
-                  <span class="campaign-accordion-summary__hint">${l("Show details", "عرض التفاصيل")}</span>
-                </summary>
-                <div class="campaign-accordion-body">
-                  ${accordionBodyBlock}
-                  ${contentBlock}
-                </div>
-              </details>
-            `;
-          }
-
-          return `
-            <article class="timeline-card">
-              ${headerBlock}
-              ${contentBlock}
-            </article>
-          `;
         })
         .join("")}</div>`
     : `<div class="empty-state">${proofOnly ? l("No campaigns waiting on your proof right now. Nice work 💜", "لا توجد حملات تنتظر إثباتك حالياً. عمل رائع 💜") : l("You have not joined any campaign yet.", "لم تنضم إلى أي حملة بعد.")}</div>`;
