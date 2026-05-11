@@ -379,6 +379,15 @@ function formatDate(value) {
   }
 }
 
+function localDateString(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function formatDateTime(value) {
   if (!value) return "-";
   try {
@@ -585,6 +594,7 @@ function pendingApprovals() {
 
 function campaignMatchesInfluencer(campaign, influencer) {
   if (campaign.status !== "live") return false;
+  if (campaign.visitDeadline && localDateString(campaign.visitDeadline) < localDateString()) return false;
   if (influencer.status !== "active") return false;
   if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(influencer.cityId)) return false;
   if ((campaign.targetCategoryIds || []).length && !(campaign.targetCategoryIds || []).includes(influencer.categoryId)) return false;
@@ -4969,6 +4979,7 @@ async function handleClick(event) {
   }
 
   if (action === "join-campaign") {
+    if (target.disabled) return;
     const campaign = currentCampaigns().find((item) => item.id === Number(target.dataset.campaignId));
     if (campaign) {
       const confirmed = window.confirm(
@@ -4979,7 +4990,12 @@ async function handleClick(event) {
       );
       if (!confirmed) return;
     }
-    await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"));
+    target.disabled = true;
+    try {
+      await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"));
+    } finally {
+      if (target.isConnected) target.disabled = false;
+    }
     return;
   }
 
@@ -4999,8 +5015,14 @@ async function handleClick(event) {
   }
 
   if (action === "cancel-participation") {
+    if (target.disabled) return;
     if (!window.confirm(l("Cancel this participation and release the reserved code?", "هل تريد إلغاء هذه المشاركة وإعادة الكود المحجوز؟"))) return;
-    await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/cancel`, {}, l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."), { rethrow: true });
+    target.disabled = true;
+    try {
+      await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/cancel`, {}, l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."), { rethrow: true });
+    } finally {
+      if (target.isConnected) target.disabled = false;
+    }
     return;
   }
 

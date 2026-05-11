@@ -277,6 +277,37 @@ async function run() {
     });
     assert(uploadCodes.ok, `Code upload failed with status ${uploadCodes.status}.`);
 
+    const staleCampaignPayload = {
+      ...freshCampaignPayload,
+      titleEn: "Smoke Closed Visit Campaign",
+      titleAr: "حملة زيارة مغلقة للدخان",
+      visitDeadline: isoDateDaysFromNow(-1),
+      submissionDeadline: isoDateDaysFromNow(1),
+      participantCap: 0,
+    };
+    const createStaleCampaign = await fetch(`${baseUrl}/api/campaigns`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(staleCampaignPayload),
+    });
+    assert(createStaleCampaign.ok, `Stale campaign creation failed with status ${createStaleCampaign.status}.`);
+    const staleCampaignId = (await createStaleCampaign.json()).campaign.id;
+    const staleCodesForm = new FormData();
+    staleCodesForm.append("codesFile", new Blob(["code\nSTALE-001\n"], { type: "text/csv" }), "stale-codes.csv");
+    const staleCodesUpload = await fetch(`${baseUrl}/api/campaigns/${staleCampaignId}/codes/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+      },
+      body: staleCodesForm,
+    });
+    assert(staleCodesUpload.ok, `Stale campaign code upload failed with status ${staleCodesUpload.status}.`);
+
     const form = new FormData();
     form.append("avatar", new Blob([Buffer.alloc(1024, "A")], { type: "image/jpeg" }), "fake.jpg");
     const badImageUpload = await fetch(`${baseUrl}/api/profile/update`, {
@@ -403,6 +434,66 @@ async function run() {
     assert(
       !maleBootstrap.eligibleCampaignIds?.includes(freshCampaignId),
       "Male influencer should not be eligible for a female-only campaign."
+    );
+
+    const staleUser = {
+      fullName: `Smoke Closed Visit ${smokeStamp}`,
+      email: `smoke-${smokeStamp}-closed@example.com`,
+      password: "PickSmoke1",
+      cityId: 2,
+      categoryId: 3,
+      gender: "female",
+      mobile: "91111222",
+      instagram: "@smokeclosedvisit",
+      tiktok: "",
+      snapchat: "",
+      instagramFollowers: 1800,
+      preferredPlatform: "Instagram",
+    };
+    const staleSignup = await fetch(`${baseUrl}/api/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify(staleUser),
+    });
+    assert(staleSignup.ok, `Signup failed for stale-join smoke user with status ${staleSignup.status}.`);
+    const storeAfterStaleSignup = JSON.parse(await fs.readFile(storePath, "utf8"));
+    staleUser.id = storeAfterStaleSignup.users.find((row) => row.email === staleUser.email)?.id;
+    assert(staleUser.id, "Could not locate stale-join smoke user in the store.");
+    const approveStaleUser = await fetch(`${baseUrl}/api/users/${staleUser.id}/status`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert(approveStaleUser.ok, `Approving stale-join smoke user failed with status ${approveStaleUser.status}.`);
+    const staleUserLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ email: staleUser.email, password: staleUser.password }),
+    });
+    assert(staleUserLogin.ok, `Login failed for stale-join smoke user with status ${staleUserLogin.status}.`);
+    const staleUserCookie = staleUserLogin.headers.get("set-cookie");
+    assert(staleUserCookie, "Stale-join smoke user login did not return a session cookie.");
+    const staleUserBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: staleUserCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      !staleUserBootstrap.eligibleCampaignIds?.includes(staleCampaignId),
+      "Campaign with a past visit deadline should not appear in eligibleCampaignIds."
+    );
+    const staleJoin = await fetch(`${baseUrl}/api/campaigns/${staleCampaignId}/join`, {
+      method: "POST",
+      headers: { Cookie: staleUserCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(staleJoin.status === 409, `Join on a campaign with a past visit deadline should return 409, got ${staleJoin.status}.`);
+    const staleJoinPayload = await staleJoin.json();
+    assert(
+      /visit deadline|closed/i.test(String(staleJoinPayload.error || "")),
+      "Join rejection for a past visit deadline should mention that joins are closed."
     );
 
     const joinOne = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/join`, {

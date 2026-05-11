@@ -1553,6 +1553,10 @@ function activeManagerScopeCampaigns(store, user) {
 
 function campaignMatchesInfluencer(store, campaign, influencer) {
   if (!["live"].includes(campaign.status)) return false;
+  if (campaign.visitDeadline) {
+    const today = todayDateString();
+    if (toDateString(campaign.visitDeadline) < today) return false;
+  }
   if (campaign.targetCityIds.length && !campaign.targetCityIds.includes(influencer.cityId)) return false;
   if (campaign.targetCategoryIds.length && !campaign.targetCategoryIds.includes(influencer.categoryId)) return false;
   if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
@@ -2820,6 +2824,11 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
   if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
   const eligibleIds = new Set(eligibleCampaignsFor(store, actor).map((item) => item.id));
   if (!eligibleIds.has(campaign.id)) {
+    if (campaign.visitDeadline && toDateString(campaign.visitDeadline) < todayDateString()) {
+      return sendJson(res, 409, {
+        error: "Visit deadline has already passed for this campaign. New joins are closed.",
+      });
+    }
     return sendJson(res, 409, { error: "This campaign is not available for this member." });
   }
   const activeParticipants = store.participants.filter(
