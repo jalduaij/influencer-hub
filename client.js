@@ -4237,11 +4237,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
             </div>
           `;
-          const actionBlock = `
-            <div class="row-wrap" style="margin-top: 12px;">
-              <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View campaign", "عرض الحملة")}</button>
-            </div>
-          `;
+          const actionBlock = "";
           const visitNote = ["confirmed", "visited"].includes(participant.status) && !compactOnly ? `
             <article class="note-card" style="margin-top: 14px;">
               <strong>${l("Your reserved code", "كودك المحجوز")}</strong>
@@ -4274,12 +4270,11 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
               ${l("Show your code at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض كودك في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
             </p>
             ${pendingForm}
-            <div class="row-wrap" style="margin-top: 12px;">
-              <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View full campaign", "عرض الحملة كاملة")}</button>
-              ${participant.status === "confirmed" && participant.source !== "offline" ? `
+            ${participant.status === "confirmed" && participant.source !== "offline" ? `
+              <div class="row-wrap" style="margin-top: 12px;">
                 <button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button>
-              ` : ""}
-            </div>
+              </div>
+            ` : ""}
           `;
           const submittedBlock = ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant) && !proofOnly ? `
             <article class="note-card" style="margin-top: 14px;">
