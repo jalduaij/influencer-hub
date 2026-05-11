@@ -4124,6 +4124,8 @@ function renderReportCards(rows) {
 
 function renderInfluencerDashboard() {
   const participants = state.data.participants || [];
+  const readyToSubmitParticipants = participants.filter((participant) => participantCanSubmit(participant));
+  const awaitingVisitParticipants = participants.filter((participant) => participant.status === "confirmed");
   return `
     ${pageHeader(
       l("Member Dashboard", "لوحة العضو"),
@@ -4132,20 +4134,32 @@ function renderInfluencerDashboard() {
     )}
     ${metricGrid([
       { label: l("Eligible campaigns", "الحملات المؤهلة"), value: eligibleCampaigns().length, note: l("Available to join", "متاحة للانضمام") },
-      { label: l("Joined campaigns", "الحملات المنضم لها"), value: participants.length, note: l("Your history", "سجلك") },
-      { label: l("Pending proof", "إثباتات معلقة"), value: participants.filter((item) => participantNeedsProof(item.status)).length, note: l("Need social link", "تحتاج رابطاً") },
+      { label: l("Awaiting branch visit", "بانتظار زيارة الفرع"), value: awaitingVisitParticipants.length, note: l("Visit a branch to unlock proof", "زر الفرع لفتح إرسال الإثبات") },
+      { label: l("Ready to submit proof", "جاهزة لإرسال الإثبات"), value: readyToSubmitParticipants.length, note: l("Cashier confirmed your visit", "أكّد الكاشير زيارتك") },
       { label: l("Submitted links", "روابط مرسلة"), value: participants.filter((item) => ["submitted", "completed"].includes(item.status)).length, note: l("Already delivered", "تم تسليمها") },
     ])}
     <section class="content-grid">
       <section class="panel panel-wide">
-        <h3>${l("Pending Proof Submission", "إثباتات الزيارة المطلوب تسليمها")}</h3>
-        ${renderMyCampaignCards(participants.filter((item) => participantNeedsProof(item.status)), false, true)}
+        <h3>${l("Submit your proof", "أرسل إثباتك")}</h3>
+        <p class="panel-subtitle">${l("Your visit is confirmed for these campaigns. Submit your post link, feedback, and images here.", "تم تأكيد زيارتك لهذه الحملات. أرسل رابط منشورك وملاحظاتك والصور هنا.")}</p>
+        ${readyToSubmitParticipants.length
+          ? renderMyCampaignCards(readyToSubmitParticipants, false, true)
+          : `<div class="empty-state">${l("No campaigns waiting on your proof right now. Nice work 💜", "لا توجد حملات تنتظر إثباتك حالياً. عمل رائع 💜")}</div>`}
       </section>
       <section class="panel">
         <h3>${l("Available Campaigns", "الحملات المتاحة")}</h3>
         ${renderAvailableCampaignCards(eligibleCampaigns().slice(0, 4))}
       </section>
     </section>
+    ${awaitingVisitParticipants.length
+      ? `
+        <section class="panel">
+          <h3>${l("Awaiting branch visit", "بانتظار زيارة الفرع")}</h3>
+          <p class="panel-subtitle">${l("These campaigns reserved a code for you. Show your code to the cashier at the branch.", "هذه الحملات حجزت لك كوداً. اعرض الكود على الكاشير في الفرع.")}</p>
+          ${renderMyCampaignCards(awaitingVisitParticipants, false, false)}
+        </section>
+      `
+      : ""}
   `;
 }
 
