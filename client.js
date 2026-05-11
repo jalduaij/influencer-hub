@@ -234,12 +234,13 @@ function validPagesForRole(role) {
   if (role === "campaign_manager") {
     return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "reports", "profile"]);
   }
-  return new Set(["dashboard", "availableCampaigns", "campaign-preview", "myCampaigns", "profile"]);
+  return new Set(["dashboard", "campaigns", "campaign-preview", "profile"]);
 }
 
 function normalizePage(page) {
   if (!state.currentUser) return "dashboard";
   if (page === "approvals") return "influencers";
+  if ((page === "availableCampaigns" || page === "myCampaigns") && state.currentUser.role === "influencer") return "campaigns";
   return validPagesForRole(state.currentUser.role).has(page) ? page : defaultPageForRole(state.currentUser.role);
 }
 
@@ -1491,8 +1492,6 @@ function currentDocumentTitle() {
     managers: l("PICK Social Club — Managers", "نادي بك — مديرو الحملات"),
     "manager-edit": l("PICK Social Club — Manager", "نادي بك — مدير الحملات"),
     reports: l("PICK Social Club — Reports", "نادي بك — التقارير"),
-    availableCampaigns: l("PICK Social Club — Available Campaigns", "نادي بك — الحملات المتاحة"),
-    myCampaigns: l("PICK Social Club — My Campaigns", "نادي بك — حملاتي"),
     profile: l("PICK Social Club — Profile", "نادي بك — الملف الشخصي"),
   };
   return pageTitles[state.currentPage] || "PICK Social Club";
@@ -1660,8 +1659,7 @@ function roleNav(role) {
   }
   return [
     ["dashboard", l("Dashboard", "لوحة التحكم")],
-    ["availableCampaigns", l("Available Campaigns", "الحملات المتاحة")],
-    ["myCampaigns", l("My Campaigns", "حملاتي")],
+    ["campaigns", l("Campaigns", "الحملات")],
     ["profile", l("Profile", "الملف الشخصي")],
   ];
 }
@@ -1686,8 +1684,7 @@ const NAV_ICON = {
   },
   influencer: {
     dashboard: "home",
-    availableCampaigns: "sparkles",
-    myCampaigns: "clipboard-check",
+    campaigns: "megaphone",
     profile: "user-circle",
   },
 };
@@ -2058,9 +2055,11 @@ function renderManagerPages() {
 }
 
 function renderInfluencerPages() {
-  if (state.currentPage === "availableCampaigns") return renderAvailableCampaignsPage();
   if (state.currentPage === "campaign-preview") return renderInfluencerCampaignPreviewPage();
-  if (state.currentPage === "myCampaigns") return renderMyCampaignsPage();
+  if (state.currentPage === "availableCampaigns" || state.currentPage === "myCampaigns") {
+    state.currentPage = "campaigns";
+  }
+  if (state.currentPage === "campaigns") return renderMemberCampaignsPage();
   if (state.currentPage === "profile") return renderProfilePage();
   return renderInfluencerDashboard();
 }
@@ -4145,13 +4144,7 @@ function renderInfluencerDashboard() {
 }
 
 function renderAvailableCampaignsPage() {
-  return `
-    ${pageHeader(l("Available Campaigns", "الحملات المتاحة"), l("Every time you confirm interest, one private code is reserved for you immediately.", "كل مرة تؤكد اهتمامك، يتم حجز كود خاص لك فوراً."))}
-    <section class="panel">
-      <h3>${l("Eligible Campaigns", "الحملات المؤهلة")}</h3>
-      ${renderAvailableCampaignCards(eligibleCampaigns())}
-    </section>
-  `;
+  return renderMemberCampaignsPage();
 }
 
 function renderAvailableCampaignCards(campaigns) {
@@ -4188,12 +4181,68 @@ function renderAvailableCampaignCards(campaigns) {
 }
 
 function renderMyCampaignsPage() {
+  return renderMemberCampaignsPage();
+}
+
+function renderMemberCampaignsPage() {
+  const participants = state.data?.participants || [];
+  const eligible = eligibleCampaigns();
+  const activeRows = participants.filter((participant) => participantCanSubmit(participant));
+  const historyRows = participants
+    .filter((participant) => !participantCanSubmit(participant) && participant.status !== "offline_reserved")
+    .sort((left, right) => {
+      const leftTime = new Date(left.submittedAt || left.joinedAt || 0).getTime();
+      const rightTime = new Date(right.submittedAt || right.joinedAt || 0).getTime();
+      return rightTime - leftTime;
+    });
+
   return `
-    ${pageHeader(l("My Campaigns", "حملاتي"), l("Your campaigns, your codes, your moments. All in one place 💜", "حملاتك، أكوادك، لحظاتك. كلها في مكان واحد 💜"))}
-    <section class="panel">
-      <h3>${l("Joined Campaigns", "الحملات المنضم لها")}</h3>
-      ${renderMyCampaignCards(state.data.participants || [], false, false)}
-    </section>
+    ${pageHeader(
+      l("Campaigns", "الحملات"),
+      l("Everything in one place — what you can join, what you're working on, and what you've done.", "كل شيء في مكان واحد — ما يمكنك الانضمام إليه، ما تعمل عليه، وما أنجزته."),
+      { showNotifications: true }
+    )}
+    ${eligible.length ? `
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("Open campaigns", "حملات مفتوحة")}</h3>
+            <p class="panel-subtitle">${l("Campaigns you can join right now.", "حملات يمكنك الانضمام إليها الآن.")}</p>
+          </div>
+          <span class="badge">${eligible.length} ${l("available", "متاحة")}</span>
+        </div>
+        ${renderAvailableCampaignCards(eligible)}
+      </section>
+    ` : ""}
+    ${activeRows.length ? `
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("Active", "النشطة")}</h3>
+            <p class="panel-subtitle">${l("Your reserved codes. Submit your proof when ready.", "أكوادك المحجوزة. أرسل إثباتك عند الجاهزية.")}</p>
+          </div>
+          <span class="badge">${activeRows.length}</span>
+        </div>
+        ${renderMyCampaignCards(activeRows, false, false)}
+      </section>
+    ` : ""}
+    ${historyRows.length ? `
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("History", "السجل")}</h3>
+            <p class="panel-subtitle">${l("Submitted, completed, and canceled campaigns.", "الحملات المرسلة والمكتملة والملغاة.")}</p>
+          </div>
+          <span class="badge">${historyRows.length}</span>
+        </div>
+        ${renderMyCampaignCards(historyRows, false, false)}
+      </section>
+    ` : ""}
+    ${(!eligible.length && !activeRows.length && !historyRows.length) ? `
+      <section class="panel">
+        <div class="empty-state">${l("No campaigns yet. Check back later 💜", "لا توجد حملات بعد. تابعنا قريباً 💜")}</div>
+      </section>
+    ` : ""}
   `;
 }
 
@@ -4397,10 +4446,10 @@ function renderInfluencerCampaignPreviewPage() {
           : ""
       }
       <div class="row-wrap">
-        <button class="secondary" data-nav="${participant ? "myCampaigns" : "availableCampaigns"}">${participant ? l("Back to my campaigns", "العودة إلى حملاتي") : l("Back to available campaigns", "العودة إلى الحملات المتاحة")}</button>
+        <button class="secondary" data-nav="campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
         ${
           participant
-            ? `<button data-nav="myCampaigns">${l("Open my campaigns", "افتح حملاتي")}</button>`
+            ? `<button data-nav="campaigns">${l("Open campaigns", "افتح الحملات")}</button>`
             : isEligible
               ? `<button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>`
               : `<span class="badge danger">${l("This campaign is not currently available to join.", "هذه الحملة غير متاحة حالياً للانضمام.")}</span>`

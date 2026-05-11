@@ -254,7 +254,12 @@ async function run() {
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
     const defaultCampaignShareBodySource = clientSource.match(/function defaultCampaignShareBody\(campaign\) \{[\s\S]*?\n\}/)?.[0];
     const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
-    assert(campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource, "Expected campaign share helpers to exist in client.js.");
+    const renderMemberCampaignsPageSource = clientSource.match(/function renderMemberCampaignsPage\(\) \{[\s\S]*?\n\}/)?.[0];
+    const renderInfluencerPagesSource = clientSource.match(/function renderInfluencerPages\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert(
+      campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource && renderMemberCampaignsPageSource && renderInfluencerPagesSource,
+      "Expected campaign share helpers and merged member campaigns page helpers to exist in client.js."
+    );
     const shareSandbox = {
       state: {
         locale: "en",
@@ -286,6 +291,52 @@ async function run() {
       String(shareText).includes(`Open: ${baseUrl}/?campaign=${freshCampaignId}`),
       "Generated share text should include the campaign deep link."
     );
+
+    const campaignsPageSandbox = {
+      state: {
+        currentPage: "campaigns",
+        data: {
+          participants: [
+            { id: 1, status: "confirmed", joinedAt: "2026-05-11T10:00:00.000Z" },
+            { id: 2, status: "completed", submittedAt: "2026-05-10T10:00:00.000Z" },
+            { id: 3, status: "offline_reserved", joinedAt: "2026-05-09T10:00:00.000Z" },
+          ],
+        },
+      },
+      l: (en) => en,
+      pageHeader: (title, subtitle) => `<header><h1>${title}</h1><p>${subtitle}</p></header>`,
+      eligibleCampaigns: () => [{ id: 99 }],
+      participantCanSubmit: (participant) => ["confirmed", "visited"].includes(participant.status),
+      renderAvailableCampaignCards: (rows) => `<div class="available-count">${rows.length}</div>`,
+      renderMyCampaignCards: (rows) => `<div class="member-count">${rows.length}</div>`,
+      renderInfluencerCampaignPreviewPage: () => "preview",
+      renderProfilePage: () => "profile",
+      renderInfluencerDashboard: () => "dashboard",
+    };
+    vm.createContext(campaignsPageSandbox);
+    vm.runInContext(`${renderMemberCampaignsPageSource}\n${renderInfluencerPagesSource}`, campaignsPageSandbox);
+    const mergedCampaignsHtml = campaignsPageSandbox.renderMemberCampaignsPage();
+    assert(/Open campaigns/.test(String(mergedCampaignsHtml)), "Merged member campaigns page should render the Open campaigns section when eligible campaigns exist.");
+    assert(/Active/.test(String(mergedCampaignsHtml)), "Merged member campaigns page should render the Active section when actionable participations exist.");
+    assert(/History/.test(String(mergedCampaignsHtml)), "Merged member campaigns page should render the History section when historical participations exist.");
+    campaignsPageSandbox.state.currentPage = "availableCampaigns";
+    assert(campaignsPageSandbox.renderInfluencerPages() === mergedCampaignsHtml, "Legacy availableCampaigns route should redirect to the merged campaigns page.");
+    campaignsPageSandbox.state.currentPage = "myCampaigns";
+    assert(campaignsPageSandbox.renderInfluencerPages() === mergedCampaignsHtml, "Legacy myCampaigns route should redirect to the merged campaigns page.");
+
+    const emptyCampaignsSandbox = {
+      state: { data: { participants: [] } },
+      l: (en) => en,
+      pageHeader: (title) => `<header>${title}</header>`,
+      eligibleCampaigns: () => [],
+      participantCanSubmit: () => false,
+      renderAvailableCampaignCards: () => "",
+      renderMyCampaignCards: () => "",
+    };
+    vm.createContext(emptyCampaignsSandbox);
+    vm.runInContext(renderMemberCampaignsPageSource, emptyCampaignsSandbox);
+    const emptyCampaignsHtml = emptyCampaignsSandbox.renderMemberCampaignsPage();
+    assert(/No campaigns yet\. Check back later/.test(String(emptyCampaignsHtml)), "Merged member campaigns page should show the single empty fallback when there are no open, active, or historical campaigns.");
 
     const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },
