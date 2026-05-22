@@ -1539,9 +1539,15 @@ async function loadBootstrap() {
   render();
 }
 
+function applyMemberScope() {
+  const isMember = (state.currentUser?.role || "") === "influencer";
+  document.body.classList.toggle("member-scope", isMember);
+}
+
 function render(options = {}) {
   const focusSnapshot = options.preserveFocus ? captureFocusedField() : null;
   document.body.classList.toggle("rtl", state.locale === "ar");
+  applyMemberScope();
   if (!state.currentUser) {
     document.body.classList.toggle("nav-locked", false);
     document.title = "PICK Social Club";
@@ -4297,13 +4303,17 @@ function renderInfluencerDashboard() {
   const firstName = String(me.fullName || me.name || "").trim().split(/\s+/)[0] || l("there", "بكم");
 
   const greeting = `
-    <header class="member-feed__hero">
-      <div>
-        <h1>${escapeHtml(l(`Hi ${firstName} 👋`, `أهلاً ${firstName} 👋`))}</h1>
-        <p class="member-feed__hero-subtitle">${escapeHtml(l("Welcome back to the Club.", "أهلاً بعودتك إلى النادي."))}</p>
+    <header class="member-hero">
+      <div class="member-hero__brand">
+        <span class="member-hero__wordmark">PICK<em>Social Club</em></span>
+      </div>
+      <div class="member-hero__welcome">
+        <h1 class="member-hero__title">${escapeHtml(l(`Hi ${firstName}.`, `أهلاً ${firstName}.`))}</h1>
+        <p class="member-hero__subtitle">${escapeHtml(l("Issue", "العدد"))} ${escapeHtml(memberIssueNumber())} · ${escapeHtml(formatDate(new Date()))}</p>
       </div>
       ${renderNotificationsBell()}
     </header>
+    <hr class="rule rule--thick">
   `;
 
   let actionBar = "";
@@ -4311,17 +4321,16 @@ function renderInfluencerDashboard() {
     const next = readyToSubmit[0];
     const nextCampaign = findCampaignForParticipant(next);
     const title = nextCampaign ? campaignTitle(nextCampaign) : l("a campaign", "حملة");
-    const moreLabel = readyToSubmit.length > 1
+    const more = readyToSubmit.length > 1
       ? l(` + ${readyToSubmit.length - 1} more`, ` + ${readyToSubmit.length - 1} أخرى`)
       : "";
-    const actionText = state.locale === "ar"
-      ? `كود ${title} جاهز للإرسال${moreLabel}`
-      : `Your ${title} code is ready to submit${moreLabel}`;
     actionBar = `
-      <button class="member-action-bar" data-nav="campaigns">
-        <span class="member-action-bar__dot"></span>
-        <span class="member-action-bar__text">${escapeHtml(actionText)}</span>
-        <span class="member-action-bar__chevron">${state.locale === "ar" ? "←" : "→"}</span>
+      <button class="dispatch" data-nav="campaigns">
+        <span class="dispatch__eyebrow">${escapeHtml(l("ON YOUR DESK", "في انتظارك"))}</span>
+        <span class="dispatch__line">
+          ${escapeHtml(l("Your", "كود"))} <em>${escapeHtml(title)}</em> ${escapeHtml(l("code is ready to submit", "جاهز للإرسال"))}${escapeHtml(more)}
+        </span>
+        <span class="dispatch__arrow" aria-hidden="true">→</span>
       </button>
     `;
   }
@@ -4332,22 +4341,23 @@ function renderInfluencerDashboard() {
     const featured = journalEntries[0];
     restJournal = journalEntries.slice(1, 3);
     const body = journalBody(featured) || "";
-    const excerpt = body.slice(0, 220);
     featuredJournal = `
-      <article class="featured-journal">
-        ${
-          featured.imagePath
-            ? `<img class="featured-journal__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
-            : `<div class="featured-journal__image featured-journal__image--placeholder">💜</div>`
-        }
-        <div class="featured-journal__body">
-          <span class="featured-journal__eyebrow">${escapeHtml(l("THE JOURNAL", "اليوميات"))}</span>
-          <h2>${escapeHtml(journalTitle(featured))}</h2>
-          <p class="featured-journal__date">${escapeHtml(formatDateTime(featured.publishedAt || featured.createdAt))}</p>
-          <p class="featured-journal__excerpt">${escapeHtml(excerpt)}${body.length > 220 ? "…" : ""}</p>
+      <article class="cover">
+        <div class="cover__image-wrap">
+          ${
+            featured.imagePath
+              ? `<img class="cover__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
+              : `<div class="cover__image cover__image--placeholder"><span>📓</span></div>`
+          }
+        </div>
+        <div class="cover__text">
+          <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
+          <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
+          <p class="cover__deck">${escapeHtml(body.slice(0, 200))}${body.length > 200 ? "…" : ""}</p>
+          <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
           ${
             featured.externalLink
-              ? `<a class="featured-journal__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more →", "اقرأ المزيد ←"))}</a>`
+              ? `<a class="cover__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read the story", "اقرأ القصة"))} ${state.locale === "ar" ? "←" : "→"}</a>`
               : ""
           }
         </div>
@@ -4358,10 +4368,11 @@ function renderInfluencerDashboard() {
   const comingSoon = previewCampaigns.length
     ? `
       <section class="feed-section">
-        <header class="feed-section__head">
-          <h3>${escapeHtml(l("Coming soon", "قريباً"))}</h3>
-          <p>${escapeHtml(l("Campaigns we're cooking up.", "حملات نحضّرها لكم."))}</p>
-        </header>
+        ${sectionHeader(
+          l("COMING SOON", "قريباً"),
+          l("On the calendar", "في الأجندة"),
+          l("Campaigns we're cooking up.", "حملات نحضّرها لكم.")
+        )}
         <div class="coming-soon-rail">
           ${previewCampaigns.map((campaign) => `
             <article class="coming-soon-card">
@@ -4381,13 +4392,12 @@ function renderInfluencerDashboard() {
   const openCampaigns = eligible.length
     ? `
       <section class="feed-section">
-        <header class="feed-section__head feed-section__head--with-cta">
-          <div>
-            <h3>${escapeHtml(l("Open campaigns", "حملات مفتوحة"))}</h3>
-            <p>${escapeHtml(l("Pick one that fits you and confirm interest.", "اختر ما يناسبك وأكّد اهتمامك."))}</p>
-          </div>
-          ${eligible.length > 3 ? `<button class="link-button" data-nav="campaigns">${escapeHtml(l("See all", "عرض الكل"))} ${state.locale === "ar" ? "←" : "→"}</button>` : ""}
-        </header>
+        ${sectionHeader(
+          l("OPEN CAMPAIGNS", "حملات مفتوحة"),
+          l("Open campaigns", "حملات مفتوحة"),
+          l("Pick one that fits you and confirm interest.", "اختر ما يناسبك وأكّد اهتمامك."),
+          eligible.length > 3 ? `<button class="link-button" data-nav="campaigns">${escapeHtml(l("See all", "عرض الكل"))} ${state.locale === "ar" ? "←" : "→"}</button>` : ""
+        )}
         ${renderAvailableCampaignCards(eligible.slice(0, 3))}
       </section>
     `
@@ -4396,9 +4406,11 @@ function renderInfluencerDashboard() {
   const moreJournal = restJournal.length
     ? `
       <section class="feed-section">
-        <header class="feed-section__head">
-          <h3>${escapeHtml(l("More from the Journal", "المزيد من اليوميات"))}</h3>
-        </header>
+        ${sectionHeader(
+          l("MORE FROM THE JOURNAL", "المزيد من اليوميات"),
+          l("More from the Journal", "المزيد من اليوميات"),
+          ""
+        )}
         <div class="journal-grid">
           ${restJournal.map((entry) => {
             const body = journalBody(entry) || "";
@@ -4409,7 +4421,7 @@ function renderInfluencerDashboard() {
                   <strong>${escapeHtml(journalTitle(entry))}</strong>
                   <p class="compact">${escapeHtml(formatDateTime(entry.publishedAt || entry.createdAt))}</p>
                   <p>${escapeHtml(body.slice(0, 140))}${body.length > 140 ? "…" : ""}</p>
-                  ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more →", "اقرأ المزيد ←"))}</a>` : ""}
+                  ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>` : ""}
                 </div>
               </article>
             `;
@@ -4441,6 +4453,26 @@ function renderInfluencerDashboard() {
       ${empty}
       ${footer}
     </div>
+  `;
+}
+
+function memberIssueNumber() {
+  const launch = new Date("2026-01-01");
+  const weeks = Math.max(1, Math.floor((Date.now() - launch.getTime()) / (1000 * 60 * 60 * 24 * 7)));
+  return String(weeks).padStart(2, "0");
+}
+
+function sectionHeader(eyebrow, headline, subtitle, ctaButton = "") {
+  return `
+    <header class="section-head">
+      <span class="kicker">${escapeHtml(eyebrow)}</span>
+      <div class="section-head__row">
+        <h3>${escapeHtml(headline)}</h3>
+        ${ctaButton}
+      </div>
+      ${subtitle ? `<p class="section-head__deck">${escapeHtml(subtitle)}</p>` : ""}
+    </header>
+    <hr class="rule rule--hair">
   `;
 }
 

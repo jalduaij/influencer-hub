@@ -380,8 +380,8 @@ async function run() {
     vm.createContext(dashboardSandbox);
     vm.runInContext(renderInfluencerDashboardSource, dashboardSandbox);
     const populatedDashboardHtml = dashboardSandbox.renderInfluencerDashboard();
-    assert(/featured-journal/.test(String(populatedDashboardHtml)), "Member dashboard should render a featured journal block when a published entry exists.");
-    assert(/member-action-bar/.test(String(populatedDashboardHtml)), "Member dashboard should render the action bar when the member has an actionable participant.");
+    assert(/class="cover"/.test(String(populatedDashboardHtml)), "Member dashboard should render the featured journal cover when a published entry exists.");
+    assert(/class="dispatch"/.test(String(populatedDashboardHtml)), "Member dashboard should render the dispatch card when the member has an actionable participant.");
 
     const quietDashboardSandbox = {
       state: {
@@ -414,7 +414,7 @@ async function run() {
     vm.runInContext(renderInfluencerDashboardSource, quietDashboardSandbox);
     const quietDashboardHtml = quietDashboardSandbox.renderInfluencerDashboard();
     assert(/member-feed__empty/.test(String(quietDashboardHtml)), "Member dashboard should render the feed empty state when there is no journal, preview, eligibility, or actionable campaign.");
-    assert(!/member-action-bar/.test(String(quietDashboardHtml)), "Member dashboard should not render the action bar when there is nothing actionable.");
+    assert(!/class="dispatch"/.test(String(quietDashboardHtml)), "Member dashboard should not render the dispatch card when there is nothing actionable.");
 
     const campaignCardsSandbox = {
       state: { locale: "en", data: {} },
