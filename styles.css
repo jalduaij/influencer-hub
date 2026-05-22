@@ -1019,6 +1019,95 @@ body.nav-locked {
   letter-spacing: 0.4px;
 }
 
+.campaign-accordion--actionable {
+  border: 1px solid var(--brand-strong, var(--accent, #6c2bd9));
+  background: color-mix(in oklab, var(--brand-strong, var(--accent, #6c2bd9)) 5%, var(--panel, #fff));
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--brand-strong, var(--accent, #6c2bd9)) 10%, transparent);
+}
+
+.campaign-accordion--actionable .dashboard-summary__title {
+  font-weight: 700;
+}
+
+.dashboard-summary__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: var(--brand-strong, var(--accent, #6c2bd9));
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  align-self: flex-start;
+}
+
+details.campaign-accordion[open] .dashboard-summary__cta::after {
+  content: "";
+}
+
+.submission-form--simple {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.submission-form__primary input {
+  font-size: 16px;
+  padding: 12px 14px;
+}
+
+.submission-form__optional {
+  background: var(--panel, #fff);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.submission-form__optional summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  list-style: none;
+  padding: 4px 0;
+}
+
+.submission-form__optional summary::-webkit-details-marker {
+  display: none;
+}
+
+.submission-form__optional summary::before {
+  content: "+ ";
+  color: var(--brand-strong, var(--accent, #6c2bd9));
+  font-weight: 700;
+}
+
+.submission-form__optional[open] summary::before {
+  content: "− ";
+}
+
+.submission-form__images {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.submission-form__guide {
+  background: color-mix(in oklab, var(--brand-strong, var(--accent, #6c2bd9)) 6%, transparent);
+}
+
+.submission-form__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submission-form__submit {
+  min-width: 180px;
+  padding: 12px 22px;
+  font-weight: 700;
+}
+
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1442,6 +1531,18 @@ body.nav-locked {
 
   .coming-soon-rail {
     grid-auto-columns: 78%;
+  }
+
+  .submission-form__actions {
+    position: sticky;
+    bottom: 0;
+    padding: 12px 0;
+    background: linear-gradient(to top, var(--panel-strong) 80%, transparent);
+    z-index: 5;
+  }
+
+  .submission-form__submit {
+    width: 100%;
   }
 }
 

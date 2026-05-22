@@ -257,9 +257,20 @@ async function run() {
     const renderMemberCampaignsPageSource = clientSource.match(/function renderMemberCampaignsPage\(\) \{[\s\S]*?\n\}/)?.[0];
     const renderInfluencerPagesSource = clientSource.match(/function renderInfluencerPages\(\) \{[\s\S]*?\n\}/)?.[0];
     const renderInfluencerDashboardSource = clientSource.match(/function renderInfluencerDashboard\(\) \{[\s\S]*?\n\}/)?.[0];
+    const renderMemberCardSummarySource = clientSource.match(/function renderMemberCardSummary\(participant, campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
+    const renderSubmissionFormSource = clientSource.match(/function renderSubmissionForm\(participant, campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
+    const renderMyCampaignCardsSource = clientSource.match(/function renderMyCampaignCards\(participants, compactOnly, proofOnly = false\) \{[\s\S]*?\n\}/)?.[0];
     assert(
-      campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource && renderMemberCampaignsPageSource && renderInfluencerPagesSource && renderInfluencerDashboardSource,
-      "Expected campaign share helpers plus member campaigns/dashboard render helpers to exist in client.js."
+      campaignDeepLinkSource &&
+        defaultCampaignShareBodySource &&
+        generateCampaignShareTextSource &&
+        renderMemberCampaignsPageSource &&
+        renderInfluencerPagesSource &&
+        renderInfluencerDashboardSource &&
+        renderMemberCardSummarySource &&
+        renderSubmissionFormSource &&
+        renderMyCampaignCardsSource,
+      "Expected campaign share helpers plus member campaigns/dashboard/card render helpers to exist in client.js."
     );
     const shareSandbox = {
       state: {
@@ -404,6 +415,55 @@ async function run() {
     const quietDashboardHtml = quietDashboardSandbox.renderInfluencerDashboard();
     assert(/member-feed__empty/.test(String(quietDashboardHtml)), "Member dashboard should render the feed empty state when there is no journal, preview, eligibility, or actionable campaign.");
     assert(!/member-action-bar/.test(String(quietDashboardHtml)), "Member dashboard should not render the action bar when there is nothing actionable.");
+
+    const campaignCardsSandbox = {
+      state: { locale: "en", data: {} },
+      l: (en) => en,
+      escapeHtml: (value) => String(value ?? ""),
+      participantCanSubmit: (participant) => ["confirmed", "visited"].includes(participant.status),
+      participantPriority: (participant) => (participant.status === "confirmed" ? 0 : 1),
+      currentCampaigns: () => [
+        {
+          id: 201,
+          titleEn: "Cold Brew Shop Visit",
+          descriptionEn: "Cold brew details",
+          visitDeadline: "2026-05-28",
+          submissionDeadline: "2026-05-30",
+          captionGuide: "Guide",
+          offerDescription: "Free cold brew",
+        },
+        {
+          id: 202,
+          titleEn: "Ladies Beauty Day",
+          descriptionEn: "Beauty details",
+          visitDeadline: "2026-05-29",
+          submissionDeadline: "2026-05-31",
+          captionGuide: "",
+          offerDescription: "Beauty set",
+        },
+      ],
+      campaignTitle: (campaign) => campaign?.titleEn || "",
+      campaignDescription: (campaign) => campaign?.descriptionEn || "",
+      renderParticipantImages: () => "",
+      renderPlatformSelect: () => "<select></select>",
+      renderCampaignBanner: () => "<div class='banner'></div>",
+      renderCodeDetails: () => "<div class='code-details'></div>",
+      participantStatusLabelShort: (status) => (status === "confirmed" ? "Ready" : status),
+      statusTone: () => "warning",
+      formatDate: (value) => value || "",
+    };
+    vm.createContext(campaignCardsSandbox);
+    vm.runInContext(`${renderMemberCardSummarySource}\n${renderSubmissionFormSource}\n${renderMyCampaignCardsSource}`, campaignCardsSandbox);
+    const campaignCardsHtml = campaignCardsSandbox.renderMyCampaignCards(
+      [
+        { id: 11, campaignId: 201, status: "confirmed", joinedAt: "2026-05-11T10:00:00.000Z", assignedCodeValue: "CBS-001", socialLink: "", feedback: "", platform: "", images: [] },
+        { id: 12, campaignId: 202, status: "confirmed", joinedAt: "2026-05-10T10:00:00.000Z", assignedCodeValue: "LBD-002", socialLink: "", feedback: "", platform: "", images: [] },
+      ],
+      false,
+      false
+    );
+    assert(/campaign-accordion--actionable/.test(String(campaignCardsHtml)), "Member campaigns cards should mark actionable rows with the actionable accordion class.");
+    assert(/<details class="timeline-card campaign-accordion campaign-accordion--actionable" open>/.test(String(campaignCardsHtml)), "The first actionable member campaigns card should render open by default.");
 
     const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },

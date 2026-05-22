@@ -68,6 +68,7 @@ const state = {
   generatedLink: "",
   resetToken: new URLSearchParams(window.location.search).get("resetToken") || "",
   pendingCampaignDeeplink: null,
+  justNavigatedToCampaigns: false,
   reportTab: "campaigns",
   reportSorts: defaultReportSorts(),
   influencerFilters: {
@@ -1552,6 +1553,10 @@ function render(options = {}) {
   document.title = currentDocumentTitle();
   app.innerHTML = renderShell();
   document.body.classList.toggle("nav-locked", state.mobileNavOpen);
+  if (state.currentPage === "campaigns" && state.justNavigatedToCampaigns) {
+    focusFirstActionableSubmission();
+    state.justNavigatedToCampaigns = false;
+  }
   syncFlashLayer();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
@@ -4542,9 +4547,10 @@ function renderMemberCampaignsPage() {
   `;
 }
 
-function renderMemberCardSummary(participant, campaign) {
+function renderMemberCardSummary(participant, campaign, options = {}) {
+  const actionable = Boolean(options.isActionable);
   return `
-    <summary class="campaign-accordion-summary dashboard-summary">
+    <summary class="campaign-accordion-summary dashboard-summary${actionable ? " dashboard-summary--actionable" : ""}">
       <div class="campaign-accordion-summary__content">
         <div class="dashboard-summary__row">
           <strong class="dashboard-summary__title">${escapeHtml(campaignTitle(campaign))}</strong>
@@ -4560,8 +4566,73 @@ function renderMemberCardSummary(participant, campaign) {
           <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
         </div>
       </div>
+      ${
+        actionable
+          ? `
+            <span class="dashboard-summary__cta">
+              ${escapeHtml(l("Submit proof", "إرسال الإثبات"))} <span aria-hidden="true">${state.locale === "ar" ? "←" : "→"}</span>
+            </span>
+          `
+          : ""
+      }
     </summary>
   `;
+}
+
+function renderSubmissionForm(participant, campaign, options = {}) {
+  const extraClass = options.extraClass ? ` ${options.extraClass}` : "";
+  const hasSavedImages = Array.isArray(participant.images) && participant.images.length > 0;
+  const hasSavedNotes = Boolean(String(participant.feedback || "").trim() || String(participant.platform || "").trim());
+  return `
+    <form class="form-grid submission-form submission-form--simple${extraClass}" data-participant-id="${participant.id}">
+      ${
+        campaign.captionGuide
+          ? `
+            <article class="note-card submission-form__guide">
+              <strong>${l("Posting guide from PICK", "دليل النشر من PICK")}</strong>
+              <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
+            </article>
+          `
+          : ""
+      }
+      <label class="field submission-form__primary">
+        <span>${l("Paste your post link", "ألصق رابط منشورك")}</span>
+        <input name="socialLink" type="url" required placeholder="https://instagram.com/p/..." value="${escapeHtml(participant.socialLink || "")}" />
+      </label>
+
+      <details class="submission-form__optional" ${hasSavedImages ? "open" : ""}>
+        <summary>${l("Add screenshots (optional)", "أضف لقطات شاشة (اختياري)")}</summary>
+        <div class="submission-form__images">
+          <label class="field"><span>${l("Image 1", "الصورة 1")}</span><input name="image1" type="file" accept="image/*" /></label>
+          <label class="field"><span>${l("Image 2", "الصورة 2")}</span><input name="image2" type="file" accept="image/*" /></label>
+          <label class="field"><span>${l("Image 3", "الصورة 3")}</span><input name="image3" type="file" accept="image/*" /></label>
+          <p class="compact">${l("Up to 3 images total.", "حتى 3 صور كحد أقصى.")}</p>
+          <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
+        </div>
+      </details>
+
+      <details class="submission-form__optional" ${hasSavedNotes ? "open" : ""}>
+        <summary>${l("Add a note (optional)", "أضف ملاحظة (اختياري)")}</summary>
+        <label class="field"><span>${l("Feedback or notes", "ملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
+        <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
+      </details>
+
+      <div class="submission-form__actions">
+        <button type="submit" class="submission-form__submit">${l("Submit proof", "إرسال الإثبات")}</button>
+      </div>
+    </form>
+  `;
+}
+
+function focusFirstActionableSubmission() {
+  window.setTimeout(() => {
+    const openCard = document.querySelector("details.campaign-accordion[open].campaign-accordion--actionable");
+    if (!openCard) return;
+    const linkInput = openCard.querySelector('input[name="socialLink"]');
+    if (!linkInput) return;
+    linkInput.focus({ preventScroll: false });
+    linkInput.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 60);
 }
 
 function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
@@ -4573,31 +4644,14 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
     return rightDate - leftDate;
   });
   const useAccordion = true;
+  const firstActionableIndex = sortedParticipants.findIndex((participant) => participantCanSubmit(participant));
 
   return participants.length
     ? `<div class="stack">${sortedParticipants
-        .map((participant) => {
+        .map((participant, index) => {
           const campaign = currentCampaigns().find((item) => item.id === participant.campaignId);
           if (!campaign) return "";
-          const pendingForm = participantCanSubmit(participant) && !compactOnly ? `
-            <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-top: 14px;">
-              ${campaign.captionGuide ? `
-                <article class="note-card" style="margin: 12px 0; background: rgba(112, 47, 138, 0.04);">
-                  <strong>${l("Posting guide from PICK", "دليل النشر من PICK")}</strong>
-                  <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
-                </article>
-              ` : ""}
-              <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
-              <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
-              <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
-              <label class="field"><span>${l("Image 1", "الصورة 1")}</span><input name="image1" type="file" accept="image/*" /></label>
-              <label class="field"><span>${l("Image 2", "الصورة 2")}</span><input name="image2" type="file" accept="image/*" /></label>
-              <label class="field"><span>${l("Image 3", "الصورة 3")}</span><input name="image3" type="file" accept="image/*" /></label>
-              <p class="compact field-span-full">${l("Up to 3 images total.", "حتى 3 صور كحد أقصى.")}</p>
-              <div class="row-wrap field-span-full">${renderParticipantImages(participant.images || [])}</div>
-              <button type="submit">${l("Submit proof", "إرسال الإثبات")}</button>
-            </form>
-          ` : "";
+          const pendingForm = participantCanSubmit(participant) && !compactOnly ? renderSubmissionForm(participant, campaign) : "";
           const dashboardBodyBlock = `
             <p class="compact" style="margin-top: 10px;">
               ${l("Show your code at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض كودك في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
@@ -4638,9 +4692,13 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           const accordionBody = proofOnly ? dashboardBodyBlock : richMyCampaignsBody;
 
           if (useAccordion) {
+            const isActionable = participantCanSubmit(participant);
+            const isFirstActionable = isActionable && index === firstActionableIndex;
+            const openAttr = isFirstActionable ? " open" : "";
+            const accentClass = isActionable ? " campaign-accordion--actionable" : "";
             return `
-              <details class="timeline-card campaign-accordion">
-                ${renderMemberCardSummary(participant, campaign)}
+              <details class="timeline-card campaign-accordion${accentClass}"${openAttr}>
+                ${renderMemberCardSummary(participant, campaign, { isActionable })}
                 <div class="campaign-accordion-body">
                   ${accordionBody}
                 </div>
@@ -4695,25 +4753,7 @@ function renderInfluencerCampaignPreviewPage() {
       }
       ${
         participant && participantCanSubmit(participant)
-          ? `
-            <form class="form-grid submission-form" data-participant-id="${participant.id}" style="margin-bottom: 16px;">
-              ${campaign.captionGuide ? `
-                <article class="note-card" style="margin: 12px 0; background: rgba(112, 47, 138, 0.04);">
-                  <strong>${l("Posting guide from PICK", "دليل النشر من PICK")}</strong>
-                  <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
-                </article>
-              ` : ""}
-              <label class="field"><span>${l("Social media link", "رابط السوشيال")}</span><input name="socialLink" type="url" required value="${escapeHtml(participant.socialLink || "")}" /></label>
-              <label class="field"><span>${l("Feedback", "الملاحظات")}</span><textarea name="feedback">${escapeHtml(participant.feedback || "")}</textarea></label>
-              <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", participant.platform || "")}</label>
-              <label class="field"><span>${l("Image 1", "الصورة 1")}</span><input name="image1" type="file" accept="image/*" /></label>
-              <label class="field"><span>${l("Image 2", "الصورة 2")}</span><input name="image2" type="file" accept="image/*" /></label>
-              <label class="field"><span>${l("Image 3", "الصورة 3")}</span><input name="image3" type="file" accept="image/*" /></label>
-              <p class="compact field-span-full">${l("Up to 3 images total.", "حتى 3 صور كحد أقصى.")}</p>
-              <div class="row-wrap field-span-full">${renderParticipantImages(participant.images || [])}</div>
-              <button type="submit">${l("Submit proof", "إرسال الإثبات")}</button>
-            </form>
-          `
+          ? renderSubmissionForm(participant, campaign, { extraClass: "submission-form--preview" })
           : ""
       }
       ${
@@ -5069,7 +5109,9 @@ async function handleClick(event) {
 
   if (target.dataset.nav) {
     state.mobileNavOpen = false;
-    state.currentPage = normalizePage(target.dataset.nav);
+    const nextPage = normalizePage(target.dataset.nav);
+    state.justNavigatedToCampaigns = nextPage === "campaigns" && state.currentPage !== "campaigns";
+    state.currentPage = nextPage;
     render();
     return;
   }
@@ -5328,6 +5370,7 @@ async function handleClick(event) {
   if (action === "back-to-campaigns") {
     state.manualReserveCodeId = null;
     state.currentPage = "campaigns";
+    state.justNavigatedToCampaigns = true;
     render();
     return;
   }
