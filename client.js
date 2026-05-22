@@ -616,6 +616,11 @@ function myParticipantForCampaign(campaignId) {
   return (state.data?.participants || []).find((participant) => participant.campaignId === Number(campaignId)) || null;
 }
 
+function findCampaignForParticipant(participant) {
+  if (!participant) return null;
+  return currentCampaigns().find((campaign) => campaign.id === Number(participant.campaignId)) || null;
+}
+
 function eligibleCampaigns() {
   const eligible = new Set(state.data?.eligibleCampaignIds || []);
   return currentCampaigns().filter((campaign) => eligible.has(campaign.id));
@@ -681,6 +686,36 @@ function eligibleInfluencersForCampaign(campaign) {
 
 function notificationCards() {
   return state.data?.notifications || [];
+}
+
+function renderNotificationsBell() {
+  const items = notificationCards();
+  return `
+    <details class="notification-bell">
+      <summary class="notification-bell__summary" aria-label="${escapeHtml(l("Open notifications", "فتح الإشعارات"))}">
+        <span class="notification-bell__icon" aria-hidden="true">🔔</span>
+        <span class="notification-bell__count">${items.length}</span>
+      </summary>
+      <div class="notification-bell__panel">
+        <strong>${escapeHtml(l("Notifications", "الإشعارات"))}</strong>
+        ${
+          items.length
+            ? items
+                .slice(0, 4)
+                .map(
+                  (item) => `
+                    <article class="notification-bell__item">
+                      <span class="eyebrow">${escapeHtml(localizedCopy(item.title))}</span>
+                      <p>${escapeHtml(localizedCopy(item.body))}</p>
+                    </article>
+                  `
+                )
+                .join("")
+            : `<p class="compact">${escapeHtml(l("No notifications yet.", "لا توجد إشعارات بعد."))}</p>`
+        }
+      </div>
+    </details>
+  `;
 }
 
 function auditActionLabel(action) {
@@ -4248,81 +4283,159 @@ function renderReportCards(rows) {
 }
 
 function renderInfluencerDashboard() {
-  const participants = state.data.participants || [];
-  const readyToSubmitParticipants = participants.filter((participant) => participantCanSubmit(participant));
+  const participants = state.data?.participants || [];
+  const readyToSubmit = participants.filter((participant) => participantCanSubmit(participant));
+  const eligible = eligibleCampaigns();
   const previewCampaigns = state.data?.previewCampaigns || [];
   const journalEntries = state.data?.journalEntries || [];
-  return `
-    ${pageHeader(
-      l("Member Dashboard", "لوحة العضو"),
-      l("Your campaigns, your codes, your moments. All in one place 💜", "حملاتك، أكوادك، لحظاتك. كلها في مكان واحد 💜"),
-      { showNotifications: true }
-    )}
-    ${metricGrid([
-      { label: l("Eligible campaigns", "الحملات المؤهلة"), value: eligibleCampaigns().length, note: l("Available to join", "متاحة للانضمام") },
-      { label: l("Ready to submit", "جاهزة للإرسال"), value: participants.filter((participant) => participantCanSubmit(participant) && participant.status !== "submitted").length, note: l("Code reserved — post and submit", "الكود محجوز — انشر ثم سلّم") },
-      { label: l("Submitted", "تم الإرسال"), value: participants.filter((item) => ["submitted", "completed"].includes(item.status)).length, note: l("Already delivered", "تم تسليمها") },
-    ])}
-    <section class="content-grid">
-      <section class="panel panel-wide">
-        <h3>${l("Submit your proof", "أرسل إثباتك")}</h3>
-        <p class="panel-subtitle">${l("Your codes are reserved. Visit any PICK branch to redeem your offer, then submit your post link below.", "أكوادك محجوزة. زر أي فرع PICK لاستلام عرضك، ثم أرسل رابط منشورك أدناه.")}</p>
-        ${readyToSubmitParticipants.length
-          ? renderMyCampaignCards(readyToSubmitParticipants, false, true)
-          : `<div class="empty-state">${l("No campaigns waiting on your proof right now. Nice work 💜", "لا توجد حملات تنتظر إثباتك حالياً. عمل رائع 💜")}</div>`}
-      </section>
-      <section class="panel">
-        <h3>${l("Available Campaigns", "الحملات المتاحة")}</h3>
-        ${renderAvailableCampaignCards(eligibleCampaigns().slice(0, 4))}
-      </section>
-    </section>
-    ${previewCampaigns.length ? `
-      <section class="panel">
-        <div class="row report-toolbar-head">
-          <div>
-            <h3>${l("Coming soon", "قريباً")}</h3>
-            <p class="panel-subtitle">${l("New campaigns we're cooking up. Watch this space 💜", "حملات جديدة نحضرها لكم. تابعونا 💜")}</p>
-          </div>
-          <span class="badge">${previewCampaigns.length}</span>
+  const me = state.currentUser || {};
+  const firstName = String(me.fullName || me.name || "").trim().split(/\s+/)[0] || l("there", "بكم");
+
+  const greeting = `
+    <header class="member-feed__hero">
+      <div>
+        <h1>${escapeHtml(l(`Hi ${firstName} 👋`, `أهلاً ${firstName} 👋`))}</h1>
+        <p class="member-feed__hero-subtitle">${escapeHtml(l("Welcome back to the Club.", "أهلاً بعودتك إلى النادي."))}</p>
+      </div>
+      ${renderNotificationsBell()}
+    </header>
+  `;
+
+  let actionBar = "";
+  if (readyToSubmit.length) {
+    const next = readyToSubmit[0];
+    const nextCampaign = findCampaignForParticipant(next);
+    const title = nextCampaign ? campaignTitle(nextCampaign) : l("a campaign", "حملة");
+    const moreLabel = readyToSubmit.length > 1
+      ? l(` + ${readyToSubmit.length - 1} more`, ` + ${readyToSubmit.length - 1} أخرى`)
+      : "";
+    const actionText = state.locale === "ar"
+      ? `كود ${title} جاهز للإرسال${moreLabel}`
+      : `Your ${title} code is ready to submit${moreLabel}`;
+    actionBar = `
+      <button class="member-action-bar" data-nav="campaigns">
+        <span class="member-action-bar__dot"></span>
+        <span class="member-action-bar__text">${escapeHtml(actionText)}</span>
+        <span class="member-action-bar__chevron">${state.locale === "ar" ? "←" : "→"}</span>
+      </button>
+    `;
+  }
+
+  let featuredJournal = "";
+  let restJournal = [];
+  if (journalEntries.length) {
+    const featured = journalEntries[0];
+    restJournal = journalEntries.slice(1, 3);
+    const body = journalBody(featured) || "";
+    const excerpt = body.slice(0, 220);
+    featuredJournal = `
+      <article class="featured-journal">
+        ${
+          featured.imagePath
+            ? `<img class="featured-journal__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
+            : `<div class="featured-journal__image featured-journal__image--placeholder">💜</div>`
+        }
+        <div class="featured-journal__body">
+          <span class="featured-journal__eyebrow">${escapeHtml(l("THE JOURNAL", "اليوميات"))}</span>
+          <h2>${escapeHtml(journalTitle(featured))}</h2>
+          <p class="featured-journal__date">${escapeHtml(formatDateTime(featured.publishedAt || featured.createdAt))}</p>
+          <p class="featured-journal__excerpt">${escapeHtml(excerpt)}${body.length > 220 ? "…" : ""}</p>
+          ${
+            featured.externalLink
+              ? `<a class="featured-journal__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more →", "اقرأ المزيد ←"))}</a>`
+              : ""
+          }
         </div>
-        <div class="preview-grid">
+      </article>
+    `;
+  }
+
+  const comingSoon = previewCampaigns.length
+    ? `
+      <section class="feed-section">
+        <header class="feed-section__head">
+          <h3>${escapeHtml(l("Coming soon", "قريباً"))}</h3>
+          <p>${escapeHtml(l("Campaigns we're cooking up.", "حملات نحضّرها لكم."))}</p>
+        </header>
+        <div class="coming-soon-rail">
           ${previewCampaigns.map((campaign) => `
-            <article class="preview-card">
+            <article class="coming-soon-card">
               ${renderCampaignBanner(campaign, "thumb")}
-              <div class="preview-card__body">
-                <span class="badge">${l("Coming soon", "قريباً")}</span>
+              <div class="coming-soon-card__body">
+                <span class="badge">${escapeHtml(l("Coming soon", "قريباً"))}</span>
                 <strong>${escapeHtml(campaignTitle(campaign))}</strong>
-                ${campaign.startDate ? `<p class="compact">${l("Opens around", "يفتح قرابة")} ${formatDate(campaign.startDate)}</p>` : ""}
-                <p class="compact">${escapeHtml((campaignDescription(campaign) || "").slice(0, 120))}${(campaignDescription(campaign) || "").length > 120 ? "…" : ""}</p>
+                ${campaign.startDate ? `<p class="compact">${escapeHtml(l("Opens around", "يفتح قرابة"))} ${escapeHtml(formatDate(campaign.startDate))}</p>` : ""}
               </div>
             </article>
           `).join("")}
         </div>
       </section>
-    ` : ""}
-    ${journalEntries.length ? `
-      <section class="panel">
-        <div class="row report-toolbar-head">
+    `
+    : "";
+
+  const openCampaigns = eligible.length
+    ? `
+      <section class="feed-section">
+        <header class="feed-section__head feed-section__head--with-cta">
           <div>
-            <h3>${l("The PICK Journal", "يوميات بك")}</h3>
-            <p class="panel-subtitle">${l("News, stories, and behind-the-scenes from PICK Social Club.", "أخبار وقصص ولقطات من خلف الكواليس في نادي بك.")}</p>
+            <h3>${escapeHtml(l("Open campaigns", "حملات مفتوحة"))}</h3>
+            <p>${escapeHtml(l("Pick one that fits you and confirm interest.", "اختر ما يناسبك وأكّد اهتمامك."))}</p>
           </div>
-        </div>
-        <div class="journal-list">
-          ${journalEntries.map((entry) => `
-            <article class="journal-entry">
-              ${entry.imagePath ? `<img class="journal-entry__image" src="${entry.imagePath}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
-              <div class="journal-entry__body">
-                <strong>${escapeHtml(journalTitle(entry))}</strong>
-                <p class="compact">${formatDateTime(entry.publishedAt || entry.createdAt)}</p>
-                <p>${escapeHtml(journalBody(entry))}</p>
-                ${entry.externalLink ? `<a class="table-link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${l("Read more", "اقرأ المزيد")}</a>` : ""}
-              </div>
-            </article>
-          `).join("")}
+          ${eligible.length > 3 ? `<button class="link-button" data-nav="campaigns">${escapeHtml(l("See all", "عرض الكل"))} ${state.locale === "ar" ? "←" : "→"}</button>` : ""}
+        </header>
+        ${renderAvailableCampaignCards(eligible.slice(0, 3))}
+      </section>
+    `
+    : "";
+
+  const moreJournal = restJournal.length
+    ? `
+      <section class="feed-section">
+        <header class="feed-section__head">
+          <h3>${escapeHtml(l("More from the Journal", "المزيد من اليوميات"))}</h3>
+        </header>
+        <div class="journal-grid">
+          ${restJournal.map((entry) => {
+            const body = journalBody(entry) || "";
+            return `
+              <article class="journal-card">
+                ${entry.imagePath ? `<img class="journal-card__image" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
+                <div class="journal-card__body">
+                  <strong>${escapeHtml(journalTitle(entry))}</strong>
+                  <p class="compact">${escapeHtml(formatDateTime(entry.publishedAt || entry.createdAt))}</p>
+                  <p>${escapeHtml(body.slice(0, 140))}${body.length > 140 ? "…" : ""}</p>
+                  ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more →", "اقرأ المزيد ←"))}</a>` : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
         </div>
       </section>
-    ` : ""}
+    `
+    : "";
+
+  const footer = `
+    <footer class="member-feed__footer">
+      <button class="pill-button" data-nav="campaigns">${escapeHtml(l("All my campaigns", "كل حملاتي"))}</button>
+      <button class="pill-button" data-nav="profile">${escapeHtml(l("My profile", "ملفي الشخصي"))}</button>
+    </footer>
+  `;
+
+  const empty = !readyToSubmit.length && !eligible.length && !previewCampaigns.length && !journalEntries.length
+    ? `<div class="empty-state member-feed__empty">${escapeHtml(l("You're all set. We'll let you know when there's a campaign for you 💜", "أنت جاهز. سنخبرك حالما تظهر حملة تناسبك 💜"))}</div>`
+    : "";
+
+  return `
+    <div class="member-feed">
+      ${greeting}
+      ${actionBar}
+      ${featuredJournal}
+      ${comingSoon}
+      ${openCampaigns}
+      ${moreJournal}
+      ${empty}
+      ${footer}
+    </div>
   `;
 }
 

@@ -256,9 +256,10 @@ async function run() {
     const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
     const renderMemberCampaignsPageSource = clientSource.match(/function renderMemberCampaignsPage\(\) \{[\s\S]*?\n\}/)?.[0];
     const renderInfluencerPagesSource = clientSource.match(/function renderInfluencerPages\(\) \{[\s\S]*?\n\}/)?.[0];
+    const renderInfluencerDashboardSource = clientSource.match(/function renderInfluencerDashboard\(\) \{[\s\S]*?\n\}/)?.[0];
     assert(
-      campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource && renderMemberCampaignsPageSource && renderInfluencerPagesSource,
-      "Expected campaign share helpers and merged member campaigns page helpers to exist in client.js."
+      campaignDeepLinkSource && defaultCampaignShareBodySource && generateCampaignShareTextSource && renderMemberCampaignsPageSource && renderInfluencerPagesSource && renderInfluencerDashboardSource,
+      "Expected campaign share helpers plus member campaigns/dashboard render helpers to exist in client.js."
     );
     const shareSandbox = {
       state: {
@@ -337,6 +338,72 @@ async function run() {
     vm.runInContext(renderMemberCampaignsPageSource, emptyCampaignsSandbox);
     const emptyCampaignsHtml = emptyCampaignsSandbox.renderMemberCampaignsPage();
     assert(/No campaigns yet\. Check back later/.test(String(emptyCampaignsHtml)), "Merged member campaigns page should show the single empty fallback when there are no open, active, or historical campaigns.");
+
+    const dashboardSandbox = {
+      state: {
+        locale: "en",
+        currentUser: { fullName: "Laila Q8 Bites" },
+        data: {
+          participants: [{ id: 1, campaignId: 201, status: "confirmed" }],
+          previewCampaigns: [{ id: 301, titleEn: "Soon", descriptionEn: "Preview", startDate: "2026-05-30" }],
+          journalEntries: [{ id: 401, titleEn: "Featured story", bodyEn: "Published journal body for the featured dashboard card.", publishedAt: "2026-05-20T09:00:00.000Z", createdAt: "2026-05-20T09:00:00.000Z" }],
+          campaigns: [{ id: 201, titleEn: "Cold Brew Shop Visit" }],
+          notifications: [{ title: { en: "New code assigned" }, body: { en: "Your code is ready." } }],
+        },
+      },
+      l: (en) => en,
+      escapeHtml: (value) => String(value ?? ""),
+      participantCanSubmit: (participant) => ["confirmed", "visited"].includes(participant.status),
+      eligibleCampaigns: () => [{ id: 501, titleEn: "Open campaign" }],
+      findCampaignForParticipant: (participant) => ({ id: participant.campaignId, titleEn: "Cold Brew Shop Visit" }),
+      campaignTitle: (campaign) => campaign?.titleEn || "",
+      journalTitle: (entry) => entry?.titleEn || "",
+      journalBody: (entry) => entry?.bodyEn || "",
+      renderCampaignBanner: () => "<div class='banner'></div>",
+      campaignDescription: (campaign) => campaign?.descriptionEn || "",
+      formatDate: (value) => value || "",
+      formatDateTime: (value) => value || "",
+      renderAvailableCampaignCards: (rows) => `<div class="available-count">${rows.length}</div>`,
+      renderNotificationsBell: () => '<div class="notification-bell"></div>',
+    };
+    vm.createContext(dashboardSandbox);
+    vm.runInContext(renderInfluencerDashboardSource, dashboardSandbox);
+    const populatedDashboardHtml = dashboardSandbox.renderInfluencerDashboard();
+    assert(/featured-journal/.test(String(populatedDashboardHtml)), "Member dashboard should render a featured journal block when a published entry exists.");
+    assert(/member-action-bar/.test(String(populatedDashboardHtml)), "Member dashboard should render the action bar when the member has an actionable participant.");
+
+    const quietDashboardSandbox = {
+      state: {
+        locale: "en",
+        currentUser: { fullName: "Quiet Member" },
+        data: {
+          participants: [],
+          previewCampaigns: [],
+          journalEntries: [],
+          campaigns: [],
+          notifications: [],
+        },
+      },
+      l: (en) => en,
+      escapeHtml: (value) => String(value ?? ""),
+      participantCanSubmit: () => false,
+      eligibleCampaigns: () => [],
+      findCampaignForParticipant: () => null,
+      campaignTitle: (campaign) => campaign?.titleEn || "",
+      journalTitle: (entry) => entry?.titleEn || "",
+      journalBody: (entry) => entry?.bodyEn || "",
+      renderCampaignBanner: () => "",
+      campaignDescription: () => "",
+      formatDate: (value) => value || "",
+      formatDateTime: (value) => value || "",
+      renderAvailableCampaignCards: () => "",
+      renderNotificationsBell: () => '<div class="notification-bell"></div>',
+    };
+    vm.createContext(quietDashboardSandbox);
+    vm.runInContext(renderInfluencerDashboardSource, quietDashboardSandbox);
+    const quietDashboardHtml = quietDashboardSandbox.renderInfluencerDashboard();
+    assert(/member-feed__empty/.test(String(quietDashboardHtml)), "Member dashboard should render the feed empty state when there is no journal, preview, eligibility, or actionable campaign.");
+    assert(!/member-action-bar/.test(String(quietDashboardHtml)), "Member dashboard should not render the action bar when there is nothing actionable.");
 
     const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },
