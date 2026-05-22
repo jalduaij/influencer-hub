@@ -345,6 +345,74 @@ async function run() {
     assert(adminCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Admin bootstrap should round-trip campaign captionGuide.");
     assert(adminCampaign?.whatsappMessage === "Custom body for smoke", "Admin bootstrap should round-trip campaign whatsappMessage.");
 
+    const contentStamp = Date.now();
+    const publishedJournalTitle = `Smoke Journal ${contentStamp}`;
+    const draftJournalTitle = `Smoke Draft Journal ${contentStamp}`;
+    const publishedJournalForm = new FormData();
+    publishedJournalForm.append("titleEn", publishedJournalTitle);
+    publishedJournalForm.append("titleAr", `يوميات الدخان ${contentStamp}`);
+    publishedJournalForm.append("bodyEn", "Published smoke journal entry for dashboard coverage.");
+    publishedJournalForm.append("bodyAr", "منشور يوميات منشور لاختبار لوحة العضو.");
+    publishedJournalForm.append("externalLink", "https://instagram.com/p/smoke-journal");
+    publishedJournalForm.append("publish", "1");
+    const createPublishedJournal = await fetch(`${baseUrl}/api/journal`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+      },
+      body: publishedJournalForm,
+    });
+    assert(createPublishedJournal.ok, `Published journal creation failed with status ${createPublishedJournal.status}.`);
+    const createdPublishedJournal = await createPublishedJournal.json();
+    assert(createdPublishedJournal.entry?.status === "published", "Published journal entry should return status published.");
+
+    const draftJournalForm = new FormData();
+    draftJournalForm.append("titleEn", draftJournalTitle);
+    draftJournalForm.append("titleAr", `مسودة يوميات ${contentStamp}`);
+    draftJournalForm.append("bodyEn", "Draft smoke journal entry.");
+    draftJournalForm.append("bodyAr", "مسودة لا يجب أن يراها العضو.");
+    const createDraftJournal = await fetch(`${baseUrl}/api/journal`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+      },
+      body: draftJournalForm,
+    });
+    assert(createDraftJournal.ok, `Draft journal creation failed with status ${createDraftJournal.status}.`);
+
+    const adminBootstrapAfterJournal = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    }).then((response) => response.json());
+    const adminJournalEntry = (adminBootstrapAfterJournal.journalEntries || []).find((entry) => entry.id === createdPublishedJournal.entry.id);
+    assert(adminJournalEntry?.status === "published", "Admin bootstrap should include the published journal entry.");
+
+    const previewCampaignPayload = {
+      ...freshCampaignPayload,
+      titleEn: "Smoke Coming Soon Campaign",
+      titleAr: "حملة قريباً للدخان",
+      descriptionEn: "Draft preview campaign that should tease members without opening eligibility.",
+      descriptionAr: "حملة مسودة للمعاينة فقط بدون فتح الأهلية.",
+      status: "draft",
+      previewMode: true,
+      startDate: isoDateDaysFromNow(14),
+      endDate: isoDateDaysFromNow(18),
+      visitDeadline: isoDateDaysFromNow(19),
+      submissionDeadline: isoDateDaysFromNow(20),
+    };
+    const createPreviewCampaign = await fetch(`${baseUrl}/api/campaigns`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(previewCampaignPayload),
+    });
+    assert(createPreviewCampaign.ok, `Preview campaign creation failed with status ${createPreviewCampaign.status}.`);
+    const previewCampaignId = (await createPreviewCampaign.json()).campaign.id;
+
     const csvForm = new FormData();
     csvForm.append("codesFile", new Blob(["code\nSMOKE-001\nSMOKE-002\n"], { type: "text/csv" }), "smoke-codes.csv");
     const uploadCodes = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/codes/upload`, {
@@ -502,6 +570,50 @@ async function run() {
     );
     const influencerCampaign = influencerBootstrap.campaigns.find((campaign) => campaign.id === freshCampaignId);
     assert(influencerCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Influencer bootstrap should include campaign captionGuide.");
+    assert(
+      (influencerBootstrap.previewCampaigns || []).some((campaign) => campaign.id === previewCampaignId),
+      "Member bootstrap should include draft preview campaigns marked as Coming Soon."
+    );
+    assert(
+      !(influencerBootstrap.eligibleCampaignIds || []).includes(previewCampaignId),
+      "Preview-only draft campaigns should not appear in eligibleCampaignIds."
+    );
+    assert(
+      (influencerBootstrap.journalEntries || []).some((entry) => entry.id === createdPublishedJournal.entry.id),
+      "Member bootstrap should include published journal entries."
+    );
+    assert(
+      !(influencerBootstrap.journalEntries || []).some((entry) => entry.titleEn === draftJournalTitle || entry.titleAr === `مسودة يوميات ${contentStamp}`),
+      "Member bootstrap should not expose draft journal entries."
+    );
+    assert(
+      (influencerBootstrap.journalEntries || []).every((entry) => entry.status === "published"),
+      "Member bootstrap should only expose published journal entries."
+    );
+
+    const nasserLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ email: "nasser@pick.internal", password: "pick123" }),
+    });
+    assert(nasserLogin.ok, `Campaign manager login failed with status ${nasserLogin.status}.`);
+    const nasserCookie = nasserLogin.headers.get("set-cookie");
+    assert(nasserCookie, "Campaign manager login did not return a session cookie.");
+    const forbiddenJournalUpdate = await fetch(`${baseUrl}/api/journal/${createdPublishedJournal.entry.id}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: nasserCookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        titleEn: `${publishedJournalTitle} Edited`,
+        titleAr: `يوميات الدخان ${contentStamp}`,
+        bodyEn: "Should not be allowed.",
+        bodyAr: "يجب ألا يسمح بهذا.",
+      }),
+    });
+    assert(forbiddenJournalUpdate.status === 403, `Campaign manager should receive 403 when editing another author's journal entry, got ${forbiddenJournalUpdate.status}.`);
 
     const maleLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",

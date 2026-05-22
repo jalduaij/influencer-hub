@@ -60,6 +60,7 @@ const state = {
   selectedBranchId: null,
   selectedInfluencerId: null,
   selectedManagerId: null,
+  selectedJournalEntryId: null,
   influencerProfileReturnPage: null,
   campaignCodesByCampaign: {},
   manualReserveCodeId: null,
@@ -229,10 +230,10 @@ function defaultPageForRole(role) {
 
 function validPagesForRole(role) {
   if (role === "admin") {
-    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "branches", "branch-edit", "master-data", "managers", "manager-edit", "reports", "profile"]);
+    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "branches", "branch-edit", "master-data", "managers", "manager-edit", "journal", "reports", "profile"]);
   }
   if (role === "campaign_manager") {
-    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "reports", "profile"]);
+    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "journal", "reports", "profile"]);
   }
   return new Set(["dashboard", "campaigns", "campaign-preview", "profile"]);
 }
@@ -560,6 +561,37 @@ function campaignAudience(campaign) {
   return campaign.audience || campaign.audienceAr;
 }
 
+function journalTitle(entry) {
+  if (state.locale === "ar") return entry?.titleAr || entry?.titleEn || "";
+  return entry?.titleEn || entry?.titleAr || "";
+}
+
+function journalBody(entry) {
+  if (state.locale === "ar") return entry?.bodyAr || entry?.bodyEn || "";
+  return entry?.bodyEn || entry?.bodyAr || "";
+}
+
+function journalStatusLabel(status) {
+  if (status === "published") return l("Published", "منشور");
+  if (status === "draft") return l("Draft", "مسودة");
+  if (status === "deleted") return l("Deleted", "محذوف");
+  return status || "-";
+}
+
+function journalStatusTone(status) {
+  if (status === "published") return "success";
+  if (status === "draft") return "warning";
+  if (status === "deleted") return "danger";
+  return "";
+}
+
+function canManageJournalEntryClient(entry) {
+  return Boolean(
+    state.currentUser?.role === "admin" ||
+    (state.currentUser?.role === "campaign_manager" && Number(entry?.authorUserId) === Number(state.currentUser?.id))
+  );
+}
+
 function currentCampaigns() {
   return state.data?.campaigns || [];
 }
@@ -670,6 +702,11 @@ function auditActionLabel(action) {
     "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+    "journal.created": l("Created journal entry", "أنشأ منشوراً"),
+    "journal.updated": l("Updated journal entry", "حدّث منشوراً"),
+    "journal.deleted": l("Deleted journal entry", "حذف منشوراً"),
+    "journal.published": l("Published journal entry", "نشر منشوراً"),
+    "journal.unpublished": l("Unpublished journal entry", "ألغى نشر منشور"),
     "admin.uat_data_seeded": l("Reset UAT data", "أعاد ضبط بيانات UAT"),
   };
   return labels[action] || action || l("Unknown action", "إجراء غير معروف");
@@ -700,6 +737,10 @@ function auditTargetLabel(event) {
     const campaign = currentCampaigns().find((item) => item.id === Number(participant.campaignId));
     const name = participant.influencerName || participant.offlineName || `${l("Participant", "مشارك")} #${participant.id}`;
     return campaign ? `${name} · ${campaignTitle(campaign)}` : name;
+  }
+  if (event.targetType === "journalEntry") {
+    const entry = (state.data?.journalEntries || []).find((item) => item.id === Number(event.targetId));
+    return entry ? journalTitle(entry) : `${l("Journal entry", "منشور")} #${event.targetId}`;
   }
   return `${event.targetType || l("Target", "هدف")} #${event.targetId}`;
 }
@@ -1444,6 +1485,12 @@ async function api(url, options = {}) {
 async function loadBootstrap() {
   state.data = await api("/api/bootstrap");
   state.currentUser = state.data.currentUser;
+  if (
+    state.selectedJournalEntryId &&
+    !(state.data?.journalEntries || []).some((entry) => entry.id === Number(state.selectedJournalEntryId))
+  ) {
+    state.selectedJournalEntryId = null;
+  }
   state.currentPage = normalizePage(state.currentPage);
   if (state.pendingCampaignDeeplink) {
     const target = (state.data?.campaigns || []).find((campaign) => campaign.id === state.pendingCampaignDeeplink);
@@ -1491,6 +1538,7 @@ function currentDocumentTitle() {
     "master-data": l("PICK Social Club — Master Data", "نادي بك — البيانات الأساسية"),
     managers: l("PICK Social Club — Managers", "نادي بك — مديرو الحملات"),
     "manager-edit": l("PICK Social Club — Manager", "نادي بك — مدير الحملات"),
+    journal: l("PICK Social Club — Journal", "نادي بك — اليوميات"),
     reports: l("PICK Social Club — Reports", "نادي بك — التقارير"),
     profile: l("PICK Social Club — Profile", "نادي بك — الملف الشخصي"),
   };
@@ -1644,6 +1692,7 @@ function roleNav(role) {
       ["branches", l("Branches", "الأفرع")],
       ["master-data", l("Master Data", "البيانات الأساسية")],
       ["managers", l("Managers", "مديرو الحملات")],
+      ["journal", l("Journal", "اليوميات")],
       ["reports", l("Reports", "التقارير")],
       ["profile", l("Profile", "الملف الشخصي")],
     ];
@@ -1653,6 +1702,7 @@ function roleNav(role) {
       ["dashboard", l("Dashboard", "لوحة التحكم")],
       ["influencers", l("Members", "الأعضاء")],
       ["campaigns", l("Campaigns", "الحملات")],
+      ["journal", l("Journal", "اليوميات")],
       ["reports", l("Reports", "التقارير")],
       ["profile", l("Profile", "الملف الشخصي")],
     ];
@@ -1672,6 +1722,7 @@ const NAV_ICON = {
     branches: "store",
     "master-data": "sliders-horizontal",
     managers: "user-cog",
+    journal: "book-open",
     reports: "bar-chart-3",
     profile: "user-circle",
   },
@@ -1679,6 +1730,7 @@ const NAV_ICON = {
     dashboard: "layout-dashboard",
     influencers: "users",
     campaigns: "megaphone",
+    journal: "book-open",
     reports: "bar-chart-3",
     profile: "user-circle",
   },
@@ -2038,6 +2090,7 @@ function renderAdminPages() {
   if (state.currentPage === "master-data") return renderMasterDataPage();
   if (state.currentPage === "managers") return renderManagersPage();
   if (state.currentPage === "manager-edit") return renderManagerEditPage();
+  if (state.currentPage === "journal") return renderJournalPage();
   if (state.currentPage === "reports") return renderReportsPage();
   if (state.currentPage === "profile") return renderProfilePage();
   return renderOperationsDashboard();
@@ -2049,9 +2102,80 @@ function renderManagerPages() {
   if (state.currentPage === "campaigns") return renderCampaignsPage();
   if (state.currentPage === "campaign-edit") return renderCampaignEditPage();
   if (state.currentPage === "campaign-view") return renderCampaignViewPage();
+  if (state.currentPage === "journal") return renderJournalPage();
   if (state.currentPage === "reports") return renderReportsPage();
   if (state.currentPage === "profile") return renderProfilePage();
   return renderOperationsDashboard();
+}
+
+function renderJournalPage() {
+  const journalEntries = [...(state.data?.journalEntries || [])].sort((left, right) =>
+    String(right.publishedAt || right.createdAt || "").localeCompare(String(left.publishedAt || left.createdAt || ""))
+  );
+  const editing = journalEntries.find((entry) => entry.id === Number(state.selectedJournalEntryId)) || null;
+  return `
+    ${pageHeader(
+      l("Journal", "اليوميات"),
+      l("Share short updates, stories, and club voice with members from one place.", "شاركوا التحديثات القصيرة والقصص وصوت النادي مع الأعضاء من مكان واحد."),
+      { showNotifications: true }
+    )}
+    <section class="content-grid">
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${editing ? l("Edit entry", "تعديل المنشور") : l("Create entry", "إنشاء منشور")}</h3>
+            <p class="panel-subtitle">${l("Draft first or publish right away. Add an optional image or external link.", "احفظ كمسودة أولاً أو انشر مباشرة. أضف صورة أو رابطاً خارجياً بشكل اختياري.")}</p>
+          </div>
+          ${editing ? `<button type="button" class="secondary button-small" data-action="clear-journal-editor">${l("New entry", "منشور جديد")}</button>` : ""}
+        </div>
+        <form id="journalForm" class="form-grid" enctype="multipart/form-data">
+          ${editing ? `<input type="hidden" name="entryId" value="${editing.id}" />` : ""}
+          <label class="field"><span>Title (EN)</span><input name="titleEn" required value="${escapeHtml(editing?.titleEn || "")}" /></label>
+          <label class="field"><span>Title (AR)</span><input name="titleAr" value="${escapeHtml(editing?.titleAr || "")}" /></label>
+          <label class="field field-span-full"><span>Body (EN)</span><textarea name="bodyEn" rows="6" required>${escapeHtml(editing?.bodyEn || "")}</textarea></label>
+          <label class="field field-span-full"><span>Body (AR)</span><textarea name="bodyAr" rows="6">${escapeHtml(editing?.bodyAr || "")}</textarea></label>
+          <label class="field field-span-full"><span>${l("External link (optional, e.g. Instagram post)", "رابط خارجي (اختياري، مثل منشور إنستغرام)")}</span><input name="externalLink" type="url" value="${escapeHtml(editing?.externalLink || "")}" /></label>
+          <label class="field field-span-full"><span>${l("Image (optional)", "صورة (اختياري)")}</span><input name="image" type="file" accept="image/*" /></label>
+          ${editing?.imagePath ? `<img class="image-preview" src="${editing.imagePath}" alt="${escapeHtml(journalTitle(editing))}" />` : ""}
+          <div class="row-wrap">
+            <button type="submit">${l("Save as draft", "حفظ كمسودة")}</button>
+            <button type="submit" name="publish" value="1">${l("Save and publish", "حفظ ونشر")}</button>
+          </div>
+        </form>
+      </section>
+      <section class="panel panel-wide">
+        <h3>${l("All entries", "كل المنشورات")}</h3>
+        ${renderDataTable(
+          [
+            { label: l("Title", "العنوان"), render: (entry) => journalTitle(entry) || "-" },
+            { label: l("Author", "الكاتب"), render: (entry) => entry.authorName || entry.authorEmail || "-" },
+            {
+              label: l("Status", "الحالة"),
+              render: (entry) => `<span class="badge ${journalStatusTone(entry.status)}">${escapeHtml(journalStatusLabel(entry.status))}</span>`,
+              html: true,
+            },
+            { label: l("Created", "أُنشئ"), render: (entry) => formatDate(entry.createdAt) },
+            {
+              label: l("Actions", "الإجراءات"),
+              render: (entry) => {
+                if (!canManageJournalEntryClient(entry)) return "-";
+                return `
+                  <div class="row-wrap">
+                    <button type="button" class="secondary button-small" data-action="edit-journal-entry" data-entry-id="${entry.id}">${escapeHtml(l("Edit", "تعديل"))}</button>
+                    <button type="button" class="secondary button-small" data-action="toggle-journal-publish" data-entry-id="${entry.id}">${escapeHtml(entry.status === "published" ? l("Unpublish", "إلغاء النشر") : l("Publish", "نشر"))}</button>
+                    <button type="button" class="secondary button-small" data-action="delete-journal-entry" data-entry-id="${entry.id}">${escapeHtml(l("Delete", "حذف"))}</button>
+                  </div>
+                `;
+              },
+              html: true,
+            },
+          ],
+          journalEntries,
+          l("No entries yet.", "لا توجد منشورات بعد.")
+        )}
+      </section>
+    </section>
+  `;
 }
 
 function renderInfluencerPages() {
@@ -2467,6 +2591,16 @@ function renderCampaignForm(campaign) {
                 .map((status) => `<option value="${status}" ${campaign?.status === status ? "selected" : !campaign && status === "draft" ? "selected" : ""}>${status}</option>`)
                 .join("")}
             </select>
+          </label>
+          <label class="field field-span-full">
+            <span>${l("Show as Coming Soon preview to members", "اعرض كمعاينة قريباً للأعضاء")}</span>
+            <div class="row-wrap">
+              <label class="choice-pill">
+                <input type="checkbox" name="previewMode" value="1" ${campaign?.previewMode ? "checked" : ""} />
+                <span>${l("Yes — show this draft as a teaser", "نعم — اعرضها كتشويق")}</span>
+              </label>
+            </div>
+            <small>${l("Only applies while the campaign is in draft status. Becomes irrelevant once you set it to live.", "تنطبق فقط عندما تكون الحملة في وضع المسودة. تصبح غير ذات صلة عند نشرها.")}</small>
           </label>
           <label class="field"><span>Audience (EN)</span><input name="audience" value="${escapeHtml(campaign?.audience || "")}" /></label>
           <label class="field"><span>Audience (AR)</span><input name="audienceAr" value="${escapeHtml(campaign?.audienceAr || "")}" /></label>
@@ -4116,6 +4250,8 @@ function renderReportCards(rows) {
 function renderInfluencerDashboard() {
   const participants = state.data.participants || [];
   const readyToSubmitParticipants = participants.filter((participant) => participantCanSubmit(participant));
+  const previewCampaigns = state.data?.previewCampaigns || [];
+  const journalEntries = state.data?.journalEntries || [];
   return `
     ${pageHeader(
       l("Member Dashboard", "لوحة العضو"),
@@ -4140,6 +4276,53 @@ function renderInfluencerDashboard() {
         ${renderAvailableCampaignCards(eligibleCampaigns().slice(0, 4))}
       </section>
     </section>
+    ${previewCampaigns.length ? `
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("Coming soon", "قريباً")}</h3>
+            <p class="panel-subtitle">${l("New campaigns we're cooking up. Watch this space 💜", "حملات جديدة نحضرها لكم. تابعونا 💜")}</p>
+          </div>
+          <span class="badge">${previewCampaigns.length}</span>
+        </div>
+        <div class="preview-grid">
+          ${previewCampaigns.map((campaign) => `
+            <article class="preview-card">
+              ${renderCampaignBanner(campaign, "thumb")}
+              <div class="preview-card__body">
+                <span class="badge">${l("Coming soon", "قريباً")}</span>
+                <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                ${campaign.startDate ? `<p class="compact">${l("Opens around", "يفتح قرابة")} ${formatDate(campaign.startDate)}</p>` : ""}
+                <p class="compact">${escapeHtml((campaignDescription(campaign) || "").slice(0, 120))}${(campaignDescription(campaign) || "").length > 120 ? "…" : ""}</p>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
+    ${journalEntries.length ? `
+      <section class="panel">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("The PICK Journal", "يوميات بك")}</h3>
+            <p class="panel-subtitle">${l("News, stories, and behind-the-scenes from PICK Social Club.", "أخبار وقصص ولقطات من خلف الكواليس في نادي بك.")}</p>
+          </div>
+        </div>
+        <div class="journal-list">
+          ${journalEntries.map((entry) => `
+            <article class="journal-entry">
+              ${entry.imagePath ? `<img class="journal-entry__image" src="${entry.imagePath}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
+              <div class="journal-entry__body">
+                <strong>${escapeHtml(journalTitle(entry))}</strong>
+                <p class="compact">${formatDateTime(entry.publishedAt || entry.createdAt)}</p>
+                <p>${escapeHtml(journalBody(entry))}</p>
+                ${entry.externalLink ? `<a class="table-link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${l("Read more", "اقرأ المزيد")}</a>` : ""}
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
   `;
 }
 
@@ -4962,6 +5145,35 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "edit-journal-entry") {
+    state.selectedJournalEntryId = Number(target.dataset.entryId);
+    state.currentPage = "journal";
+    render();
+    return;
+  }
+
+  if (action === "clear-journal-editor") {
+    state.selectedJournalEntryId = null;
+    render();
+    return;
+  }
+
+  if (action === "toggle-journal-publish") {
+    const entryId = Number(target.dataset.entryId);
+    if (!entryId) return;
+    await mutateAndRefresh(`/api/journal/${entryId}/publish`, {}, l("Journal entry updated.", "تم تحديث المنشور."));
+    return;
+  }
+
+  if (action === "delete-journal-entry") {
+    const entryId = Number(target.dataset.entryId);
+    if (!entryId) return;
+    if (!window.confirm(l("Delete this journal entry?", "هل تريد حذف هذا المنشور؟"))) return;
+    if (state.selectedJournalEntryId === entryId) state.selectedJournalEntryId = null;
+    await mutateAndRefresh(`/api/journal/${entryId}/delete`, {}, l("Journal entry deleted.", "تم حذف المنشور."));
+    return;
+  }
+
   if (action === "preview-campaign") {
     state.selectedCampaignId = Number(target.dataset.campaignId);
     state.currentPage = "campaign-preview";
@@ -5240,6 +5452,23 @@ async function handleSubmit(event) {
         throw new Error(timelineError);
       }
       await mutateAndRefresh(`/api/campaigns/${campaignId}/update`, payload, l("Campaign updated.", "تم تحديث الحملة."), { rethrow: true });
+      return;
+    }
+    if (form.id === "journalForm") {
+      const formData = new FormData(form);
+      if (event.submitter?.name) formData.set(event.submitter.name, event.submitter.value || "");
+      const entryId = String(formData.get("entryId") || "");
+      const url = entryId ? `/api/journal/${entryId}/update` : "/api/journal";
+      await mutateAndRefresh(
+        url,
+        formData,
+        event.submitter?.value === "1"
+          ? l("Journal entry published.", "تم نشر المنشور.")
+          : l("Journal draft saved.", "تم حفظ المسودة."),
+        { rethrow: true }
+      );
+      state.selectedJournalEntryId = null;
+      render();
       return;
     }
     if (form.id === "bannerForm") {
@@ -5531,6 +5760,7 @@ function campaignFormPayload(form) {
     titleAr: formData.get("titleAr"),
     type: formData.get("type"),
     status: formData.get("status"),
+    previewMode: formData.get("previewMode") === "1",
     audience: formData.get("audience"),
     audienceAr: formData.get("audienceAr"),
     offerUsageCount: Number(formData.get("offerUsageCount")) || 1,

@@ -827,6 +827,7 @@ function normalizeStore(store) {
   store.passwordResets ||= [];
   store.auditEvents ||= [];
   store.loginAttempts ||= [];
+  store.journalEntries ||= [];
   store.cities ||= [];
   store.categories ||= [];
   store.platforms ||= [];
@@ -852,6 +853,7 @@ function normalizeStore(store) {
   store.nextIds.tag ||= nextId(store.tags);
   store.nextIds.passwordReset ||= nextId(store.passwordResets);
   store.nextIds.auditEvent ||= nextId(store.auditEvents);
+  store.nextIds.journalEntry ||= nextId(store.journalEntries);
 
   for (const city of store.cities) {
     if (!city.nameEn) {
@@ -974,6 +976,7 @@ function normalizeStore(store) {
     campaign.offerUsageCount = Math.max(1, Number(campaign.offerUsageCount ?? campaign.usageCount) || 1);
     campaign.captionGuide ||= "";
     campaign.whatsappMessage ||= "";
+    campaign.previewMode = Boolean(campaign.previewMode === true || campaign.previewMode === "1" || campaign.previewMode === 1);
     campaign.targetGender = text(campaign.targetGender || "");
     campaign.minFollowers = Math.max(0, Number(campaign.minFollowers) || 0);
     campaign.targetPlatformIds = parseNumberList(campaign.targetPlatformIds);
@@ -1001,6 +1004,21 @@ function normalizeStore(store) {
       campaign.status = "completed";
       changed.value = true;
     }
+  }
+
+  for (const entry of store.journalEntries) {
+    entry.titleEn ||= "";
+    entry.titleAr ||= entry.titleEn;
+    entry.bodyEn ||= "";
+    entry.bodyAr ||= entry.bodyEn;
+    entry.imageName ||= "";
+    entry.imagePath ||= "";
+    entry.externalLink ||= "";
+    entry.status ||= "draft";
+    entry.authorUserId ||= null;
+    entry.createdAt ||= new Date().toISOString();
+    entry.updatedAt ||= entry.createdAt;
+    entry.publishedAt ||= null;
   }
 
   const discoveredTags = new Set();
@@ -1235,6 +1253,50 @@ function serializeCampaign(store, campaign) {
         ? ["جميع الأفرع"]
         : campaign.branchIds.map((branchId) => branchById(store, branchId)?.nameAr || "").filter(Boolean),
   };
+}
+
+function serializePreviewCampaign(campaign) {
+  return {
+    id: campaign.id,
+    titleEn: campaign.titleEn,
+    titleAr: campaign.titleAr,
+    descriptionEn: campaign.descriptionEn,
+    descriptionAr: campaign.descriptionAr,
+    bannerName: campaign.bannerName || "",
+    bannerPath: campaign.bannerPath || "",
+    offerDescription: campaign.offerDescription || "",
+    startDate: campaign.startDate || "",
+    type: campaign.type || "shop_visit",
+    status: campaign.status || "draft",
+    previewMode: Boolean(campaign.previewMode),
+  };
+}
+
+function serializeJournalEntry(store, entry) {
+  const author = userById(store, entry.authorUserId);
+  return {
+    ...entry,
+    authorName: author?.fullName || "",
+    authorEmail: author?.email || "",
+  };
+}
+
+function canManageJournalEntry(actor, entry) {
+  return Boolean(actor?.role === "admin" || (actor?.role === "campaign_manager" && entry?.authorUserId === actor.id));
+}
+
+function visibleJournalEntriesFor(store, actor) {
+  const sortedEntries = [...(store.journalEntries || [])].sort((left, right) =>
+    String(right.publishedAt || right.createdAt || "").localeCompare(String(left.publishedAt || left.createdAt || ""))
+  );
+  if (!actor) return [];
+  if (actor.role === "admin") return sortedEntries.filter((entry) => entry.status !== "deleted");
+  if (actor.role === "campaign_manager") {
+    return sortedEntries.filter(
+      (entry) => entry.status !== "deleted" && (entry.status === "published" || entry.authorUserId === actor.id)
+    );
+  }
+  return sortedEntries.filter((entry) => entry.status === "published");
 }
 
 function influencerSummary(store, influencer) {
@@ -1701,6 +1763,7 @@ function buildBootstrap(store, user) {
   const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
   const reports = reportBundleForCampaigns(store, store.campaigns);
   const includeBranchPin = ["admin", "campaign_manager"].includes(user.role);
+  const journalEntries = visibleJournalEntriesFor(store, user).map((entry) => serializeJournalEntry(store, entry));
   const common = {
     currentUser: sanitizeUser(user),
     cities: store.cities,
@@ -1718,6 +1781,7 @@ function buildBootstrap(store, user) {
       users: store.users.map(sanitizeUser),
       participants: store.participants.map((participant) => serializeParticipant(store, participant)),
       reports,
+      journalEntries,
       auditEvents: store.auditEvents.slice(-200),
     };
   }
@@ -1729,7 +1793,13 @@ function buildBootstrap(store, user) {
   return {
     ...common,
     eligibleCampaignIds: eligibleCampaignsFor(store, user).map((campaign) => campaign.id),
+    previewCampaigns: store.campaigns
+      .filter((campaign) => campaign.status === "draft" && campaign.previewMode === true)
+      .sort((left, right) => String(left.startDate || left.createdAt || "").localeCompare(String(right.startDate || right.createdAt || "")))
+      .slice(0, 6)
+      .map((campaign) => serializePreviewCampaign(campaign)),
     participants: myParticipants,
+    journalEntries: journalEntries.slice(0, 3),
     reports: {
       summary: influencerSummary(store, user),
       campaigns: myParticipants,
@@ -1778,6 +1848,7 @@ function campaignPayload(body, existingCampaign = null) {
       ? "completed"
       : body.status;
   const targetTags = parseTags(body.targetTags ?? existingCampaign?.targetTags);
+  const hasPreviewMode = body.previewMode !== undefined;
   return {
     titleEn: text(body.titleEn ?? existingCampaign?.titleEn),
     titleAr: text(body.titleAr ?? existingCampaign?.titleAr),
@@ -1785,6 +1856,9 @@ function campaignPayload(body, existingCampaign = null) {
     descriptionAr: text(body.descriptionAr ?? existingCampaign?.descriptionAr),
     captionGuide: text(body.captionGuide ?? existingCampaign?.captionGuide),
     whatsappMessage: text(body.whatsappMessage ?? existingCampaign?.whatsappMessage),
+    previewMode: hasPreviewMode
+      ? Boolean(body.previewMode === "1" || body.previewMode === true)
+      : Boolean(existingCampaign?.previewMode),
     type: body.type === "product_trial" ? "product_trial" : "shop_visit",
     status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
       ? normalizedStatus
@@ -2582,6 +2656,121 @@ async function handleRotateBranchPin(req, res, store, actor, branchId) {
   return sendJson(res, 200, { ok: true, branch: serializeBranch(store, branch, { includePin: true }) });
 }
 
+async function parseMultipartOrForm(req) {
+  const rawBody = await readBody(req);
+  const contentType = req.headers["content-type"] || "";
+  return contentType.includes("multipart/form-data")
+    ? parseMultipart(rawBody, contentType)
+    : { fields: jsonOrForm(rawBody, req), files: {} };
+}
+
+async function handleJournalIndex(req, res, store, actor) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  return sendJson(res, 200, {
+    entries: visibleJournalEntriesFor(store, actor).map((entry) => serializeJournalEntry(store, entry)),
+  });
+}
+
+async function handleCreateJournalEntry(req, res, store, actor) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const parsed = await parseMultipartOrForm(req);
+  const body = parsed.fields;
+  const shouldPublish = body.publish === "1" || body.publish === true;
+  const now = new Date().toISOString();
+  const entry = {
+    id: store.nextIds.journalEntry++,
+    titleEn: text(body.titleEn),
+    titleAr: text(body.titleAr || body.titleEn),
+    bodyEn: text(body.bodyEn),
+    bodyAr: text(body.bodyAr || body.bodyEn),
+    imageName: "",
+    imagePath: "",
+    externalLink: text(body.externalLink),
+    status: shouldPublish ? "published" : "draft",
+    authorUserId: actor.id,
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: shouldPublish ? now : null,
+  };
+  if (!entry.titleEn || !entry.bodyEn) {
+    return sendJson(res, 422, { error: "English title and body are required." });
+  }
+  const image = parsed.files.image;
+  if (image?.filename) {
+    const persisted = await persistUploadedImage(image);
+    entry.imageName = persisted.displayName;
+    entry.imagePath = `/uploads/${persisted.storedName}`;
+  }
+  store.journalEntries.unshift(entry);
+  appendAuditEvent(store, actor, "journal.created", "journalEntry", entry.id);
+  if (shouldPublish) appendAuditEvent(store, actor, "journal.published", "journalEntry", entry.id);
+  await writeStore(store);
+  return sendJson(res, 201, { ok: true, entry: serializeJournalEntry(store, entry) });
+}
+
+async function handleUpdateJournalEntry(req, res, store, actor, entryId) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const entry = store.journalEntries.find((item) => item.id === Number(entryId));
+  if (!entry || entry.status === "deleted") return sendJson(res, 404, { error: "Journal entry not found." });
+  if (!canManageJournalEntry(actor, entry)) return sendJson(res, 403, { error: "Forbidden" });
+  const parsed = await parseMultipartOrForm(req);
+  const body = parsed.fields;
+  const shouldPublish = body.publish === "1" || body.publish === true;
+  const wasPublished = entry.status === "published";
+  entry.titleEn = text(body.titleEn || entry.titleEn);
+  entry.titleAr = text(body.titleAr || entry.titleAr || entry.titleEn);
+  entry.bodyEn = text(body.bodyEn || entry.bodyEn);
+  entry.bodyAr = text(body.bodyAr || entry.bodyAr || entry.bodyEn);
+  entry.externalLink = text(body.externalLink ?? entry.externalLink);
+  entry.updatedAt = new Date().toISOString();
+  entry.status = shouldPublish ? "published" : "draft";
+  if (entry.status === "published" && !entry.publishedAt) entry.publishedAt = entry.updatedAt;
+  if (!entry.titleEn || !entry.bodyEn) {
+    return sendJson(res, 422, { error: "English title and body are required." });
+  }
+  const image = parsed.files.image;
+  if (image?.filename) {
+    const persisted = await persistUploadedImage(image);
+    entry.imageName = persisted.displayName;
+    entry.imagePath = `/uploads/${persisted.storedName}`;
+  }
+  appendAuditEvent(store, actor, "journal.updated", "journalEntry", entry.id);
+  if (!wasPublished && entry.status === "published") appendAuditEvent(store, actor, "journal.published", "journalEntry", entry.id);
+  if (wasPublished && entry.status !== "published") appendAuditEvent(store, actor, "journal.unpublished", "journalEntry", entry.id);
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true, entry: serializeJournalEntry(store, entry) });
+}
+
+async function handleDeleteJournalEntry(req, res, store, actor, entryId) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const entry = store.journalEntries.find((item) => item.id === Number(entryId));
+  if (!entry || entry.status === "deleted") return sendJson(res, 404, { error: "Journal entry not found." });
+  if (!canManageJournalEntry(actor, entry)) return sendJson(res, 403, { error: "Forbidden" });
+  entry.status = "deleted";
+  entry.updatedAt = new Date().toISOString();
+  appendAuditEvent(store, actor, "journal.deleted", "journalEntry", entry.id);
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true });
+}
+
+async function handleTogglePublishJournalEntry(req, res, store, actor, entryId) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const entry = store.journalEntries.find((item) => item.id === Number(entryId));
+  if (!entry || entry.status === "deleted") return sendJson(res, 404, { error: "Journal entry not found." });
+  if (!canManageJournalEntry(actor, entry)) return sendJson(res, 403, { error: "Forbidden" });
+  entry.updatedAt = new Date().toISOString();
+  if (entry.status === "published") {
+    entry.status = "draft";
+    appendAuditEvent(store, actor, "journal.unpublished", "journalEntry", entry.id);
+  } else {
+    entry.status = "published";
+    if (!entry.publishedAt) entry.publishedAt = entry.updatedAt;
+    appendAuditEvent(store, actor, "journal.published", "journalEntry", entry.id);
+  }
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true, entry: serializeJournalEntry(store, entry) });
+}
+
 async function handleCreateCampaign(req, res, store, actor) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const body = jsonOrForm(await readBody(req), req);
@@ -3223,6 +3412,28 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && userResetLinkMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleGenerateResetLink(req, res, store, actor, userResetLinkMatch[0]);
+  }
+  if (req.method === "GET" && pathname === "/api/journal") {
+    return handleJournalIndex(req, res, store, actor);
+  }
+  if (req.method === "POST" && pathname === "/api/journal") {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleCreateJournalEntry(req, res, store, actor);
+  }
+  const journalUpdateMatch = routeMatch(pathname, /^\/api\/journal\/(\d+)\/update$/);
+  if (req.method === "POST" && journalUpdateMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleUpdateJournalEntry(req, res, store, actor, journalUpdateMatch[0]);
+  }
+  const journalDeleteMatch = routeMatch(pathname, /^\/api\/journal\/(\d+)\/delete$/);
+  if (req.method === "POST" && journalDeleteMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleDeleteJournalEntry(req, res, store, actor, journalDeleteMatch[0]);
+  }
+  const journalPublishMatch = routeMatch(pathname, /^\/api\/journal\/(\d+)\/publish$/);
+  if (req.method === "POST" && journalPublishMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleTogglePublishJournalEntry(req, res, store, actor, journalPublishMatch[0]);
   }
   if (req.method === "POST" && pathname === "/api/admin/reset-uat-data") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
