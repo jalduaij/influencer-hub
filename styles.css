@@ -4221,6 +4221,26 @@ body.member-scope .campaign-accordion--actionable .campaign-accordion-summary {
   color: var(--ink);
 }
 
+body.member-scope .campaign-accordion--actionable .dashboard-summary__title {
+  color: var(--ink);
+}
+
+body.member-scope .campaign-accordion--actionable .badge {
+  background: rgba(31, 22, 32, 0.06);
+  color: var(--ink-soft);
+  border-color: var(--rule-soft);
+}
+
+body.member-scope .campaign-accordion--actionable .dashboard-card-code {
+  background: rgba(31, 22, 32, 0.04);
+  border-color: var(--rule-soft);
+}
+
+body.member-scope .campaign-accordion--actionable .dashboard-card-code__label,
+body.member-scope .campaign-accordion--actionable .dashboard-card-code code {
+  color: var(--ink);
+}
+
 body.member-scope .campaign-accordion--actionable p,
 body.member-scope .campaign-accordion--actionable .compact {
   color: var(--ink-soft);
