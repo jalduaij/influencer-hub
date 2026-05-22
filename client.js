@@ -4325,13 +4325,13 @@ function renderInfluencerDashboard() {
       ? l(` + ${readyToSubmit.length - 1} more`, ` + ${readyToSubmit.length - 1} أخرى`)
       : "";
     actionBar = `
-      <button class="dispatch" data-nav="campaigns">
+      <a class="dispatch" data-nav="campaigns" href="#campaigns">
         <span class="dispatch__eyebrow">${escapeHtml(l("ON YOUR DESK", "في انتظارك"))}</span>
         <span class="dispatch__line">
           ${escapeHtml(l("Your", "كود"))} <em>${escapeHtml(title)}</em> ${escapeHtml(l("code is ready to submit", "جاهز للإرسال"))}${escapeHtml(more)}
         </span>
         <span class="dispatch__arrow" aria-hidden="true">→</span>
-      </button>
+      </a>
     `;
   }
 
@@ -4365,77 +4365,9 @@ function renderInfluencerDashboard() {
     `;
   }
 
-  const comingSoon = previewCampaigns.length
-    ? `
-      <section class="feed-section">
-        ${sectionHeader(
-          l("COMING SOON", "قريباً"),
-          l("On the calendar", "في الأجندة"),
-          l("Campaigns we're cooking up.", "حملات نحضّرها لكم.")
-        )}
-        <div class="coming-soon-rail">
-          ${previewCampaigns.map((campaign) => `
-            <article class="coming-soon-card">
-              ${renderCampaignBanner(campaign, "thumb")}
-              <div class="coming-soon-card__body">
-                <span class="badge">${escapeHtml(l("Coming soon", "قريباً"))}</span>
-                <strong>${escapeHtml(campaignTitle(campaign))}</strong>
-                ${campaign.startDate ? `<p class="compact">${escapeHtml(l("Opens around", "يفتح قرابة"))} ${escapeHtml(formatDate(campaign.startDate))}</p>` : ""}
-              </div>
-            </article>
-          `).join("")}
-        </div>
-      </section>
-    `
-    : "";
-
-  const openCampaigns = eligible.length
-    ? `
-      <section class="feed-section">
-        ${sectionHeader(
-          l("OPEN CAMPAIGNS", "حملات مفتوحة"),
-          l("Open campaigns", "حملات مفتوحة"),
-          l("Pick one that fits you and confirm interest.", "اختر ما يناسبك وأكّد اهتمامك."),
-          eligible.length > 3 ? `<button class="link-button" data-nav="campaigns">${escapeHtml(l("See all", "عرض الكل"))} ${state.locale === "ar" ? "←" : "→"}</button>` : ""
-        )}
-        ${renderAvailableCampaignCards(eligible.slice(0, 3))}
-      </section>
-    `
-    : "";
-
-  const moreJournal = restJournal.length
-    ? `
-      <section class="feed-section">
-        ${sectionHeader(
-          l("MORE FROM THE JOURNAL", "المزيد من اليوميات"),
-          l("More from the Journal", "المزيد من اليوميات"),
-          ""
-        )}
-        <div class="journal-grid">
-          ${restJournal.map((entry) => {
-            const body = journalBody(entry) || "";
-            return `
-              <article class="journal-card">
-                ${entry.imagePath ? `<img class="journal-card__image" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
-                <div class="journal-card__body">
-                  <strong>${escapeHtml(journalTitle(entry))}</strong>
-                  <p class="compact">${escapeHtml(formatDateTime(entry.publishedAt || entry.createdAt))}</p>
-                  <p>${escapeHtml(body.slice(0, 140))}${body.length > 140 ? "…" : ""}</p>
-                  ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>` : ""}
-                </div>
-              </article>
-            `;
-          }).join("")}
-        </div>
-      </section>
-    `
-    : "";
-
   const footer = `
-    <footer class="member-feed__footer">
-      <button class="pill-button" data-nav="campaigns">${escapeHtml(l("All my campaigns", "كل حملاتي"))}</button>
-      <button class="pill-button" data-nav="profile">${escapeHtml(l("My profile", "ملفي الشخصي"))}</button>
-    </footer>
+    <button class="pill-button" data-nav="campaigns">${escapeHtml(l("All my campaigns", "كل حملاتي"))}</button>
+    <button class="pill-button" data-nav="profile">${escapeHtml(l("My profile", "ملفي الشخصي"))}</button>
   `;
 
   const empty = !readyToSubmit.length && !eligible.length && !previewCampaigns.length && !journalEntries.length
@@ -4444,14 +4376,68 @@ function renderInfluencerDashboard() {
 
   return `
     <div class="member-feed">
-      ${greeting}
-      ${actionBar}
-      ${featuredJournal}
-      ${comingSoon}
-      ${openCampaigns}
-      ${moreJournal}
+      <section class="block block--hero">${greeting}</section>
+      ${actionBar ? `<section class="block block--bone dispatch-block">${actionBar}</section>` : ""}
+      ${featuredJournal ? `<section class="block block--ivory">${featuredJournal}</section>` : ""}
+      ${previewCampaigns.length ? `
+        <section class="block block--blush">
+          ${sectionHeader(
+            l("COMING SOON", "قريباً"),
+            l("On the calendar", "في الأجندة"),
+            l("Campaigns we're cooking up.", "حملات نحضّرها لكم.")
+          )}
+          <div class="coming-soon-rail">
+            ${previewCampaigns.map((campaign) => `
+              <article class="coming-soon-card">
+                ${renderCampaignBanner(campaign, "thumb")}
+                <div class="coming-soon-card__body">
+                  <span class="badge">${escapeHtml(l("Coming soon", "قريباً"))}</span>
+                  <strong>${escapeHtml(campaignTitle(campaign))}</strong>
+                  ${campaign.startDate ? `<p class="compact">${escapeHtml(l("Opens around", "يفتح قرابة"))} ${escapeHtml(formatDate(campaign.startDate))}</p>` : ""}
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      ` : ""}
+      ${eligible.length ? `
+        <section class="block block--sage">
+          ${sectionHeader(
+            l("OPEN CAMPAIGNS", "حملات مفتوحة"),
+            l("Take your pick", "اختر ما يناسبك"),
+            l("Confirm interest on any that fit.", "أكّد اهتمامك على ما يناسبك."),
+            eligible.length > 3 ? `<button class="link-button" data-nav="campaigns">${escapeHtml(l("See all", "عرض الكل"))} ${state.locale === "ar" ? "←" : "→"}</button>` : ""
+          )}
+          ${renderAvailableCampaignCards(eligible.slice(0, 3))}
+        </section>
+      ` : ""}
+      ${restJournal.length ? `
+        <section class="block block--ivory">
+          ${sectionHeader(
+            l("MORE FROM THE JOURNAL", "المزيد من اليوميات"),
+            l("Recent reads", "قراءات حديثة"),
+            ""
+          )}
+          <div class="journal-grid">
+            ${restJournal.map((entry) => {
+              const body = journalBody(entry) || "";
+              return `
+                <article class="journal-card">
+                  ${entry.imagePath ? `<img class="journal-card__image" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
+                  <div class="journal-card__body">
+                    <strong>${escapeHtml(journalTitle(entry))}</strong>
+                    <p class="compact">${escapeHtml(formatDateTime(entry.publishedAt || entry.createdAt))}</p>
+                    <p>${escapeHtml(body.slice(0, 140))}${body.length > 140 ? "…" : ""}</p>
+                    ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>` : ""}
+                  </div>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </section>
+      ` : ""}
       ${empty}
-      ${footer}
+      ${footer ? `<section class="block block--mauve member-feed__footer">${footer}</section>` : ""}
     </div>
   `;
 }
@@ -5140,6 +5126,7 @@ async function handleClick(event) {
   if (!target) return;
 
   if (target.dataset.nav) {
+    event.preventDefault();
     state.mobileNavOpen = false;
     const nextPage = normalizePage(target.dataset.nav);
     state.justNavigatedToCampaigns = nextPage === "campaigns" && state.currentPage !== "campaigns";
