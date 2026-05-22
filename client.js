@@ -1550,6 +1550,7 @@ function render(options = {}) {
   applyMemberScope();
   if (!state.currentUser) {
     document.body.classList.toggle("nav-locked", false);
+    document.body.classList.toggle("mobile-nav-locked", false);
     document.title = "PICK Social Club";
     app.innerHTML = renderAuth();
     syncFlashLayer();
@@ -1559,6 +1560,7 @@ function render(options = {}) {
   document.title = currentDocumentTitle();
   app.innerHTML = renderShell();
   document.body.classList.toggle("nav-locked", state.mobileNavOpen);
+  document.body.classList.toggle("mobile-nav-locked", state.mobileNavOpen);
   if (state.currentPage === "campaigns" && state.justNavigatedToCampaigns) {
     scrollToActiveCampaigns();
     focusFirstActionableSubmission();
@@ -5156,12 +5158,22 @@ function bindGlobalEvents() {
   app.addEventListener("focusout", handleFocusOut);
 }
 
+function toggleMobileNav(force) {
+  const next = typeof force === "boolean" ? force : !state.mobileNavOpen;
+  state.mobileNavOpen = next;
+  document.body.classList.toggle("mobile-nav-locked", next);
+  document.body.classList.toggle("nav-locked", next);
+  render();
+}
+
 async function handleClick(event) {
   const target = event.target.closest("[data-action], [data-nav]");
   if (!target) return;
 
   if (target.dataset.nav) {
     event.preventDefault();
+    document.body.classList.toggle("mobile-nav-locked", false);
+    document.body.classList.toggle("nav-locked", false);
     state.mobileNavOpen = false;
     const nextPage = normalizePage(target.dataset.nav);
     state.justNavigatedToCampaigns = nextPage === "campaigns" && state.currentPage !== "campaigns";
@@ -5172,14 +5184,12 @@ async function handleClick(event) {
 
   const action = target.dataset.action;
   if (action === "toggle-mobile-nav") {
-    state.mobileNavOpen = !state.mobileNavOpen;
-    render();
+    toggleMobileNav();
     return;
   }
 
   if (action === "close-mobile-nav") {
-    state.mobileNavOpen = false;
-    render();
+    toggleMobileNav(false);
     return;
   }
 
@@ -5208,6 +5218,9 @@ async function handleClick(event) {
 
   if (action === "logout") {
     await api("/api/logout", { method: "POST", body: JSON.stringify({}) });
+    state.mobileNavOpen = false;
+    document.body.classList.toggle("mobile-nav-locked", false);
+    document.body.classList.toggle("nav-locked", false);
     state.currentUser = null;
     state.data = null;
     state.currentPage = null;
@@ -5941,8 +5954,7 @@ function handleInput(event) {
 
 function handleKeyDown(event) {
   if (event.key === "Escape" && state.mobileNavOpen) {
-    state.mobileNavOpen = false;
-    render();
+    toggleMobileNav(false);
   }
 }
 
