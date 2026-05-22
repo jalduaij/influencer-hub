@@ -4735,7 +4735,7 @@ function renderInfluencerCampaignPreviewPage() {
   const isEligible = new Set(state.data?.eligibleCampaignIds || []).has(campaign.id);
   return `
     ${pageHeader(l("Campaign Preview", "معاينة الحملة"), l("Review the campaign details before you confirm your interest.", "راجع تفاصيل الحملة قبل تأكيد اهتمامك."))}
-    <section class="panel">
+    <section class="block block--ivory campaign-preview-block">
       ${renderCampaignBanner(campaign, "hero")}
       <h3>${escapeHtml(campaignTitle(campaign))}</h3>
       <p class="panel-subtitle">${escapeHtml(campaignDescription(campaign))}</p>
@@ -4816,9 +4816,10 @@ function renderInfluencerCampaignPreviewPage() {
 function renderProfilePage() {
   const user = state.currentUser;
   const isInfluencer = user.role === "influencer";
+  const wrapperClass = isInfluencer ? "block block--ivory profile-block" : "panel";
   return `
     ${pageHeader(l("My Profile", "ملفي الشخصي"), l("Update your profile details, optional image, and social information. Changes apply immediately.", "حدّث تفاصيل ملفك وصورتك الاختيارية ومعلومات السوشيال. التعديلات تطبق فوراً."))}
-    <section class="panel">
+    <section class="${wrapperClass}">
       <h3>${l("Profile Details", "تفاصيل الملف")}</h3>
       <p class="panel-subtitle">${isInfluencer
         ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, city, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس والمدينة وإنستغرام مطلوبة.")
