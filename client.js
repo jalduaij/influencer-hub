@@ -1560,6 +1560,7 @@ function render(options = {}) {
   app.innerHTML = renderShell();
   document.body.classList.toggle("nav-locked", state.mobileNavOpen);
   if (state.currentPage === "campaigns" && state.justNavigatedToCampaigns) {
+    scrollToActiveCampaigns();
     focusFirstActionableSubmission();
     state.justNavigatedToCampaigns = false;
   }
@@ -4514,54 +4515,78 @@ function renderMemberCampaignsPage() {
       const rightTime = new Date(right.submittedAt || right.joinedAt || 0).getTime();
       return rightTime - leftTime;
     });
-
-  return `
-    ${pageHeader(
-      l("Campaigns", "الحملات"),
-      l("Everything in one place — what you can join, what you're working on, and what you've done.", "كل شيء في مكان واحد — ما يمكنك الانضمام إليه، ما تعمل عليه، وما أنجزته."),
-      { showNotifications: true }
-    )}
-    ${eligible.length ? `
-      <section class="panel">
-        <div class="row report-toolbar-head">
-          <div>
-            <h3>${l("Open campaigns", "حملات مفتوحة")}</h3>
-            <p class="panel-subtitle">${l("Campaigns you can join right now.", "حملات يمكنك الانضمام إليها الآن.")}</p>
-          </div>
-          <span class="badge">${eligible.length} ${l("available", "متاحة")}</span>
-        </div>
-        ${renderAvailableCampaignCards(eligible)}
-      </section>
-    ` : ""}
+  const metaInner = `
+    ${activeRows.length ? `<span><strong>${activeRows.length}</strong> ${l("in play", "نشطة")}</span>` : ""}
+    ${eligible.length ? `<span><strong>${eligible.length}</strong> ${l("open", "مفتوحة")}</span>` : ""}
+    ${historyRows.length ? `<span><strong>${historyRows.length}</strong> ${l("done", "منتهية")}</span>` : ""}
+  `.trim();
+  const headerMeta = metaInner ? `<p class="campaigns-hero__meta">${metaInner}</p>` : "";
+  const slimHeader = `
+    <section class="block block--hero campaigns-hero">
+      <div class="campaigns-hero__top">
+        <span class="kicker">${l("THE LINEUP", "البرنامج")}</span>
+        ${typeof renderNotificationsBell === "function" ? renderNotificationsBell() : ""}
+      </div>
+      <h1 class="campaigns-hero__title">${l("Campaigns", "الحملات")}</h1>
+      ${headerMeta}
+      <hr class="rule rule--thick">
+    </section>
+  `;
+  const campaignsBody = `
     ${activeRows.length ? `
-      <section class="panel">
-        <div class="row report-toolbar-head">
-          <div>
+      <section class="block block--bone" id="campaigns-active">
+        <div class="section-head">
+          <span class="kicker">${l("IN PLAY", "في اللعب")}</span>
+          <div class="section-head__row">
             <h3>${l("Active", "النشطة")}</h3>
-            <p class="panel-subtitle">${l("Your reserved codes. Submit your proof when ready.", "أكوادك المحجوزة. أرسل إثباتك عند الجاهزية.")}</p>
+            <span class="badge">${activeRows.length}</span>
           </div>
-          <span class="badge">${activeRows.length}</span>
+          <p class="section-head__deck">${l("Your reserved codes. Submit your proof when ready.", "أكوادك المحجوزة. أرسل إثباتك عند الجاهزية.")}</p>
         </div>
+        <hr class="rule rule--hair">
         ${renderMyCampaignCards(activeRows, false, false)}
       </section>
     ` : ""}
-    ${historyRows.length ? `
-      <section class="panel">
-        <div class="row report-toolbar-head">
-          <div>
-            <h3>${l("History", "السجل")}</h3>
-            <p class="panel-subtitle">${l("Submitted, completed, and canceled campaigns.", "الحملات المرسلة والمكتملة والملغاة.")}</p>
+    ${eligible.length ? `
+      <section class="block block--sage" id="campaigns-open">
+        <div class="section-head">
+          <span class="kicker">${l("OPEN", "مفتوحة")}</span>
+          <div class="section-head__row">
+            <h3>${l("Open campaigns", "حملات مفتوحة")}</h3>
+            <span class="badge">${eligible.length} ${l("available", "متاحة")}</span>
           </div>
-          <span class="badge">${historyRows.length}</span>
+          <p class="section-head__deck">${l("Campaigns you can join right now.", "حملات يمكنك الانضمام إليها الآن.")}</p>
         </div>
+        <hr class="rule rule--hair">
+        ${renderAvailableCampaignCards(eligible)}
+      </section>
+    ` : ""}
+    ${historyRows.length ? `
+      <section class="block block--ivory" id="campaigns-history">
+        <div class="section-head">
+          <span class="kicker">${l("ARCHIVE", "السجل")}</span>
+          <div class="section-head__row">
+            <h3>${l("History", "السجل")}</h3>
+            <span class="badge">${historyRows.length}</span>
+          </div>
+          <p class="section-head__deck">${l("Submitted, completed, and canceled campaigns.", "الحملات المرسلة والمكتملة والملغاة.")}</p>
+        </div>
+        <hr class="rule rule--hair">
         ${renderMyCampaignCards(historyRows, false, false)}
       </section>
     ` : ""}
     ${(!eligible.length && !activeRows.length && !historyRows.length) ? `
-      <section class="panel">
+      <section class="block block--ivory">
         <div class="empty-state">${l("No campaigns yet. Check back later 💜", "لا توجد حملات بعد. تابعنا قريباً 💜")}</div>
       </section>
     ` : ""}
+  `;
+
+  return `
+    <div class="member-feed">
+      ${slimHeader}
+      ${campaignsBody}
+    </div>
   `;
 }
 
@@ -4651,6 +4676,15 @@ function focusFirstActionableSubmission() {
     linkInput.focus({ preventScroll: false });
     linkInput.scrollIntoView({ behavior: "smooth", block: "center" });
   }, 60);
+}
+
+function scrollToActiveCampaigns() {
+  window.setTimeout(() => {
+    const active = document.getElementById("campaigns-active");
+    if (!active) return;
+    const top = active.getBoundingClientRect().top + window.scrollY - 12;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, 80);
 }
 
 function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {

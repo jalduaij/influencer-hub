@@ -3798,6 +3798,90 @@ body.member-scope img {
   height: auto;
 }
 
+body.member-scope .campaign-accordion[open] .dashboard-summary__cta {
+  display: none;
+}
+
+body.member-scope .campaigns-hero {
+  padding: 12px 0 4px;
+  display: grid;
+  gap: 8px;
+}
+
+body.member-scope .campaigns-hero__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body.member-scope .campaigns-hero__title {
+  margin: 0;
+  font-family: var(--font-display-en);
+  font-weight: 800;
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+body.member-scope.rtl .campaigns-hero__title {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .campaigns-hero__meta {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-family: var(--font-body-en);
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+body.member-scope.rtl .campaigns-hero__meta {
+  font-family: var(--font-body-ar);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+body.member-scope .campaigns-hero__meta strong {
+  font-family: var(--font-display-en);
+  font-style: italic;
+  font-weight: 700;
+  color: var(--ink);
+  margin-right: 4px;
+  font-size: 16px;
+}
+
+body.member-scope.rtl .campaigns-hero__meta strong {
+  font-family: var(--font-display-ar);
+  font-style: normal;
+  margin-right: 0;
+  margin-left: 4px;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .campaigns-hero {
+    padding: 4px 0 0;
+    gap: 6px;
+  }
+
+  body.member-scope .campaigns-hero__title {
+    font-size: 28px;
+  }
+
+  body.member-scope .campaigns-hero__meta {
+    font-size: 12px;
+    gap: 2px 14px;
+  }
+
+  body.member-scope .campaigns-hero__meta strong {
+    font-size: 15px;
+  }
+}
+
 body.member-scope.rtl .dispatch__arrow {
   transform: scaleX(-1);
 }
