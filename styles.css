@@ -4123,6 +4123,7 @@ body.member-scope .campaign-accordion--actionable {
   border: 1px solid var(--rule-soft);
   border-left: 6px solid var(--accent-deep);
   border-radius: 4px;
+  color: var(--ink);
 }
 
 body.member-scope.rtl .campaign-accordion--actionable {
@@ -4214,6 +4215,15 @@ body.member-scope .campaign-accordion--actionable .campaign-accordion-body {
   margin: 0;
   border-radius: 0;
   color: var(--ink);
+}
+
+body.member-scope .campaign-accordion--actionable .campaign-accordion-summary {
+  color: var(--ink);
+}
+
+body.member-scope .campaign-accordion--actionable p,
+body.member-scope .campaign-accordion--actionable .compact {
+  color: var(--ink-soft);
 }
 
 body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta) {
