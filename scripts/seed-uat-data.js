@@ -30,7 +30,7 @@ async function main() {
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
   console.log(
-    `Seeded UAT data to ${outPath} (${summary.members} members, ${summary.campaigns} campaigns, ${summary.participations} participations).`
+    `Seeded UAT data to ${outPath} (${summary.members} members, ${summary.campaigns} campaigns, ${summary.participations} participations, ${summary.previewCampaigns || 0} previews, ${summary.journalEntries || 0} journal entries).`
   );
 }
 

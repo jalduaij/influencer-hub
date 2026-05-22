@@ -825,6 +825,205 @@ function buildCampaigns(clock) {
   ];
 }
 
+function buildPreviewCampaigns(clock) {
+  const createdBy = 2;
+  const updatedBy = 2;
+  return [
+    {
+      id: 211,
+      titleEn: "Summer Iced Coffee Series",
+      titleAr: "سلسلة قهوة الصيف المثلجة",
+      descriptionEn:
+        "Five new iced coffee creations launching across PICK branches this June. We're partnering with select members to capture the launch week — invites going out soon.",
+      descriptionAr:
+        "خمس قهوات مثلجة جديدة تنطلق في فروع PICK خلال يونيو. سنتعاون مع نخبة من الأعضاء لتغطية أسبوع الإطلاق — الدعوات قريباً.",
+      captionGuide: "",
+      whatsappMessage: "",
+      type: "shop_visit",
+      status: "draft",
+      previewMode: true,
+      audience: "Coming soon",
+      audienceAr: "قريباً",
+      offerDescription: "Free iced coffee tasting flight + branded merch",
+      offerUsageCount: 1,
+      startDate: clock.dateString(14),
+      endDate: clock.dateString(45),
+      visitDeadline: clock.dateString(42),
+      submissionDeadline: clock.dateString(45),
+      branchMode: "all",
+      branchIds: [],
+      targetCityIds: [],
+      targetCategoryIds: [],
+      targetTags: [],
+      targetGender: "",
+      minFollowers: 0,
+      targetPlatformIds: [1, 2],
+      participantCap: 0,
+      bannerName: "",
+      bannerPath: "",
+      createdBy,
+      updatedBy,
+      createdAt: clock.timestamp(-1, 9, 10),
+      updatedAt: clock.timestamp(-1, 9, 10),
+      autoClosedAt: null,
+    },
+    {
+      id: 212,
+      titleEn: "Ramadan Iftar Spotlight",
+      titleAr: "إضاءة على إفطار رمضان",
+      descriptionEn:
+        "A special Ramadan menu reveal partnered with a small group of members. Posting window opens the first week of Ramadan.",
+      descriptionAr:
+        "كشف خاص لقائمة رمضان بالتعاون مع مجموعة مختارة من الأعضاء. نافذة النشر تفتح في الأسبوع الأول من رمضان.",
+      captionGuide: "",
+      whatsappMessage: "",
+      type: "shop_visit",
+      status: "draft",
+      previewMode: true,
+      audience: "Coming soon",
+      audienceAr: "قريباً",
+      offerDescription: "Iftar set for 2 + dessert platter",
+      offerUsageCount: 1,
+      startDate: clock.dateString(30),
+      endDate: clock.dateString(75),
+      visitDeadline: clock.dateString(72),
+      submissionDeadline: clock.dateString(75),
+      branchMode: "all",
+      branchIds: [],
+      targetCityIds: [],
+      targetCategoryIds: [],
+      targetTags: [],
+      targetGender: "",
+      minFollowers: 0,
+      targetPlatformIds: [1, 2],
+      participantCap: 0,
+      bannerName: "",
+      bannerPath: "",
+      createdBy,
+      updatedBy,
+      createdAt: clock.timestamp(-1, 9, 20),
+      updatedAt: clock.timestamp(-1, 9, 20),
+      autoClosedAt: null,
+    },
+    {
+      id: 213,
+      titleEn: "Family Brunch Weekends",
+      titleAr: "نهاية أسبوع برانش العائلة",
+      descriptionEn:
+        "Weekend brunch campaign for family-focused creators. Save the date — applications open soon.",
+      descriptionAr:
+        "حملة برانش نهاية الأسبوع للمبدعين العائليين. سجّلوا التاريخ — التقديم يفتح قريباً.",
+      captionGuide: "",
+      whatsappMessage: "",
+      type: "shop_visit",
+      status: "draft",
+      previewMode: true,
+      audience: "Coming soon",
+      audienceAr: "قريباً",
+      offerDescription: "Brunch for 4 + welcome drinks",
+      offerUsageCount: 1,
+      startDate: clock.dateString(21),
+      endDate: clock.dateString(60),
+      visitDeadline: clock.dateString(57),
+      submissionDeadline: clock.dateString(60),
+      branchMode: "all",
+      branchIds: [],
+      targetCityIds: [],
+      targetCategoryIds: [],
+      targetTags: [],
+      targetGender: "",
+      minFollowers: 0,
+      targetPlatformIds: [1, 2],
+      participantCap: 0,
+      bannerName: "",
+      bannerPath: "",
+      createdBy,
+      updatedBy,
+      createdAt: clock.timestamp(-1, 9, 30),
+      updatedAt: clock.timestamp(-1, 9, 30),
+      autoClosedAt: null,
+    },
+  ];
+}
+
+function buildJournalEntries(clock, users) {
+  const adminAuthor = users.find((user) => user.role === "admin");
+  const managerAuthor = users.find((user) => user.role === "campaign_manager");
+  const authorIdAdmin = adminAuthor ? adminAuthor.id : 1;
+  const authorIdManager = managerAuthor ? managerAuthor.id : authorIdAdmin;
+
+  return [
+    {
+      id: 1,
+      titleEn: "Welcome to PICK Social Club 💜",
+      titleAr: "أهلاً بكم في نادي بك 💜",
+      bodyEn:
+        "We've spent the last few months reshaping how we work with our members — clearer offers, easier submissions, real recognition for the people who bring our brand to life. This is the first chapter of a much bigger story. Thank you for being here.",
+      bodyAr:
+        "قضينا الأشهر الماضية في إعادة تشكيل طريقة عملنا مع أعضائنا — عروض أوضح، تسليمات أسهل، وتقدير حقيقي لمن يجلبون علامتنا للحياة. هذه أول فصول قصة أكبر بكثير. شكراً لكم على وجودكم.",
+      imageName: "",
+      imagePath: "",
+      externalLink: "",
+      status: "published",
+      authorUserId: authorIdAdmin,
+      createdAt: clock.timestamp(-10, 9, 0),
+      updatedAt: clock.timestamp(-10, 9, 0),
+      publishedAt: clock.timestamp(-10, 9, 0),
+    },
+    {
+      id: 2,
+      titleEn: "Behind the scenes: our spring tasting day",
+      titleAr: "من خلف الكواليس: يوم تذوّق الربيع",
+      bodyEn:
+        "Twelve members came through the flagship branch last week for our private tasting. Their feedback shaped four items now heading to the main menu. Watch this space — and follow their stories on Instagram (links in the Journal).",
+      bodyAr:
+        "اثنا عشر عضواً زاروا الفرع الرئيسي الأسبوع الماضي لجلسة تذوّق خاصة. ملاحظاتهم شكّلت أربعة أصناف ستنضم قريباً للقائمة الرئيسية. تابعوا قصصهم على إنستغرام (الروابط في اليوميات).",
+      imageName: "",
+      imagePath: "",
+      externalLink: "https://instagram.com/pickkuwait",
+      status: "published",
+      authorUserId: authorIdManager,
+      createdAt: clock.timestamp(-6, 10, 30),
+      updatedAt: clock.timestamp(-6, 10, 30),
+      publishedAt: clock.timestamp(-6, 10, 30),
+    },
+    {
+      id: 3,
+      titleEn: "Tip: how to make your proof submission stand out",
+      titleAr: "نصيحة: كيف تبرز رابط إثباتك",
+      bodyEn:
+        "The strongest submissions we see have three things in common: clear photos in natural light, a short and personal caption (not a press release), and a quick story tag. Try those next time. Your future self will thank you.",
+      bodyAr:
+        "أقوى التسليمات التي نراها تشترك في ثلاثة أشياء: صور واضحة بإضاءة طبيعية، تعليق قصير وشخصي (ليس بياناً صحفياً)، ووسم سريع في الستوري. جرّبوا هذه في المرة القادمة. ستشكرون أنفسكم.",
+      imageName: "",
+      imagePath: "",
+      externalLink: "",
+      status: "published",
+      authorUserId: authorIdAdmin,
+      createdAt: clock.timestamp(-3, 11, 15),
+      updatedAt: clock.timestamp(-3, 11, 15),
+      publishedAt: clock.timestamp(-3, 11, 15),
+    },
+    {
+      id: 4,
+      titleEn: "Member of the month: Laila",
+      titleAr: "عضوة الشهر: ليلى",
+      bodyEn:
+        "Laila's coverage of our Cold Brew launch hit every mark — beautiful imagery, authentic tone, and engagement that brought new faces into the branch. She sets the bar for what a PICK Social Club partnership looks like. More features like this coming.",
+      bodyAr:
+        "تغطية ليلى لإطلاق Cold Brew أصابت كل الأهداف — صور جميلة، نبرة صادقة، وتفاعل جلب وجوهاً جديدة للفرع. إنها معيار ما يجب أن تكون عليه شراكة نادي بك. المزيد من هذا قادم.",
+      imageName: "",
+      imagePath: "",
+      externalLink: "",
+      status: "published",
+      authorUserId: authorIdManager,
+      createdAt: clock.timestamp(-1, 14, 0),
+      updatedAt: clock.timestamp(-1, 14, 0),
+      publishedAt: clock.timestamp(-1, 14, 0),
+    },
+  ];
+}
+
 function makeImageBundle(count) {
   return Array.from({ length: count }, (_, index) => {
     const file = UPLOAD_FILES[index % UPLOAD_FILES.length];
@@ -1480,6 +1679,7 @@ function buildNextIds(store) {
     tag: maxId(store.tags) + 1,
     passwordReset: 1,
     auditEvent: maxId(store.auditEvents) + 1,
+    journalEntry: maxId(store.journalEntries || []) + 1,
   };
 }
 
@@ -1509,16 +1709,19 @@ function buildUatStore(baseStore, options = {}) {
   };
 
   const seedMembers = buildSeedMembers(clock, helpers);
-  const campaigns = buildCampaigns(clock);
+  const campaigns = [...buildCampaigns(clock), ...buildPreviewCampaigns(clock)];
   const participants = buildParticipations(clock);
   const campaignCodes = buildCampaignCodes(clock, campaigns, participants);
+  const users = [...protectedUsers, ...seedMembers].sort((left, right) => left.id - right.id);
+  const journalEntries = buildJournalEntries(clock, users);
 
   const store = {
-    users: [...protectedUsers, ...seedMembers].sort((left, right) => left.id - right.id),
+    users,
     campaigns,
     branches: collections.branches,
     campaignCodes,
     participants,
+    journalEntries,
     passwordResets: [],
     auditEvents: [],
     loginAttempts: [],
@@ -1538,6 +1741,8 @@ function buildUatStore(baseStore, options = {}) {
       members: store.users.filter((user) => user.role === "influencer").length,
       campaigns: store.campaigns.length,
       participations: store.participants.length,
+      previewCampaigns: store.campaigns.filter((campaign) => campaign.status === "draft" && campaign.previewMode === true).length,
+      journalEntries: (store.journalEntries || []).length,
     },
   };
 }

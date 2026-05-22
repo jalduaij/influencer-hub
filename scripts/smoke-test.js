@@ -93,7 +93,7 @@ async function run() {
   assert(uatSeedRun.code === 0, `UAT seed script should exit cleanly, got ${uatSeedRun.code}. ${uatSeedRun.stderr}`);
   const seededUatStore = JSON.parse(await fs.readFile(uatSeedPath, "utf8"));
   assert(seededUatStore.users.length === 23, `UAT seed should produce 23 users, got ${seededUatStore.users.length}.`);
-  assert(seededUatStore.campaigns.length === 10, `UAT seed should produce 10 campaigns, got ${seededUatStore.campaigns.length}.`);
+  assert(seededUatStore.campaigns.length === 13, `UAT seed should produce 13 campaigns, got ${seededUatStore.campaigns.length}.`);
 
   const dataDir = path.join(tempRoot, "data");
   const uploadsDir = path.join(tempRoot, "uploads");
