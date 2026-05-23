@@ -250,15 +250,34 @@ async function seedRuntimeFilesIfMissing() {
   }
 
   if (UPLOAD_DIR === BUNDLED_UPLOAD_DIR || !(await pathExists(BUNDLED_UPLOAD_DIR))) return;
+  await copyBundledUploadsIfMissing(BUNDLED_UPLOAD_DIR, UPLOAD_DIR);
+}
 
-  const bundledEntries = await fs.readdir(BUNDLED_UPLOAD_DIR, { withFileTypes: true });
+async function copyBundledUploadsIfMissing(sourceDir, targetDir) {
+  const bundledEntries = await fs.readdir(sourceDir, { withFileTypes: true });
   for (const entry of bundledEntries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      await fs.mkdir(targetPath, { recursive: true });
+      await copyBundledUploadsIfMissing(sourcePath, targetPath);
+      continue;
+    }
     if (!entry.isFile()) continue;
-    const sourcePath = path.join(BUNDLED_UPLOAD_DIR, entry.name);
-    const targetPath = path.join(UPLOAD_DIR, entry.name);
     if (await pathExists(targetPath)) continue;
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.copyFile(sourcePath, targetPath);
   }
+}
+
+function resolveUploadRequestPath(pathname) {
+  const relativePath = decodeURIComponent(pathname.replace(/^\/uploads\//, ""));
+  const normalizedPath = path.normalize(relativePath).replace(/^(\.\.(?:[\\/]|$))+/, "");
+  const targetPath = path.resolve(UPLOAD_DIR, normalizedPath);
+  if (targetPath === UPLOAD_DIR || targetPath.startsWith(`${UPLOAD_DIR}${path.sep}`)) {
+    return targetPath;
+  }
+  return null;
 }
 
 function sanitizeUser(user) {
@@ -3509,7 +3528,9 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && pathname === "/client.js") return serveFile(res, path.join(ROOT, "client.js"));
   if (req.method === "GET" && pathname === "/icons.svg") return serveFile(res, path.join(ROOT, "icons.svg"));
   if (req.method === "GET" && pathname.startsWith("/uploads/")) {
-    return serveFile(res, path.join(UPLOAD_DIR, decodeURIComponent(path.basename(pathname))));
+    const uploadPath = resolveUploadRequestPath(pathname);
+    if (!uploadPath) return sendText(res, 404, "Not found");
+    return serveFile(res, uploadPath);
   }
 
   return sendText(res, 404, "Not found");
