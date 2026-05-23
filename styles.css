@@ -7746,6 +7746,7 @@ body.member-scope .brand-block__logo {
   display: block;
   width: 180px;
   height: auto;
+  aspect-ratio: 217.58 / 46.5;
   margin: 0 auto;
 }
 
@@ -7761,6 +7762,7 @@ body.member-scope .mobile-brand__logo {
   display: block;
   width: 140px;
   height: auto;
+  aspect-ratio: 217.58 / 46.5;
   max-width: 100%;
 }
 
