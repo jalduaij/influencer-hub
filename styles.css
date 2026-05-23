@@ -3244,6 +3244,10 @@ body.member-scope .back-button:hover {
   .back-bar {
     padding: 6px 12px 2px;
   }
+
+  body.member-scope .block .stack {
+    gap: 12px;
+  }
 }
 
 /* Final brand action-zone overrides */
@@ -5421,20 +5425,22 @@ body.member-scope.rtl .journal-card__body strong {
 }
 
 body.member-scope .campaign-accordion {
-  background: var(--paper-ivory);
+  background: var(--paper-page);
   border: 1px solid var(--rule-soft);
   border-radius: 4px;
   padding: 0;
-  box-shadow: none;
+  box-shadow: 0 1px 0 rgba(31, 22, 32, 0.04), 0 6px 14px -12px rgba(31, 22, 32, 0.18);
   overflow: hidden;
 }
 
+body.member-scope .campaign-accordion[open] {
+  box-shadow: 0 1px 0 rgba(31, 22, 32, 0.06), 0 10px 22px -14px rgba(31, 22, 32, 0.28);
+}
+
 body.member-scope .campaign-accordion--actionable {
-  background: var(--paper-bone);
+  background: var(--paper-page);
   border: 1px solid var(--rule-soft);
   border-left: 6px solid var(--accent-deep);
-  border-radius: 4px;
-  color: var(--ink);
 }
 
 body.member-scope.rtl .campaign-accordion--actionable {
@@ -5516,16 +5522,13 @@ body.member-scope.rtl .dashboard-summary__cta {
 }
 
 body.member-scope .campaign-accordion-body {
-  background: var(--paper-ivory);
+  background: var(--paper-page);
   padding: 22px;
   border-top: 1px solid var(--rule-soft);
 }
 
 body.member-scope .campaign-accordion--actionable .campaign-accordion-body {
-  background: var(--paper-bone);
-  margin: 0;
-  border-radius: 0;
-  color: var(--ink);
+  background: var(--paper-page);
 }
 
 body.member-scope .campaign-accordion--actionable .campaign-accordion-summary {
@@ -5555,6 +5558,14 @@ body.member-scope .campaign-accordion--actionable .dashboard-card-code code {
 body.member-scope .campaign-accordion--actionable p,
 body.member-scope .campaign-accordion--actionable .compact {
   color: var(--ink-soft);
+}
+
+body.member-scope .block .stack {
+  gap: 16px;
+}
+
+body.member-scope .block--sage .campaign-card {
+  box-shadow: 0 1px 0 rgba(31, 22, 32, 0.04), 0 6px 14px -12px rgba(31, 22, 32, 0.18);
 }
 
 body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta) {
