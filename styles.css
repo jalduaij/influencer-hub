@@ -3667,8 +3667,81 @@ body.member-scope .campaign-preview-footer {
   gap: 12px;
 }
 
+body.member-scope .campaign-preview-footer__primary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
 body.member-scope .campaign-preview-footer__primary {
   flex-shrink: 0;
+}
+
+body.member-scope .decline-toggle {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+  width: 100%;
+}
+
+body.member-scope .decline-toggle summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-block;
+  font-family: var(--font-body-en);
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  padding: 4px 0;
+}
+
+body.member-scope .decline-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+body.member-scope.rtl .decline-toggle summary {
+  font-family: var(--font-body-ar);
+}
+
+body.member-scope .decline-toggle__confirm {
+  margin-top: 10px;
+  padding: 14px;
+  background: rgba(168, 75, 98, 0.06);
+  border: 1px solid rgba(168, 75, 98, 0.18);
+  border-radius: 3px;
+}
+
+body.member-scope .decline-toggle__confirm p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+body.member-scope .decline-toggle__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+body.member-scope .decline-confirm {
+  background: #a84b62;
+  color: #fff;
+  border: 0;
+  border-radius: 3px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+body.member-scope .decline-confirm:hover {
+  background: #843a4d;
 }
 
 @media (max-width: 720px) {
@@ -3677,8 +3750,13 @@ body.member-scope .campaign-preview-footer__primary {
     align-items: stretch;
   }
 
-body.member-scope .campaign-preview-footer button {
-  width: 100%;
+  body.member-scope .campaign-preview-footer__primary-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  body.member-scope .campaign-preview-footer button {
+    width: 100%;
   }
 }
 /* Tidied open campaign cards */

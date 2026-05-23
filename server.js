@@ -843,6 +843,7 @@ function normalizeStore(store) {
   store.branches ||= [];
   store.campaignCodes ||= [];
   store.participants ||= [];
+  store.campaignDeclines ||= [];
   store.passwordResets ||= [];
   store.auditEvents ||= [];
   store.loginAttempts ||= [];
@@ -865,6 +866,7 @@ function normalizeStore(store) {
   store.nextIds.campaign ||= nextId(store.campaigns);
   store.nextIds.code ||= nextId(store.campaignCodes);
   store.nextIds.participant ||= nextId(store.participants);
+  store.nextIds.campaignDecline ||= nextId(store.campaignDeclines);
   store.nextIds.branch ||= nextId(store.branches);
   store.nextIds.city ||= nextId(store.cities);
   store.nextIds.category ||= nextId(store.categories);
@@ -1658,10 +1660,16 @@ function eligibleCampaignsFor(store, user) {
       .filter((participant) => participant.influencerId === user.id && participant.status !== "canceled")
       .map((participant) => participant.campaignId)
   );
+  const declinedIds = new Set(
+    store.campaignDeclines
+      .filter((decline) => decline.influencerId === user.id)
+      .map((decline) => decline.campaignId)
+  );
 
   return store.campaigns.filter((campaign) => {
     if (!campaignMatchesInfluencer(store, campaign, user)) return false;
     if (joinedActiveIds.has(campaign.id)) return false;
+    if (declinedIds.has(campaign.id)) return false;
     if (codeStatsForCampaign(store, campaign.id).available <= 0) return false;
     if (campaign.participantCap > 0) {
       const activeParticipants = store.participants.filter(
@@ -1812,6 +1820,9 @@ function buildBootstrap(store, user) {
   return {
     ...common,
     eligibleCampaignIds: eligibleCampaignsFor(store, user).map((campaign) => campaign.id),
+    declinedCampaignIds: store.campaignDeclines
+      .filter((decline) => decline.influencerId === user.id)
+      .map((decline) => decline.campaignId),
     previewCampaigns: store.campaigns
       .filter((campaign) => campaign.status === "draft" && campaign.previewMode === true)
       .sort((left, right) => String(left.startDate || left.createdAt || "").localeCompare(String(right.startDate || right.createdAt || "")))
@@ -3052,6 +3063,49 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
   return sendJson(res, 200, { ok: true, participantId: participant.id });
 }
 
+async function handleDeclineCampaign(req, res, store, actor, campaignId) {
+  if (!requireRole(actor, ["influencer"])) return sendJson(res, 403, { error: "Forbidden" });
+  if (actor.status !== "active") return sendJson(res, 403, { error: "Account is not active." });
+
+  const campaign = campaignById(store, campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+
+  const existingDecline = store.campaignDeclines.find(
+    (decline) => decline.campaignId === campaign.id && decline.influencerId === actor.id
+  );
+  if (existingDecline) {
+    return sendJson(res, 409, { error: "You already declined this campaign." });
+  }
+
+  const activeParticipation = store.participants.find(
+    (participant) =>
+      participant.campaignId === campaign.id &&
+      participant.influencerId === actor.id &&
+      participant.status !== "canceled"
+  );
+  if (activeParticipation) {
+    return sendJson(res, 409, { error: "Cancel your participation first, then decline." });
+  }
+
+  const eligibleIds = new Set(eligibleCampaignsFor(store, actor).map((item) => item.id));
+  if (!eligibleIds.has(campaign.id)) {
+    return sendJson(res, 409, { error: "This campaign is not available for this member." });
+  }
+
+  const decline = {
+    id: store.nextIds.campaignDecline++,
+    campaignId: campaign.id,
+    influencerId: actor.id,
+    declinedAt: new Date().toISOString(),
+  };
+  store.campaignDeclines.push(decline);
+  appendAuditEvent(store, actor, "campaign.declined", "campaign", campaign.id, {
+    declineId: decline.id,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true, declineId: decline.id });
+}
+
 async function handleManualReserveCode(req, res, store, actor, codeId) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const code = store.campaignCodes.find((item) => item.id === Number(codeId));
@@ -3501,6 +3555,11 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && joinMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleJoinCampaign(req, res, store, actor, joinMatch[0]);
+  }
+  const declineMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/decline$/);
+  if (req.method === "POST" && declineMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleDeclineCampaign(req, res, store, actor, declineMatch[0]);
   }
   const participantRemoveMatch = routeMatch(pathname, /^\/api\/participants\/(\d+)\/remove$/);
   if (req.method === "POST" && participantRemoveMatch) {

@@ -824,6 +824,10 @@ function shouldShowConfirmInterest(participant, isEligible) {
   return participant.status === "canceled";
 }
 
+function campaignWasDeclined(campaignId) {
+  return (state.data?.declinedCampaignIds || []).includes(Number(campaignId));
+}
+
 function findCampaignForParticipant(participant) {
   if (!participant) return null;
   return currentCampaigns().find((campaign) => campaign.id === Number(participant.campaignId)) || null;
@@ -5071,6 +5075,7 @@ function renderInfluencerCampaignPreviewPage() {
   const participant = myParticipantForCampaign(campaign.id);
   const isEligible = new Set(state.data?.eligibleCampaignIds || []).has(campaign.id);
   const isActive = participant && participantCanSubmit(participant);
+  const alreadyDeclined = campaignWasDeclined(campaign.id);
   const previousCanceled = (state.data?.participants || []).find(
     (row) => row.campaignId === campaign.id && row.status === "canceled"
   );
@@ -5226,10 +5231,29 @@ function renderInfluencerCampaignPreviewPage() {
     footerCta = `<span class="badge">${escapeHtml(l("Not currently available to join.", "غير متاحة حالياً للانضمام."))}</span>`;
   }
 
+  const canDecline = !participant && !alreadyDeclined && isEligible;
+  const declineLink = canDecline
+    ? `
+      <details class="decline-toggle">
+        <summary>${escapeHtml(l("Hide this campaign", "إخفاء هذه الحملة"))}</summary>
+        <div class="decline-toggle__confirm">
+          <p>${escapeHtml(l("Hide this campaign? You won't see it again.", "إخفاء هذه الحملة؟ لن تظهر لك مرة أخرى."))}</p>
+          <div class="decline-toggle__actions">
+            <button class="secondary" data-action="decline-toggle-cancel">${escapeHtml(l("Cancel", "إلغاء"))}</button>
+            <button class="decline-confirm" data-action="decline-campaign" data-campaign-id="${campaign.id}">${escapeHtml(l("Yes, hide", "نعم، إخفاء"))}</button>
+          </div>
+        </div>
+      </details>
+    `
+    : "";
+
   const footer = `
     <section class="block block--mauve campaign-preview-footer">
-      <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
-      ${footerCta}
+      <div class="campaign-preview-footer__primary-row">
+        <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
+        ${footerCta}
+      </div>
+      ${declineLink}
     </section>
   `;
 
@@ -5927,6 +5951,36 @@ async function handleClick(event) {
         targetActiveParticipantId: newParticipantId,
       });
       flash(l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"), "success");
+    } catch (error) {
+      flash(error.message, "error");
+    } finally {
+      if (target.isConnected) target.disabled = false;
+    }
+    return;
+  }
+
+  if (action === "decline-toggle-cancel") {
+    event.preventDefault();
+    const details = target.closest("details.decline-toggle");
+    if (details) details.removeAttribute("open");
+    return;
+  }
+
+  if (action === "decline-campaign") {
+    if (target.disabled) return;
+    const campaignId = Number(target.dataset.campaignId);
+    target.disabled = true;
+    try {
+      await api(`/api/campaigns/${campaignId}/decline`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadBootstrap();
+      navigateTo("campaigns");
+      flash(
+        l("Campaign hidden. You won't see it again.", "تم إخفاء الحملة. لن تظهر لك مرة أخرى."),
+        "success"
+      );
     } catch (error) {
       flash(error.message, "error");
     } finally {

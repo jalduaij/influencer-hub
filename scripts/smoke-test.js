@@ -737,6 +737,54 @@ async function run() {
       "Member bootstrap should only expose published journal entries."
     );
 
+    const decline = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/decline`, {
+      method: "POST",
+      headers: { Cookie: influencerCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(decline.ok, `Decline should succeed, got ${decline.status}.`);
+    const declinePayload = await decline.json();
+    assert(declinePayload.ok === true, "Successful decline should return ok=true.");
+    assert(Number.isInteger(declinePayload.declineId) && declinePayload.declineId > 0, "Successful decline should return a declineId.");
+
+    const declineAgain = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/decline`, {
+      method: "POST",
+      headers: { Cookie: influencerCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(declineAgain.status === 409, `Second decline should 409, got ${declineAgain.status}.`);
+
+    const bootstrapAfterDecline = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      !bootstrapAfterDecline.eligibleCampaignIds.includes(freshCampaignId),
+      "Declined campaign should not appear in eligibleCampaignIds."
+    );
+    assert(
+      bootstrapAfterDecline.declinedCampaignIds.includes(freshCampaignId),
+      "Declined campaign should appear in declinedCampaignIds."
+    );
+
+    const storeAfterDecline = JSON.parse(await fs.readFile(storePath, "utf8"));
+    storeAfterDecline.campaignDeclines = (storeAfterDecline.campaignDeclines || []).filter(
+      (row) => Number(row.id) !== Number(declinePayload.declineId)
+    );
+    storeAfterDecline.nextIds ||= {};
+    storeAfterDecline.nextIds.campaignDecline = Math.max(
+      Number(storeAfterDecline.nextIds.campaignDecline) || 1,
+      Number(declinePayload.declineId) + 1
+    );
+    await fs.writeFile(storePath, JSON.stringify(storeAfterDecline, null, 2));
+
+    const bootstrapAfterDeclineReset = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      bootstrapAfterDeclineReset.eligibleCampaignIds?.includes(freshCampaignId),
+      "Removing the decline record should restore the campaign to eligibleCampaignIds."
+    );
+
     const nasserLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: baseUrl },
