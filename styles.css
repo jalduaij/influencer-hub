@@ -2918,7 +2918,7 @@ body.member-scope .dashboard-summary__cta {
   border-radius: 999px;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch) {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm) {
   background: var(--ink);
   color: var(--cream);
   border: 0;
@@ -2933,11 +2933,11 @@ body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not
   transition: transform 80ms ease, background 120ms ease;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):hover {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):hover {
   background: var(--accent-dark);
 }
 
-body.member-scope.rtl button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch) {
+body.member-scope.rtl button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm) {
   font-family: var(--font-display-ar);
   font-style: normal;
 }
@@ -7209,7 +7209,7 @@ body.member-scope .block--sage .campaign-card {
   box-shadow: 0 1px 0 rgba(31, 22, 32, 0.04), 0 6px 14px -12px rgba(31, 22, 32, 0.18);
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta) {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm) {
   background: var(--accent);
   color: #fff;
   border: 0;
@@ -7223,15 +7223,15 @@ body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not
   transition: background 120ms ease, transform 80ms ease;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):hover {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):hover {
   background: var(--accent-deep);
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):active {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):active {
   transform: translateY(1px);
 }
 
-body.member-scope.rtl button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta) {
+body.member-scope.rtl button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm) {
   font-family: var(--font-body-ar);
 }
 
