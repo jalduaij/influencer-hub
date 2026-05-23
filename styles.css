@@ -3682,86 +3682,38 @@ body.member-scope .campaign-preview-footer__choice-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  align-items: stretch;
 }
 
-body.member-scope .reject-toggle summary.reject-summary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  list-style: none;
+body.member-scope .campaign-preview-footer__choice-row--single {
+  grid-template-columns: 1fr;
+}
+
+body.member-scope .reject-trigger {
   background: #d04a4a;
   color: #fff;
+  border: 0;
+  border-radius: 3px;
+  padding: 14px 22px;
   font-family: var(--font-body-en);
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.02em;
-  padding: 14px 22px;
-  border: 0;
-  border-radius: 3px;
-  text-align: center;
-  transition: background 120ms ease;
-  height: 100%;
+  cursor: pointer;
   min-height: 50px;
-  user-select: none;
+  transition: background 120ms ease;
 }
 
-body.member-scope.rtl .reject-toggle summary.reject-summary {
+body.member-scope.rtl .reject-trigger {
   font-family: var(--font-body-ar);
 }
 
-body.member-scope .reject-toggle summary.reject-summary::-webkit-details-marker {
-  display: none;
-}
-
-body.member-scope .reject-toggle summary.reject-summary:hover {
+body.member-scope .reject-trigger:hover {
   background: #b03c3c;
 }
 
-body.member-scope .reject-toggle[open] {
-  grid-column: 1 / -1;
-}
-
-body.member-scope .reject-toggle[open] summary.reject-summary {
-  border-radius: 3px 3px 0 0;
-}
-
-body.member-scope .reject-toggle__confirm {
-  padding: 16px;
-  background: rgba(208, 74, 74, 0.08);
-  border: 1px solid rgba(208, 74, 74, 0.3);
-  border-top: 0;
-  border-radius: 0 0 3px 3px;
-}
-
-body.member-scope .reject-toggle__confirm p {
-  margin: 0 0 14px;
-  font-size: 14.5px;
-  line-height: 1.5;
-  color: var(--ink);
-}
-
-body.member-scope .reject-toggle__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-body.member-scope .reject-confirm {
-  background: #b03c3c;
-  color: #fff;
-  border: 0;
-  border-radius: 3px;
-  padding: 11px 22px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-body.member-scope .reject-confirm:hover {
-  background: #8a2e2e;
+body.member-scope .reject-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 body.member-scope .campaign-preview-footer__confirm {
@@ -3783,8 +3735,50 @@ body.member-scope .campaign-preview-footer__confirm:hover {
   background: var(--accent-deep);
 }
 
+body.member-scope .campaign-preview-footer__confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 body.member-scope.rtl .campaign-preview-footer__confirm {
   font-family: var(--font-body-ar);
+}
+
+body.member-scope .reject-confirm-panel {
+  margin-top: 12px;
+  padding: 18px;
+  background: rgba(208, 74, 74, 0.08);
+  border: 1px solid rgba(208, 74, 74, 0.3);
+  border-radius: 3px;
+}
+
+body.member-scope .reject-confirm-panel__question {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+body.member-scope .reject-confirm-panel__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+body.member-scope .reject-confirm {
+  background: #b03c3c;
+  color: #fff;
+  border: 0;
+  border-radius: 3px;
+  padding: 11px 22px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+body.member-scope .reject-confirm:hover {
+  background: #8a2e2e;
 }
 
 body.member-scope .campaign-preview-footer__back-row {
@@ -3804,12 +3798,8 @@ body.member-scope .campaign-preview-footer__back-row .secondary {
     gap: 8px;
   }
 
-  body.member-scope .campaign-preview-footer__choice-row:has(.reject-toggle[open]) .campaign-preview-footer__confirm {
-    display: none;
-  }
-
   body.member-scope .campaign-preview-footer__choice-row button,
-  body.member-scope .campaign-preview-footer__choice-row summary.reject-summary {
+  body.member-scope .campaign-preview-footer__choice-row .reject-trigger {
     width: 100%;
   }
 }

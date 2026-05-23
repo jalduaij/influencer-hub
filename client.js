@@ -85,6 +85,7 @@ const state = {
   campaignSearch: "",
   apiInflightCount: 0,
   passwordEditorUserId: null,
+  rejectingCampaignId: null,
   masterDataEditor: {
     type: "",
     id: null,
@@ -338,6 +339,7 @@ function navigateTo(page, extraParams = {}) {
   }
 
   state.currentPage = page;
+  if (page !== "campaign-preview") state.rejectingCampaignId = null;
   for (const key of Object.keys(extraParams)) {
     state[key] = extraParams[key];
   }
@@ -357,6 +359,7 @@ function goBack() {
     }
     const previous = state.navStack.pop();
     applyNavSnapshot(previous);
+    if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
     pushBrowserHistory();
     render();
     return;
@@ -366,6 +369,7 @@ function goBack() {
   if (fallback && fallback !== state.currentPage) {
     syncCurrentHistoryEntry();
     state.currentPage = fallback;
+    state.rejectingCampaignId = null;
     pushBrowserHistory();
     render();
   }
@@ -387,6 +391,7 @@ function handlePopState(event) {
   if (!(event.state && event.state.__pickNav)) return;
   state.navStack = cloneNavStack(event.state.navStack);
   applyNavSnapshot(event.state.snapshot);
+  if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
   render();
 }
 
@@ -5071,11 +5076,18 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
 
 function renderInfluencerCampaignPreviewPage() {
   const campaign = selectedCampaign();
-  if (!campaign) return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
+  if (!campaign) {
+    state.rejectingCampaignId = null;
+    return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
+  }
+  if (state.rejectingCampaignId && state.rejectingCampaignId !== campaign.id) {
+    state.rejectingCampaignId = null;
+  }
   const participant = myParticipantForCampaign(campaign.id);
   const isEligible = new Set(state.data?.eligibleCampaignIds || []).has(campaign.id);
   const isActive = participant && participantCanSubmit(participant);
   const alreadyDeclined = campaignWasDeclined(campaign.id);
+  const rejecting = state.rejectingCampaignId === campaign.id;
   const previousCanceled = (state.data?.participants || []).find(
     (row) => row.campaignId === campaign.id && row.status === "canceled"
   );
@@ -5224,6 +5236,7 @@ function renderInfluencerCampaignPreviewPage() {
   const canDecline = !participant && !alreadyDeclined && isEligible;
 
   let primaryRow = "";
+  let rejectPanel = "";
   if (canConfirm && canDecline) {
     primaryRow = `
       <p class="campaign-preview-footer__helper">
@@ -5235,29 +5248,36 @@ function renderInfluencerCampaignPreviewPage() {
         )}
       </p>
       <div class="campaign-preview-footer__choice-row">
-        <details class="reject-toggle">
-          <summary class="reject-summary">${escapeHtml(l("Reject", "رفض"))}</summary>
-          <div class="reject-toggle__confirm">
-            <p>${escapeHtml(
-              l(
-                "Reject this campaign? You won't be invited to it again, and the team will know to plan without you.",
-                "هل تريد رفض هذه الحملة؟ لن تتم دعوتك إليها مرة أخرى، وسيعلم الفريق أن يخطط بدونك."
-              )
-            )}</p>
-            <div class="reject-toggle__actions">
-              <button class="secondary" data-action="reject-toggle-cancel">${escapeHtml(l("Cancel", "إلغاء"))}</button>
-              <button class="reject-confirm" data-action="decline-campaign" data-campaign-id="${campaign.id}">${escapeHtml(l("Yes, reject", "نعم، ارفض"))}</button>
-            </div>
-          </div>
-        </details>
-        <button class="campaign-preview-footer__confirm" data-action="join-campaign" data-campaign-id="${campaign.id}">
+        <button class="reject-trigger" data-action="reject-open" data-campaign-id="${campaign.id}" ${rejecting ? "disabled" : ""}>
+          ${escapeHtml(l("Reject", "رفض"))}
+        </button>
+        <button class="campaign-preview-footer__confirm" data-action="join-campaign" data-campaign-id="${campaign.id}" ${rejecting ? "disabled" : ""}>
           ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
         </button>
       </div>
     `;
+
+    if (rejecting) {
+      rejectPanel = `
+        <div class="reject-confirm-panel" role="alertdialog" aria-live="polite">
+          <p class="reject-confirm-panel__question">${escapeHtml(
+            l(
+              "Reject this campaign? You won't be invited to it again, and the team will know to plan without you.",
+              "هل تريد رفض هذه الحملة؟ لن تتم دعوتك إليها مرة أخرى، وسيعلم الفريق أن يخطط بدونك."
+            )
+          )}</p>
+          <div class="reject-confirm-panel__actions">
+            <button class="secondary" data-action="reject-cancel">${escapeHtml(l("Cancel", "إلغاء"))}</button>
+            <button class="reject-confirm" data-action="decline-campaign" data-campaign-id="${campaign.id}">
+              ${escapeHtml(l("Yes, reject", "نعم، ارفض"))}
+            </button>
+          </div>
+        </div>
+      `;
+    }
   } else if (canConfirm) {
     primaryRow = `
-      <div class="campaign-preview-footer__choice-row">
+      <div class="campaign-preview-footer__choice-row campaign-preview-footer__choice-row--single">
         <button class="campaign-preview-footer__confirm" data-action="join-campaign" data-campaign-id="${campaign.id}">
           ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
         </button>
@@ -5270,6 +5290,7 @@ function renderInfluencerCampaignPreviewPage() {
   const footer = `
     <section class="block block--mauve campaign-preview-footer">
       ${primaryRow}
+      ${rejectPanel}
       <div class="campaign-preview-footer__back-row">
         <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
       </div>
@@ -5978,10 +5999,17 @@ async function handleClick(event) {
     return;
   }
 
-  if (action === "reject-toggle-cancel") {
+  if (action === "reject-open") {
     event.preventDefault();
-    const details = target.closest("details.reject-toggle");
-    if (details) details.removeAttribute("open");
+    state.rejectingCampaignId = Number(target.dataset.campaignId);
+    render();
+    return;
+  }
+
+  if (action === "reject-cancel") {
+    event.preventDefault();
+    state.rejectingCampaignId = null;
+    render();
     return;
   }
 
@@ -5994,6 +6022,7 @@ async function handleClick(event) {
         method: "POST",
         body: JSON.stringify({}),
       });
+      state.rejectingCampaignId = null;
       await loadBootstrap();
       navigateTo("campaigns");
       flash(
