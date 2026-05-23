@@ -5164,8 +5164,19 @@ body.member-scope .dispatch {
   min-width: 0;
 }
 
-body.member-scope .block--blush {
-  overflow: hidden;
+@media (max-width: 900px) {
+  body.member-scope .block {
+    overflow-x: clip;
+  }
+
+  body.member-scope .block--brand,
+  body.member-scope .block--blush,
+  body.member-scope .block--ivory,
+  body.member-scope .block--sage,
+  body.member-scope .block--bone,
+  body.member-scope .block--mauve {
+    overflow-x: clip;
+  }
 }
 
 body.member-scope img,
@@ -7663,4 +7674,41 @@ body.member-scope .mobile-brand__logo {
   display: block;
   width: 36px;
   height: 36px;
+}
+
+html,
+body {
+  overflow-x: clip;
+  max-width: 100vw;
+}
+
+@media (max-width: 900px) {
+  body.member-scope .app-shell,
+  body.member-scope .main-stage,
+  body.member-scope .member-feed {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
+  body.member-scope .member-feed {
+    padding: 18px 0 56px;
+    gap: 22px;
+  }
+
+  body.member-scope .block,
+  body.member-scope .block--brand,
+  body.member-scope .block--blush,
+  body.member-scope .block--ivory,
+  body.member-scope .block--sage,
+  body.member-scope .block--bone,
+  body.member-scope .block--mauve {
+    overflow-x: clip;
+  }
+}
+
+@media (max-width: 480px) {
+  body.member-scope .member-feed {
+    padding: 14px 0 48px;
+    gap: 18px;
+  }
 }
