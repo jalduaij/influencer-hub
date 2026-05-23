@@ -842,12 +842,16 @@ async function run() {
       body: JSON.stringify({}),
     });
     assert(joinOne.ok, `Influencer join failed with status ${joinOne.status}.`);
+    const joinOnePayload = await joinOne.json();
+    assert(joinOnePayload.ok === true, "Successful join should return ok=true.");
+    assert(Number.isInteger(joinOnePayload.participantId) && joinOnePayload.participantId > 0, "Successful join should return the new participantId.");
 
     const afterJoinOne = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: influencerCookie.split(";")[0] },
     }).then((response) => response.json());
     const firstParticipant = afterJoinOne.participants.find((participant) => participant.campaignId === freshCampaignId && participant.status === "confirmed");
     assert(firstParticipant, "Expected a confirmed participant after joining.");
+    assert(firstParticipant.id === joinOnePayload.participantId, "Join response participantId should match the confirmed participant row.");
     assert(firstParticipant.assignedCodeId, "Expected the first join to reserve a code.");
 
     const femaleTwoLogin = await fetch(`${baseUrl}/api/login`, {
@@ -883,12 +887,16 @@ async function run() {
       body: JSON.stringify({}),
     });
     assert(joinTwo.ok, `Second join failed with status ${joinTwo.status}.`);
+    const joinTwoPayload = await joinTwo.json();
+    assert(joinTwoPayload.ok === true, "Rejoin should return ok=true.");
+    assert(Number.isInteger(joinTwoPayload.participantId) && joinTwoPayload.participantId > 0, "Rejoin should return the new participantId.");
 
     const afterJoinTwo = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: influencerCookie.split(";")[0] },
     }).then((response) => response.json());
     const activeParticipant = afterJoinTwo.participants.find((participant) => participant.campaignId === freshCampaignId && participant.status === "confirmed");
     assert(activeParticipant, "Expected a new confirmed participant after rejoining.");
+    assert(activeParticipant.id === joinTwoPayload.participantId, "Rejoin participantId should match the new confirmed participant.");
     assert(activeParticipant.campaignTitleEn, "Expected the participation row to include a campaign title for clickable campaign links.");
     const proofNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-proof-1");
     assert(proofNotification?.title?.en && proofNotification?.title?.ar, "Notifications should expose bilingual titles.");

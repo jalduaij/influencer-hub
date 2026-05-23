@@ -3049,7 +3049,7 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
     codeId: availableCode.id,
   });
   await writeStore(store);
-  return sendJson(res, 200, { ok: true });
+  return sendJson(res, 200, { ok: true, participantId: participant.id });
 }
 
 async function handleManualReserveCode(req, res, store, actor, codeId) {

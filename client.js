@@ -5703,19 +5703,22 @@ async function handleClick(event) {
 
   if (action === "join-campaign") {
     if (target.disabled) return;
-    const campaign = currentCampaigns().find((item) => item.id === Number(target.dataset.campaignId));
-    if (campaign) {
-      const confirmed = window.confirm(
-        l(
-          `Confirming interest will reserve a unique code for you.\nOffer: ${campaign.offerDescription || "-"}\nVisit deadline: ${formatDate(campaign.visitDeadline)}\nSubmission deadline: ${formatDate(campaign.submissionDeadline)}`,
-          `تأكيد الاهتمام سيحجز لك كوداً فريداً.\nالعرض: ${campaign.offerDescription || "-"}\nآخر موعد للزيارة: ${formatDate(campaign.visitDeadline)}\nآخر موعد للتسليم: ${formatDate(campaign.submissionDeadline)}`
-        )
-      );
-      if (!confirmed) return;
-    }
+    const campaignId = Number(target.dataset.campaignId);
     target.disabled = true;
     try {
-      await mutateAndRefresh(`/api/campaigns/${target.dataset.campaignId}/join`, {}, l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"));
+      const response = await api(`/api/campaigns/${campaignId}/join`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadBootstrap();
+      const newParticipantId = response?.participantId ?? null;
+      navigateTo("campaigns", {
+        justNavigatedToCampaigns: true,
+        targetActiveParticipantId: newParticipantId,
+      });
+      flash(l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"), "success");
+    } catch (error) {
+      flash(error.message, "error");
     } finally {
       if (target.isConnected) target.disabled = false;
     }
