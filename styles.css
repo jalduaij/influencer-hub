@@ -3177,6 +3177,75 @@ body.member-scope .cover__cta {
   }
 }
 
+.back-bar {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 8px 0 4px;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px 8px 4px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 100ms ease, transform 80ms ease;
+}
+
+.back-button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.back-button:active {
+  transform: translateX(-1px);
+}
+
+.back-button__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.rtl .back-button__icon {
+  transform: scaleX(-1);
+}
+
+body.member-scope .back-bar {
+  padding: 6px 0 2px;
+}
+
+body.member-scope .back-button {
+  color: var(--ink-soft);
+  font-family: var(--font-body-en);
+  letter-spacing: 0.02em;
+}
+
+body.member-scope.rtl .back-button {
+  font-family: var(--font-body-ar);
+}
+
+body.member-scope .back-button:hover {
+  background: rgba(31, 22, 32, 0.05);
+  color: var(--ink);
+}
+
+.app-shell.mobile-nav-open .back-bar {
+  visibility: hidden;
+}
+
+@media (max-width: 720px) {
+  .back-bar {
+    padding: 6px 12px 2px;
+  }
+}
+
 /* Final brand action-zone overrides */
 body.member-scope .block--brand {
   background:

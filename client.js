@@ -55,6 +55,8 @@ const state = {
   publicData: { cities: [], categories: [], platforms: [], tags: [] },
   flash: null,
   currentPage: null,
+  navStack: [],
+  navStackMaxSize: 50,
   mobileNavOpen: false,
   selectedCampaignId: null,
   selectedBranchId: null,
@@ -96,6 +98,7 @@ const state = {
 };
 
 const app = document.getElementById("app");
+let pendingNavScrollY = null;
 
 initialize();
 
@@ -110,6 +113,7 @@ async function initialize() {
   const session = await api("/api/session").catch(() => ({ authenticated: false }));
   if (session.authenticated) {
     state.currentUser = session.user;
+    state.navStack = [];
     state.currentPage = defaultPageForRole(session.user.role);
     await loadBootstrap();
     return;
@@ -245,6 +249,145 @@ function normalizePage(page) {
   if (page === "approvals") return "influencers";
   if ((page === "availableCampaigns" || page === "myCampaigns") && state.currentUser.role === "influencer") return "campaigns";
   return validPagesForRole(state.currentUser.role).has(page) ? page : defaultPageForRole(state.currentUser.role);
+}
+
+const NAV_TRACKED_FIELDS = [
+  "currentPage",
+  "selectedCampaignId",
+  "selectedInfluencerId",
+  "selectedManagerId",
+  "selectedBranchId",
+  "selectedJournalEntryId",
+  "targetActiveParticipantId",
+  "influencerProfileReturnPage",
+];
+
+function captureNavSnapshot() {
+  const snapshot = {
+    params: {},
+    scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+    title: state.currentUser ? currentDocumentTitle() : "PICK Social Club",
+  };
+  for (const field of NAV_TRACKED_FIELDS) {
+    if (state[field] !== undefined) snapshot.params[field] = state[field];
+  }
+  return snapshot;
+}
+
+function cloneNavSnapshot(snapshot) {
+  return {
+    params: { ...(snapshot?.params || {}) },
+    scrollY: snapshot?.scrollY ?? 0,
+    title: snapshot?.title || "",
+  };
+}
+
+function cloneNavStack(stack) {
+  return Array.isArray(stack) ? stack.map((snapshot) => cloneNavSnapshot(snapshot)) : [];
+}
+
+function applyNavSnapshot(snapshot) {
+  for (const field of NAV_TRACKED_FIELDS) {
+    state[field] = snapshot?.params?.[field] ?? null;
+  }
+  pendingNavScrollY = snapshot?.scrollY ?? 0;
+}
+
+function sameNavDestination(page, extraParams = {}) {
+  if (page !== state.currentPage) return false;
+  return Object.keys(extraParams).every((key) => state[key] === extraParams[key]);
+}
+
+function currentHistoryUrl() {
+  const path = `${window.location.pathname}${window.location.search}`;
+  return state.currentPage ? `${path}#${state.currentPage}` : path;
+}
+
+function buildBrowserHistoryState() {
+  return {
+    __pickNav: true,
+    page: state.currentPage,
+    navStackLen: state.navStack.length,
+    navStack: cloneNavStack(state.navStack),
+    snapshot: captureNavSnapshot(),
+  };
+}
+
+function syncCurrentHistoryEntry() {
+  try {
+    window.history.replaceState(buildBrowserHistoryState(), "", currentHistoryUrl());
+  } catch (error) {
+    // ignore
+  }
+}
+
+function pushBrowserHistory() {
+  try {
+    window.history.pushState(buildBrowserHistoryState(), "", currentHistoryUrl());
+  } catch (error) {
+    // ignore
+  }
+}
+
+function navigateTo(page, extraParams = {}) {
+  if (!state.currentUser || sameNavDestination(page, extraParams)) return false;
+  syncCurrentHistoryEntry();
+  state.navStack.push(captureNavSnapshot());
+  if (state.navStack.length > state.navStackMaxSize) {
+    state.navStack.shift();
+  }
+
+  state.currentPage = page;
+  for (const key of Object.keys(extraParams)) {
+    state[key] = extraParams[key];
+  }
+
+  pushBrowserHistory();
+  render();
+  return true;
+}
+
+function goBack() {
+  if (state.navStack.length) {
+    try {
+      window.history.back();
+      return;
+    } catch (error) {
+      // fall through to manual restore
+    }
+    const previous = state.navStack.pop();
+    applyNavSnapshot(previous);
+    pushBrowserHistory();
+    render();
+    return;
+  }
+
+  const fallback = defaultPageForRole(state.currentUser?.role);
+  if (fallback && fallback !== state.currentPage) {
+    syncCurrentHistoryEntry();
+    state.currentPage = fallback;
+    pushBrowserHistory();
+    render();
+  }
+}
+
+function renderBackButton() {
+  if (!state.navStack.length) return "";
+  return `
+    <button class="back-button" data-action="go-back" aria-label="${escapeHtml(l("Back", "رجوع"))}">
+      <svg class="back-button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+      <span>${l("Back", "رجوع")}</span>
+    </button>
+  `;
+}
+
+function handlePopState(event) {
+  if (!(event.state && event.state.__pickNav)) return;
+  state.navStack = cloneNavStack(event.state.navStack);
+  applyNavSnapshot(event.state.snapshot);
+  render();
 }
 
 function escapeHtml(value) {
@@ -1563,8 +1706,12 @@ async function api(url, options = {}) {
 }
 
 async function loadBootstrap() {
+  const previousRole = state.currentUser?.role || null;
   state.data = await api("/api/bootstrap");
   state.currentUser = state.data.currentUser;
+  if (previousRole && previousRole !== state.currentUser?.role) {
+    state.navStack = [];
+  }
   if (
     state.selectedJournalEntryId &&
     !(state.data?.journalEntries || []).some((entry) => entry.id === Number(state.selectedJournalEntryId))
@@ -1590,6 +1737,7 @@ function applyMemberScope() {
 
 function render(options = {}) {
   const focusSnapshot = options.preserveFocus ? captureFocusedField() : null;
+  let deferHistorySync = false;
   document.body.classList.toggle("rtl", state.locale === "ar");
   applyMemberScope();
   if (!state.currentUser) {
@@ -1598,6 +1746,7 @@ function render(options = {}) {
     document.title = "PICK Social Club";
     app.innerHTML = renderAuth();
     syncFlashLayer();
+    syncCurrentHistoryEntry();
     if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
     return;
   }
@@ -1606,12 +1755,24 @@ function render(options = {}) {
   document.body.classList.toggle("nav-locked", state.mobileNavOpen);
   document.body.classList.toggle("mobile-nav-locked", state.mobileNavOpen);
   if (state.currentPage === "campaigns" && state.justNavigatedToCampaigns) {
+    deferHistorySync = true;
     scrollToActiveCampaigns();
     focusFirstActionableSubmission();
     state.justNavigatedToCampaigns = false;
     state.targetActiveParticipantId = null;
+    setTimeout(() => syncCurrentHistoryEntry(), 120);
+  }
+  if (pendingNavScrollY != null) {
+    deferHistorySync = true;
+    const nextScrollY = pendingNavScrollY;
+    pendingNavScrollY = null;
+    setTimeout(() => {
+      window.scrollTo({ top: nextScrollY, behavior: "auto" });
+      syncCurrentHistoryEntry();
+    }, 30);
   }
   syncFlashLayer();
+  if (!deferHistorySync) syncCurrentHistoryEntry();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
 
@@ -1890,6 +2051,7 @@ function renderShell() {
       </aside>
       <button type="button" class="mobile-nav-backdrop" data-action="close-mobile-nav" aria-label="${escapeHtml(l("Close menu", "إغلاق القائمة"))}"></button>
       <main class="main-stage">
+        <div class="back-bar">${renderBackButton()}</div>
         ${renderPage()}
       </main>
     </div>
@@ -5185,6 +5347,7 @@ function bindGlobalEvents() {
   app.addEventListener("input", handleInput);
   app.addEventListener("keydown", handleKeyDown);
   app.addEventListener("focusout", handleFocusOut);
+  window.addEventListener("popstate", handlePopState);
 }
 
 function toggleMobileNav(force) {
@@ -5196,10 +5359,10 @@ function toggleMobileNav(force) {
 }
 
 function handleOpenActive(participantId) {
-  state.targetActiveParticipantId = Number(participantId) || null;
-  state.justNavigatedToCampaigns = true;
-  state.currentPage = "campaigns";
-  render();
+  navigateTo("campaigns", {
+    targetActiveParticipantId: Number(participantId) || null,
+    justNavigatedToCampaigns: true,
+  });
 }
 
 async function handleClick(event) {
@@ -5212,13 +5375,20 @@ async function handleClick(event) {
     document.body.classList.toggle("nav-locked", false);
     state.mobileNavOpen = false;
     const nextPage = normalizePage(target.dataset.nav);
-    state.justNavigatedToCampaigns = nextPage === "campaigns" && state.currentPage !== "campaigns";
-    state.currentPage = nextPage;
-    render();
+    const changed = navigateTo(nextPage, nextPage === "campaigns" && state.currentPage !== "campaigns"
+      ? { justNavigatedToCampaigns: true }
+      : {});
+    if (!changed) render();
     return;
   }
 
   const action = target.dataset.action;
+  if (action === "go-back") {
+    event.preventDefault();
+    goBack();
+    return;
+  }
+
   if (action === "toggle-mobile-nav") {
     toggleMobileNav();
     return;
@@ -5266,6 +5436,7 @@ async function handleClick(event) {
     state.currentUser = null;
     state.data = null;
     state.currentPage = null;
+    state.navStack = [];
     state.generatedLink = "";
     state.authMode = "login";
     flash(l("Signed out.", "تم تسجيل الخروج."), "success");
@@ -5296,23 +5467,20 @@ async function handleClick(event) {
   }
 
   if (action === "view-influencer") {
-    state.selectedInfluencerId = Number(target.dataset.userId);
-    state.influencerProfileReturnPage = state.currentPage;
-    state.currentPage = "influencer-profile";
-    render();
+    navigateTo("influencer-profile", {
+      selectedInfluencerId: Number(target.dataset.userId),
+      influencerProfileReturnPage: state.currentPage,
+    });
     return;
   }
 
   if (action === "back-from-influencer-profile") {
-    state.currentPage = state.influencerProfileReturnPage || "influencers";
-    render();
+    navigateTo(state.influencerProfileReturnPage || "influencers");
     return;
   }
 
   if (action === "edit-branch") {
-    state.selectedBranchId = Number(target.dataset.branchId);
-    state.currentPage = "branch-edit";
-    render();
+    navigateTo("branch-edit", { selectedBranchId: Number(target.dataset.branchId) });
     return;
   }
 
@@ -5333,24 +5501,18 @@ async function handleClick(event) {
   }
 
   if (action === "edit-manager") {
-    state.selectedManagerId = Number(target.dataset.managerId);
-    state.currentPage = "manager-edit";
-    render();
+    navigateTo("manager-edit", { selectedManagerId: Number(target.dataset.managerId) });
     return;
   }
 
   if (action === "back-to-branches") {
-    state.selectedBranchId = null;
-    state.currentPage = "branches";
-    render();
+    navigateTo("branches", { selectedBranchId: null });
     return;
   }
 
   if (action === "back-to-managers") {
-    state.selectedManagerId = null;
     state.passwordEditorUserId = null;
-    state.currentPage = "managers";
-    render();
+    navigateTo("managers", { selectedManagerId: null });
     return;
   }
 
@@ -5403,16 +5565,12 @@ async function handleClick(event) {
   }
 
   if (action === "edit-campaign") {
-    state.selectedCampaignId = Number(target.dataset.campaignId);
-    state.currentPage = "campaign-edit";
-    render();
+    navigateTo("campaign-edit", { selectedCampaignId: Number(target.dataset.campaignId) });
     return;
   }
 
   if (action === "edit-journal-entry") {
-    state.selectedJournalEntryId = Number(target.dataset.entryId);
-    state.currentPage = "journal";
-    render();
+    navigateTo("journal", { selectedJournalEntryId: Number(target.dataset.entryId) });
     return;
   }
 
@@ -5439,20 +5597,19 @@ async function handleClick(event) {
   }
 
   if (action === "preview-campaign") {
-    state.selectedCampaignId = Number(target.dataset.campaignId);
-    state.currentPage = "campaign-preview";
-    render();
+    navigateTo("campaign-preview", { selectedCampaignId: Number(target.dataset.campaignId) });
     return;
   }
 
   if (action === "view-campaign") {
-    state.selectedCampaignId = Number(target.dataset.campaignId);
-    state.manualReserveCodeId = null;
+    const campaignId = Number(target.dataset.campaignId);
     try {
       const payload = await api(`/api/campaigns/${target.dataset.campaignId}/codes`);
-      state.campaignCodesByCampaign[state.selectedCampaignId] = payload.codes;
-      state.currentPage = "campaign-view";
-      render();
+      state.campaignCodesByCampaign[campaignId] = payload.codes;
+      navigateTo("campaign-view", {
+        selectedCampaignId: campaignId,
+        manualReserveCodeId: null,
+      });
     } catch (error) {
       flash(error.message, "error");
     }
@@ -5466,10 +5623,8 @@ async function handleClick(event) {
         body: JSON.stringify({}),
       });
       await loadBootstrap();
-      state.selectedCampaignId = payload.campaign.id;
-      state.currentPage = "campaign-edit";
       flash(l("Campaign duplicated as draft.", "تم نسخ الحملة كمسودة."), "success");
-      render();
+      navigateTo("campaign-edit", { selectedCampaignId: payload.campaign.id });
     } catch (error) {
       flash(error.message, "error");
     }
@@ -5477,10 +5632,10 @@ async function handleClick(event) {
   }
 
   if (action === "back-to-campaigns") {
-    state.manualReserveCodeId = null;
-    state.currentPage = "campaigns";
-    state.justNavigatedToCampaigns = true;
-    render();
+    navigateTo("campaigns", {
+      manualReserveCodeId: null,
+      justNavigatedToCampaigns: true,
+    });
     return;
   }
 
@@ -5625,6 +5780,7 @@ async function handleSubmit(event) {
       await api("/api/login", { method: "POST", body: JSON.stringify(payload) });
       const session = await api("/api/session");
       state.currentUser = session.user;
+      state.navStack = [];
       state.currentPage = defaultPageForRole(session.user.role);
       await loadBootstrap();
       flash(l("Signed in successfully.", "تم تسجيل الدخول بنجاح."), "success");
