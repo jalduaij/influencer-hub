@@ -3276,6 +3276,11 @@ body.member-scope .featured-journal__image {
   }
 }
 
+/* Let notification popovers escape member hero blocks entirely */
+body.member-scope .block--hero > * {
+  z-index: auto !important;
+}
+
 /* Final-final member notification stacking fix */
 body.member-scope .block::before {
   content: "";
@@ -6790,4 +6795,7 @@ body.member-scope .featured-journal__image {
     grid-area: auto !important;
     padding: 12px 14px 14px;
   }
+}
+body.member-scope .block--hero > * {
+  z-index: auto !important;
 }
