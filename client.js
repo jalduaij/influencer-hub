@@ -5220,40 +5220,59 @@ function renderInfluencerCampaignPreviewPage() {
     `
     : "";
 
-  let footerCta = "";
-  if (shouldShowConfirmInterest(participant, isEligible)) {
-    footerCta = `
-      <button data-action="join-campaign" data-campaign-id="${campaign.id}" class="campaign-preview-footer__primary">
-        ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
-      </button>
+  const canConfirm = shouldShowConfirmInterest(participant, isEligible);
+  const canDecline = !participant && !alreadyDeclined && isEligible;
+
+  let primaryRow = "";
+  if (canConfirm && canDecline) {
+    primaryRow = `
+      <p class="campaign-preview-footer__helper">
+        ${escapeHtml(
+          l(
+            "Please pick one. Confirming or rejecting helps the team plan early.",
+            "اختر أحدهما من فضلك. التأكيد أو الرفض يساعد الفريق على التخطيط مبكراً."
+          )
+        )}
+      </p>
+      <div class="campaign-preview-footer__choice-row">
+        <details class="reject-toggle">
+          <summary class="reject-summary">${escapeHtml(l("Reject", "رفض"))}</summary>
+          <div class="reject-toggle__confirm">
+            <p>${escapeHtml(
+              l(
+                "Reject this campaign? You won't be invited to it again, and the team will know to plan without you.",
+                "هل تريد رفض هذه الحملة؟ لن تتم دعوتك إليها مرة أخرى، وسيعلم الفريق أن يخطط بدونك."
+              )
+            )}</p>
+            <div class="reject-toggle__actions">
+              <button class="secondary" data-action="reject-toggle-cancel">${escapeHtml(l("Cancel", "إلغاء"))}</button>
+              <button class="reject-confirm" data-action="decline-campaign" data-campaign-id="${campaign.id}">${escapeHtml(l("Yes, reject", "نعم، ارفض"))}</button>
+            </div>
+          </div>
+        </details>
+        <button class="campaign-preview-footer__confirm" data-action="join-campaign" data-campaign-id="${campaign.id}">
+          ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
+        </button>
+      </div>
+    `;
+  } else if (canConfirm) {
+    primaryRow = `
+      <div class="campaign-preview-footer__choice-row">
+        <button class="campaign-preview-footer__confirm" data-action="join-campaign" data-campaign-id="${campaign.id}">
+          ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
+        </button>
+      </div>
     `;
   } else if (!participant && !isEligible) {
-    footerCta = `<span class="badge">${escapeHtml(l("Not currently available to join.", "غير متاحة حالياً للانضمام."))}</span>`;
+    primaryRow = `<span class="badge">${escapeHtml(l("Not currently available to join.", "غير متاحة حالياً للانضمام."))}</span>`;
   }
-
-  const canDecline = !participant && !alreadyDeclined && isEligible;
-  const declineLink = canDecline
-    ? `
-      <details class="decline-toggle">
-        <summary>${escapeHtml(l("Hide this campaign", "إخفاء هذه الحملة"))}</summary>
-        <div class="decline-toggle__confirm">
-          <p>${escapeHtml(l("Hide this campaign? You won't see it again.", "إخفاء هذه الحملة؟ لن تظهر لك مرة أخرى."))}</p>
-          <div class="decline-toggle__actions">
-            <button class="secondary" data-action="decline-toggle-cancel">${escapeHtml(l("Cancel", "إلغاء"))}</button>
-            <button class="decline-confirm" data-action="decline-campaign" data-campaign-id="${campaign.id}">${escapeHtml(l("Yes, hide", "نعم، إخفاء"))}</button>
-          </div>
-        </div>
-      </details>
-    `
-    : "";
 
   const footer = `
     <section class="block block--mauve campaign-preview-footer">
-      <div class="campaign-preview-footer__primary-row">
+      ${primaryRow}
+      <div class="campaign-preview-footer__back-row">
         <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
-        ${footerCta}
       </div>
-      ${declineLink}
     </section>
   `;
 
@@ -5959,9 +5978,9 @@ async function handleClick(event) {
     return;
   }
 
-  if (action === "decline-toggle-cancel") {
+  if (action === "reject-toggle-cancel") {
     event.preventDefault();
-    const details = target.closest("details.decline-toggle");
+    const details = target.closest("details.reject-toggle");
     if (details) details.removeAttribute("open");
     return;
   }
@@ -5978,7 +5997,7 @@ async function handleClick(event) {
       await loadBootstrap();
       navigateTo("campaigns");
       flash(
-        l("Campaign hidden. You won't see it again.", "تم إخفاء الحملة. لن تظهر لك مرة أخرى."),
+        l("Invitation rejected. The team will plan without you.", "تم رفض الدعوة. سيخطط الفريق بدونك."),
         "success"
       );
     } catch (error) {
