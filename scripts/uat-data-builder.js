@@ -78,6 +78,29 @@ const UPLOAD_FILES = [
   "1776715547291-a468a54f-IMG_5042.jpg",
 ];
 
+const CAMPAIGN_COVER_BY_TITLE = {
+  "Cold Brew Shop Visit": "/uploads/seeds/cold-brew-shop-visit.svg",
+  "Ladies Beauty Day": "/uploads/seeds/ladies-beauty-day.svg",
+  "Macro Creators Tasting": "/uploads/seeds/macro-creators-tasting.svg",
+  "Instagram Coffee Reels": "/uploads/seeds/instagram-coffee-reels.svg",
+  "Avenues Exclusive": "/uploads/seeds/avenues-exclusive.svg",
+  "Family Brunch": "/uploads/seeds/family-brunch.svg",
+  "Founders Preview": "/uploads/seeds/founders-preview.svg",
+  "Spring Tasting": "/uploads/seeds/spring-tasting.svg",
+  "Winter Cold Brew": "/uploads/seeds/winter-cold-brew.svg",
+  "Quick Tasting": "/uploads/seeds/quick-tasting.svg",
+  "Summer Iced Coffee Series": "/uploads/seeds/summer-iced-coffee-series.svg",
+  "Ramadan Iftar Spotlight": "/uploads/seeds/ramadan-iftar-spotlight.svg",
+  "Family Brunch Weekends": "/uploads/seeds/family-brunch-weekends.svg",
+};
+
+const JOURNAL_COVER_BY_TITLE = {
+  "Welcome to PICK Social Club 💜": "/uploads/seeds/journal-welcome.svg",
+  "Behind the scenes: our spring tasting day": "/uploads/seeds/journal-spring-tasting.svg",
+  "Tip: how to make your proof submission stand out": "/uploads/seeds/journal-submission-tips.svg",
+  "Member of the month: Laila": "/uploads/seeds/journal-member-of-month.svg",
+};
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -1683,6 +1706,26 @@ function buildNextIds(store) {
   };
 }
 
+function applyCampaignSeedCover(campaign) {
+  const coverPath = CAMPAIGN_COVER_BY_TITLE[campaign.titleEn];
+  if (!coverPath) return campaign;
+  return {
+    ...campaign,
+    bannerName: path.basename(coverPath),
+    bannerPath: coverPath,
+  };
+}
+
+function applyJournalSeedCover(entry) {
+  const coverPath = JOURNAL_COVER_BY_TITLE[entry.titleEn];
+  if (!coverPath) return entry;
+  return {
+    ...entry,
+    imageName: path.basename(coverPath),
+    imagePath: coverPath,
+  };
+}
+
 function buildUatStore(baseStore, options = {}) {
   const clock = makeClock(options);
   const sourceUsers = Array.isArray(baseStore?.users) ? baseStore.users : [];
@@ -1709,11 +1752,11 @@ function buildUatStore(baseStore, options = {}) {
   };
 
   const seedMembers = buildSeedMembers(clock, helpers);
-  const campaigns = [...buildCampaigns(clock), ...buildPreviewCampaigns(clock)];
+  const campaigns = [...buildCampaigns(clock), ...buildPreviewCampaigns(clock)].map(applyCampaignSeedCover);
   const participants = buildParticipations(clock);
   const campaignCodes = buildCampaignCodes(clock, campaigns, participants);
   const users = [...protectedUsers, ...seedMembers].sort((left, right) => left.id - right.id);
-  const journalEntries = buildJournalEntries(clock, users);
+  const journalEntries = buildJournalEntries(clock, users).map(applyJournalSeedCover);
 
   const store = {
     users,
