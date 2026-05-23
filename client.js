@@ -628,7 +628,7 @@ function renderDeskRail(participants) {
     .join("");
 
   return `
-    <section class="block block--bone desk-block" id="dashboard-desk">
+    <section class="block block--brand desk-block" id="dashboard-desk">
       <header class="section-head section-head--inline">
         <span class="kicker">${l("ON YOUR DESK", "في انتظارك")}</span>
         <h3>${l("Reserved codes", "أكوادك المحجوزة")} <em>(${participants.length})</em></h3>
