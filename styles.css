@@ -3794,8 +3794,17 @@ body.member-scope .campaign-preview-footer__back-row .secondary {
 
 @media (max-width: 720px) {
   body.member-scope .campaign-preview-footer__choice-row {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 8px;
+  }
+
+  body.member-scope .campaign-preview-footer__confirm {
+    order: 1;
+  }
+
+  body.member-scope .reject-trigger {
+    order: 2;
   }
 
   body.member-scope .campaign-preview-footer__choice-row button,
