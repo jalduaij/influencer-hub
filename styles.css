@@ -7784,3 +7784,10 @@ body {
     gap: 18px;
   }
 }
+
+@media (min-width: 1181px) {
+  body.member-scope .mobile-topbar,
+  body.member-scope .mobile-nav-backdrop {
+    display: none !important;
+  }
+}
