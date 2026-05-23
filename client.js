@@ -4526,37 +4526,6 @@ function renderInfluencerDashboard() {
     <hr class="rule rule--thick">
   `;
 
-  let featuredJournal = "";
-  let restJournal = [];
-  if (journalEntries.length) {
-    const featured = journalEntries[0];
-    restJournal = journalEntries.slice(1, 3);
-    const body = journalBody(featured) || "";
-    const excerpt = body.slice(0, 160);
-    featuredJournal = `
-      <article class="cover">
-        <div class="cover__image-wrap">
-          ${
-            featured.imagePath
-              ? `<img class="cover__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
-              : `<div class="cover__image cover__image--placeholder"><span>📓</span></div>`
-          }
-        </div>
-        <div class="cover__text">
-          <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
-          <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
-          <p class="cover__deck">${escapeHtml(excerpt)}${body.length > 160 ? "…" : ""}</p>
-          <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
-          ${
-            featured.externalLink
-              ? `<a class="cover__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read the story", "اقرأ القصة"))} ${state.locale === "ar" ? "←" : "→"}</a>`
-              : ""
-          }
-        </div>
-      </article>
-    `;
-  }
-
   const footer = `
     <button class="pill-button" data-nav="campaigns">${escapeHtml(l("All my campaigns", "كل حملاتي"))}</button>
     <button class="pill-button" data-nav="profile">${escapeHtml(l("My profile", "ملفي الشخصي"))}</button>
@@ -4570,7 +4539,6 @@ function renderInfluencerDashboard() {
     <div class="member-feed">
       <section class="block block--hero">${greeting}</section>
       ${renderDeskRail(readyToSubmit)}
-      ${featuredJournal ? `<section class="block block--ivory">${featuredJournal}</section>` : ""}
       ${previewCampaigns.length ? `
         <section class="block block--blush">
           ${sectionHeader(
@@ -4603,33 +4571,9 @@ function renderInfluencerDashboard() {
           ${renderAvailableCampaignCards(eligible.slice(0, 3))}
         </section>
       ` : ""}
-      ${restJournal.length ? `
-        <section class="block block--ivory">
-          ${sectionHeader(
-            l("MORE FROM THE JOURNAL", "المزيد من اليوميات"),
-            l("Recent reads", "قراءات حديثة"),
-            ""
-          )}
-          <div class="journal-grid">
-            ${restJournal.map((entry) => {
-              const body = journalBody(entry) || "";
-              return `
-                <article class="journal-card">
-                  ${entry.imagePath ? `<img class="journal-card__image" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />` : ""}
-                  <div class="journal-card__body">
-                    <strong>${escapeHtml(journalTitle(entry))}</strong>
-                    <p class="compact">${escapeHtml(formatDateTime(entry.publishedAt || entry.createdAt))}</p>
-                    <p>${escapeHtml(body.slice(0, 140))}${body.length > 140 ? "…" : ""}</p>
-                    ${entry.externalLink ? `<a class="link-button" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>` : ""}
-                  </div>
-                </article>
-              `;
-            }).join("")}
-          </div>
-        </section>
-      ` : ""}
-      ${empty}
+      ${renderJournalBlock(journalEntries)}
       ${footer ? `<section class="block block--mauve member-feed__footer">${footer}</section>` : ""}
+      ${empty}
     </div>
   `;
 }
@@ -4651,6 +4595,84 @@ function sectionHeader(eyebrow, headline, subtitle, ctaButton = "") {
       ${subtitle ? `<p class="section-head__deck">${escapeHtml(subtitle)}</p>` : ""}
     </header>
     <hr class="rule rule--hair">
+  `;
+}
+
+function renderJournalBlock(journalEntries) {
+  if (!journalEntries?.length) return "";
+
+  const sorted = [...journalEntries].sort((left, right) => {
+    const leftTime = new Date(left.publishedAt || left.createdAt || 0).getTime();
+    const rightTime = new Date(right.publishedAt || right.createdAt || 0).getTime();
+    return rightTime - leftTime;
+  });
+
+  const featured = sorted[0];
+  const rest = sorted.slice(1, 4);
+  const featuredBody = journalBody(featured) || "";
+  const featuredExcerpt = featuredBody.slice(0, 180);
+
+  const featuredCover = `
+    <article class="cover journal-feature">
+      <div class="cover__image-wrap">
+        ${
+          featured.imagePath
+            ? `<img class="cover__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
+            : `<div class="cover__image cover__image--placeholder"><span>📓</span></div>`
+        }
+      </div>
+      <div class="cover__text">
+        <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
+        <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
+        <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
+        <p class="cover__deck">${escapeHtml(featuredExcerpt)}${featuredBody.length > 180 ? "…" : ""}</p>
+        ${
+          featured.externalLink
+            ? `<a class="cover__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read the story", "اقرأ القصة"))} ${state.locale === "ar" ? "←" : "→"}</a>`
+            : ""
+        }
+      </div>
+    </article>
+  `;
+
+  const restGrid = rest.length
+    ? `
+      <div class="journal-more">
+        ${rest.map((entry) => `
+          <article class="journal-more__card">
+            ${
+              entry.imagePath
+                ? `<img class="journal-more__thumb" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />`
+                : `<div class="journal-more__thumb journal-more__thumb--placeholder">📓</div>`
+            }
+            <div class="journal-more__body">
+              <strong>${escapeHtml(journalTitle(entry))}</strong>
+              <p class="journal-more__date">${escapeHtml(formatDate(entry.publishedAt || entry.createdAt))}</p>
+              ${
+                entry.externalLink
+                  ? `<a class="journal-more__cta" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>`
+                  : `<span class="journal-more__cta journal-more__cta--muted">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</span>`
+              }
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    `
+    : "";
+
+  return `
+    <section class="block block--ivory journal-block">
+      <header class="section-head">
+        <span class="kicker">${escapeHtml(l("THE JOURNAL", "اليوميات"))}</span>
+        <div class="section-head__row">
+          <h3>${escapeHtml(l("Latest reads", "أحدث القراءات"))}</h3>
+        </div>
+        <p class="section-head__deck">${escapeHtml(l("Stories, tips, and behind-the-scenes from the Club.", "قصص ونصائح ولقطات من خلف الكواليس."))}</p>
+      </header>
+      <hr class="rule rule--hair">
+      ${featuredCover}
+      ${restGrid}
+    </section>
   `;
 }
 
