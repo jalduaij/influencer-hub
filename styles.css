@@ -3177,6 +3177,105 @@ body.member-scope .cover__cta {
   }
 }
 
+/* Final member image ratio system */
+body.member-scope .campaign-banner,
+body.member-scope .campaign-banner.card,
+body.member-scope .campaign-banner.wide,
+body.member-scope .campaign-banner.hero,
+body.member-scope .campaign-banner.thumb {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  background: var(--rule-soft);
+}
+
+body.member-scope .cover__image-wrap {
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(31, 22, 32, 0.12),
+    0 12px 24px -16px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .cover__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.03) saturate(1.04);
+}
+
+body.member-scope .cover__image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  font-size: 48px;
+  color: var(--cream, #f3ecdc);
+}
+
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner {
+  aspect-ratio: 4 / 3 !important;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(31, 22, 32, 0.1);
+}
+
+body.member-scope .journal-more__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  height: auto !important;
+  background: rgba(31, 22, 32, 0.06);
+}
+
+body.member-scope .journal-more__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  background: color-mix(in oklab, var(--accent, #702f8a) 8%, var(--paper-page, #faf6ee));
+}
+
+body.member-scope .campaign-banner,
+body.member-scope .journal-card__image,
+body.member-scope .journal-more__thumb,
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner,
+body.member-scope .cover__image-wrap,
+body.member-scope .featured-journal__image {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .journal-more {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.member-scope .journal-more__card {
+    display: block;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  body.member-scope .journal-more__thumb {
+    width: 100%;
+    height: auto !important;
+    grid-area: auto !important;
+  }
+
+  body.member-scope .journal-more__body {
+    grid-area: auto !important;
+    padding: 12px 14px 14px;
+  }
+}
+
 /* Final-final member notification stacking fix */
 body.member-scope .block::before {
   content: "";
@@ -3219,6 +3318,303 @@ body.member-scope.rtl .notification-bell__panel {
     inset-inline-start: 12px !important;
     inset-inline-end: 12px !important;
     width: auto !important;
+  }
+}
+
+/* Final member image ratio system */
+body.member-scope .campaign-banner,
+body.member-scope .campaign-banner.card,
+body.member-scope .campaign-banner.wide,
+body.member-scope .campaign-banner.hero,
+body.member-scope .campaign-banner.thumb {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  background: var(--rule-soft);
+}
+
+body.member-scope .cover__image-wrap {
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(31, 22, 32, 0.12),
+    0 12px 24px -16px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .cover__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.03) saturate(1.04);
+}
+
+body.member-scope .cover__image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  font-size: 48px;
+  color: var(--cream, #f3ecdc);
+}
+
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner {
+  aspect-ratio: 4 / 3 !important;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(31, 22, 32, 0.1);
+}
+
+body.member-scope .journal-more__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  height: auto !important;
+  background: rgba(31, 22, 32, 0.06);
+}
+
+body.member-scope .journal-more__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  background: color-mix(in oklab, var(--accent, #702f8a) 8%, var(--paper-page, #faf6ee));
+}
+
+body.member-scope .campaign-banner,
+body.member-scope .journal-card__image,
+body.member-scope .journal-more__thumb,
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner,
+body.member-scope .cover__image-wrap,
+body.member-scope .featured-journal__image {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .journal-more {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.member-scope .journal-more__card {
+    display: block;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  body.member-scope .journal-more__thumb {
+    width: 100%;
+    height: auto !important;
+    grid-area: auto !important;
+  }
+
+  body.member-scope .journal-more__body {
+    grid-area: auto !important;
+    padding: 12px 14px 14px;
+  }
+}
+
+/* Final member image ratio system */
+body.member-scope .campaign-banner,
+body.member-scope .campaign-banner.card,
+body.member-scope .campaign-banner.wide,
+body.member-scope .campaign-banner.hero,
+body.member-scope .campaign-banner.thumb {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  background: var(--rule-soft);
+}
+
+body.member-scope .cover__image-wrap {
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(31, 22, 32, 0.12),
+    0 12px 24px -16px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .cover__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.03) saturate(1.04);
+}
+
+body.member-scope .cover__image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  font-size: 48px;
+  color: var(--cream, #f3ecdc);
+}
+
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner {
+  aspect-ratio: 4 / 3 !important;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(31, 22, 32, 0.1);
+}
+
+body.member-scope .journal-more__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  height: auto !important;
+  background: rgba(31, 22, 32, 0.06);
+}
+
+body.member-scope .journal-more__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  background: color-mix(in oklab, var(--accent, #702f8a) 8%, var(--paper-page, #faf6ee));
+}
+
+body.member-scope .campaign-banner,
+body.member-scope .journal-card__image,
+body.member-scope .journal-more__thumb,
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner,
+body.member-scope .cover__image-wrap,
+body.member-scope .featured-journal__image {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .journal-more {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.member-scope .journal-more__card {
+    display: block;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  body.member-scope .journal-more__thumb {
+    width: 100%;
+    height: auto !important;
+    grid-area: auto !important;
+  }
+
+  body.member-scope .journal-more__body {
+    grid-area: auto !important;
+    padding: 12px 14px 14px;
+  }
+}
+
+/* Final member image ratio system */
+body.member-scope .campaign-banner,
+body.member-scope .campaign-banner.card,
+body.member-scope .campaign-banner.wide,
+body.member-scope .campaign-banner.hero,
+body.member-scope .campaign-banner.thumb {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  background: var(--rule-soft);
+}
+
+body.member-scope .cover__image-wrap {
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(31, 22, 32, 0.12),
+    0 12px 24px -16px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .cover__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.03) saturate(1.04);
+}
+
+body.member-scope .cover__image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  font-size: 48px;
+  color: var(--cream, #f3ecdc);
+}
+
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner {
+  aspect-ratio: 4 / 3 !important;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(31, 22, 32, 0.1);
+}
+
+body.member-scope .journal-more__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  height: auto !important;
+  background: rgba(31, 22, 32, 0.06);
+}
+
+body.member-scope .journal-more__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  background: color-mix(in oklab, var(--accent, #702f8a) 8%, var(--paper-page, #faf6ee));
+}
+
+body.member-scope .campaign-banner,
+body.member-scope .journal-card__image,
+body.member-scope .journal-more__thumb,
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner,
+body.member-scope .cover__image-wrap,
+body.member-scope .featured-journal__image {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .journal-more {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.member-scope .journal-more__card {
+    display: block;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  body.member-scope .journal-more__thumb {
+    width: 100%;
+    height: auto !important;
+    grid-area: auto !important;
+  }
+
+  body.member-scope .journal-more__body {
+    grid-area: auto !important;
+    padding: 12px 14px 14px;
   }
 }
 
@@ -6295,5 +6691,103 @@ body.member-scope.rtl .notification-bell__panel {
     inset-inline-start: 12px !important;
     inset-inline-end: 12px !important;
     width: auto !important;
+  }
+}
+/* Final member image ratio system */
+body.member-scope .campaign-banner,
+body.member-scope .campaign-banner.card,
+body.member-scope .campaign-banner.wide,
+body.member-scope .campaign-banner.hero,
+body.member-scope .campaign-banner.thumb {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  background: var(--rule-soft);
+}
+
+body.member-scope .cover__image-wrap {
+  aspect-ratio: 4 / 3 !important;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(31, 22, 32, 0.12),
+    0 12px 24px -16px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .cover__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.03) saturate(1.04);
+}
+
+body.member-scope .cover__image--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  font-size: 48px;
+  color: var(--cream, #f3ecdc);
+}
+
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner {
+  aspect-ratio: 4 / 3 !important;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(31, 22, 32, 0.1);
+}
+
+body.member-scope .journal-more__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+  height: auto !important;
+  background: rgba(31, 22, 32, 0.06);
+}
+
+body.member-scope .journal-more__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  background: color-mix(in oklab, var(--accent, #702f8a) 8%, var(--paper-page, #faf6ee));
+}
+
+body.member-scope .campaign-banner,
+body.member-scope .journal-card__image,
+body.member-scope .journal-more__thumb,
+body.member-scope .coming-soon-card img,
+body.member-scope .coming-soon-card .campaign-banner,
+body.member-scope .cover__image-wrap,
+body.member-scope .featured-journal__image {
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .journal-more {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.member-scope .journal-more__card {
+    display: block;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  body.member-scope .journal-more__thumb {
+    width: 100%;
+    height: auto !important;
+    grid-area: auto !important;
+  }
+
+  body.member-scope .journal-more__body {
+    grid-area: auto !important;
+    padding: 12px 14px 14px;
   }
 }
