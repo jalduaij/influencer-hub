@@ -5057,83 +5057,180 @@ function renderInfluencerCampaignPreviewPage() {
   if (!campaign) return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
   const participant = myParticipantForCampaign(campaign.id);
   const isEligible = new Set(state.data?.eligibleCampaignIds || []).has(campaign.id);
-  return `
-    ${pageHeader(l("Campaign Preview", "معاينة الحملة"), l("Review the campaign details before you confirm your interest.", "راجع تفاصيل الحملة قبل تأكيد اهتمامك."))}
-    <section class="block block--ivory campaign-preview-block">
-      ${renderCampaignBanner(campaign, "hero")}
-      <h3>${escapeHtml(campaignTitle(campaign))}</h3>
-      <p class="panel-subtitle">${escapeHtml(campaignDescription(campaign))}</p>
-      <div class="row-wrap" style="margin-bottom: 16px;">
-        <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
-        <span class="badge">${escapeHtml(campaignAudience(campaign))}</span>
-        <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
-        <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
+  const isActive = participant && participantCanSubmit(participant);
+  const previousCanceled = (state.data?.participants || []).find(
+    (row) => row.campaignId === campaign.id && row.status === "canceled"
+  );
+
+  const hero = `
+    <section class="block block--hero campaign-preview-hero">
+      <div class="campaign-preview-hero__top">
+        <span class="kicker">${escapeHtml(l("CAMPAIGN", "حملة"))}</span>
       </div>
-      ${renderCampaignOffer(campaign)}
-      ${campaign.captionGuide ? `
-        <article class="note-card" style="margin: 14px 0;">
-          <strong>${l("Caption guide", "دليل التعليق")}</strong>
-          <p style="white-space: pre-wrap; margin-top: 8px;">${escapeHtml(campaign.captionGuide)}</p>
-        </article>
-      ` : ""}
-      ${
-        participant
-          ? `
-            <article class="note-card" style="margin-bottom: 16px;">
-              <strong>${l("Your campaign status", "حالة حملتك")}</strong>
-              <p>${l("You have already joined this campaign.", "لقد انضممت بالفعل إلى هذه الحملة.")}</p>
-              <div class="row-wrap" style="margin-top: 10px;">
-                <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabel(participant.status))}</span>
-              </div>
-              ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
-              ${["submitted", "completed"].includes(participant.status) ? `<p class="compact">${l("Your proof has already been submitted and is now view-only.", "تم إرسال الإثبات الخاص بك وهو الآن للعرض فقط.")}</p>` : ""}
-              ${["confirmed", "visited"].includes(participant.status) ? `<p class="compact">${l("Your code is reserved. Visit any PICK branch to redeem your offer, then submit your proof link here.", "كودك محجوز. زر أي فرع PICK لاستلام عرضك، ثم أرسل رابط الإثبات هنا.")}</p>` : ""}
-              ${participant.status === "canceled" ? `<p class="compact">${l("This participation was canceled.", "تم إلغاء هذه المشاركة.")}</p>` : ""}
-            </article>
-          `
-          : ""
-      }
-      ${
-        participant && participantCanSubmit(participant)
-          ? renderSubmissionForm(participant, campaign, { extraClass: "submission-form--preview" })
-          : ""
-      }
-      ${
-        participant && ["confirmed", "visited"].includes(participant.status)
-          ? `
-            <article class="note-card" style="margin-bottom: 16px;">
-              <strong>${l("Your reserved code", "كودك المحجوز")}</strong>
-              <p>${l("Show this code at any PICK branch to redeem your offer. After your visit and post, submit your proof below.", "اعرض هذا الكود في أي فرع PICK لاستلام عرضك. بعد الزيارة والنشر، أرسل إثباتك أدناه.")}</p>
-              <div style="font-size: 22px; font-weight: 600; margin-top: 6px;">${escapeHtml(participant.assignedCodeValue || "")}</div>
-              ${participant.status === "confirmed" && participant.source !== "offline" ? `<div class="row-wrap" style="margin-top: 12px;"><button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">${l("Cancel participation", "إلغاء المشاركة")}</button></div>` : ""}
-            </article>
-          `
-          : ""
-      }
-      ${
-        participant && ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant)
-          ? `
-            <article class="note-card" style="margin-bottom: 16px;">
-              <strong>${l("Submitted Proof", "الإثبات المرسل")}</strong>
-              <p>${participant.socialLink ? `<a href="${participant.socialLink}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a>` : "-"}</p>
-              <p>${escapeHtml(participant.feedback || l("No feedback added.", "لا توجد ملاحظات."))}</p>
-              <p class="compact">${l("This submission is view-only.", "هذا التسليم للعرض فقط.")}</p>
-              <div class="row-wrap">${renderParticipantImages(participant.images || [])}</div>
-            </article>
-          `
-          : ""
-      }
-      <div class="row-wrap">
-        <button class="secondary" data-nav="campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
-        ${
-          shouldShowConfirmInterest(participant, isEligible)
-            ? `<button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>`
-            : participant
-            ? `<button data-nav="campaigns">${l("Open campaigns", "افتح الحملات")}</button>`
-            : `<span class="badge danger">${l("This campaign is not currently available to join.", "هذه الحملة غير متاحة حالياً للانضمام.")}</span>`
-        }
+      <h1 class="campaign-preview-hero__title display-text">${escapeHtml(campaignTitle(campaign))}</h1>
+      <p class="campaign-preview-hero__deck">${escapeHtml(campaignDescription(campaign))}</p>
+      <div class="campaign-preview-hero__meta">
+        <span class="badge">${escapeHtml(campaignAudience(campaign))}</span>
+        <span class="badge">${escapeHtml(l("Visit by", "آخر زيارة"))} ${escapeHtml(formatDate(campaign.visitDeadline))}</span>
+        <span class="badge">${escapeHtml(l("Submit by", "آخر تسليم"))} ${escapeHtml(formatDate(campaign.submissionDeadline))}</span>
+      </div>
+      <hr class="rule rule--thick">
+    </section>
+  `;
+
+  const bannerBlock = `
+    <section class="block block--ivory campaign-preview-visual">
+      ${renderCampaignBanner(campaign, "hero")}
+      <div class="campaign-preview-offer">
+        <span class="offer-eyebrow">${escapeHtml(l("What you get", "ما الذي ستحصل عليه"))}</span>
+        <strong class="offer-title">${escapeHtml(campaign.offerDescription || l("Campaign offer attached to this code.", "عرض الحملة مرتبط بهذا الكود."))}</strong>
+        ${(campaign.offerUsageCount || 1) > 1
+          ? `<span class="offer-uses">${escapeHtml(l("Uses", "عدد الاستخدام"))}: ${escapeHtml(campaign.offerUsageCount)}</span>`
+          : ""}
       </div>
     </section>
+  `;
+
+  const captionGuideBlock = campaign.captionGuide
+    ? `
+      <section class="block block--ivory">
+        <header class="section-head">
+          <span class="kicker">${escapeHtml(l("POSTING GUIDE", "دليل النشر"))}</span>
+          <div class="section-head__row">
+            <h3>${escapeHtml(l("How to post", "كيف تنشر"))}</h3>
+          </div>
+        </header>
+        <hr class="rule rule--hair">
+        <p class="campaign-preview-guide">${escapeHtml(campaign.captionGuide)}</p>
+      </section>
+    `
+    : "";
+
+  let statusBlock = "";
+  if (participant && participant.status !== "canceled") {
+    const blockPaper = isActive ? "block--brand" : "block--bone";
+    const codeChip = participant.assignedCodeValue
+      ? `
+        <div class="campaign-preview-status__code">
+          <span class="campaign-preview-status__code-label">${escapeHtml(l("YOUR CODE", "كودك"))}</span>
+          <code>${escapeHtml(participant.assignedCodeValue)}</code>
+        </div>
+      `
+      : "";
+
+    let helper = "";
+    if (isActive) {
+      helper = l(
+        "Your code is reserved. Visit any PICK branch to redeem your offer, then submit your proof below.",
+        "كودك محجوز. زر أي فرع PICK لاستلام عرضك، ثم أرسل إثباتك أدناه."
+      );
+    } else if (["submitted", "completed"].includes(participant.status)) {
+      helper = l("Your proof has been submitted.", "تم إرسال إثباتك.");
+    }
+
+    const cancelBtn = (participant.status === "confirmed" || participant.status === "visited") &&
+      participant.source !== "offline" &&
+      !participant.submittedAt
+      ? `
+        <div class="row-wrap" style="margin-top: 14px;">
+          <button class="secondary" data-action="cancel-participation" data-participant-id="${participant.id}">
+            ${escapeHtml(l("Cancel participation", "إلغاء المشاركة"))}
+          </button>
+        </div>
+      `
+      : "";
+
+    statusBlock = `
+      <section class="block ${blockPaper} campaign-preview-status">
+        <header class="section-head">
+          <span class="kicker">${escapeHtml(l("YOUR PARTICIPATION", "مشاركتك"))}</span>
+          <div class="section-head__row">
+            <h3>${escapeHtml(participantStatusLabel(participant.status))}</h3>
+          </div>
+        </header>
+        <hr class="rule rule--hair">
+        ${codeChip}
+        ${helper ? `<p class="campaign-preview-status__helper">${escapeHtml(helper)}</p>` : ""}
+        ${cancelBtn}
+      </section>
+    `;
+  }
+
+  const submissionBlock = participant && participantCanSubmit(participant)
+    ? `
+      <section class="block block--ivory campaign-preview-submission">
+        <header class="section-head">
+          <span class="kicker">${escapeHtml(l("SUBMIT PROOF", "إرسال الإثبات"))}</span>
+          <div class="section-head__row">
+            <h3>${escapeHtml(l("Your post link", "رابط منشورك"))}</h3>
+          </div>
+          <p class="section-head__deck">${escapeHtml(l("Paste your post link and tap Submit. Optional notes and screenshots below.", "ألصق رابط منشورك واضغط إرسال. الملاحظات واللقطات اختيارية أدناه."))}</p>
+        </header>
+        <hr class="rule rule--hair">
+        ${renderSubmissionForm(participant, campaign, { extraClass: "submission-form--preview" })}
+      </section>
+    `
+    : "";
+
+  const submittedBlock = participant && ["submitted", "completed"].includes(participant.status) && !participantCanSubmit(participant)
+    ? `
+      <section class="block block--ivory">
+        <header class="section-head">
+          <span class="kicker">${escapeHtml(l("YOUR SUBMISSION", "تسليمك"))}</span>
+          <div class="section-head__row">
+            <h3>${escapeHtml(l("Submitted proof", "الإثبات المرسل"))}</h3>
+          </div>
+        </header>
+        <hr class="rule rule--hair">
+        <p class="campaign-preview-link">${
+          participant.socialLink
+            ? `<a href="${escapeHtml(participant.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(participant.socialLink)}</a>`
+            : escapeHtml(l("No link recorded.", "لا يوجد رابط مسجل."))
+        }</p>
+        ${participant.feedback ? `<p>${escapeHtml(participant.feedback)}</p>` : ""}
+        <p class="compact">${escapeHtml(l("This submission is view-only.", "هذا التسليم للعرض فقط."))}</p>
+        <div class="row-wrap" style="margin-top: 12px;">${renderParticipantImages(participant.images || [])}</div>
+      </section>
+    `
+    : "";
+
+  const previousNote = previousCanceled && !participant
+    ? `
+      <section class="block block--ivory campaign-preview-note">
+        <p class="compact">${escapeHtml(l("You canceled this campaign before. Confirming interest will reserve a new code.", "ألغيتَ هذه الحملة سابقاً. تأكيد الاهتمام سيحجز لك كوداً جديداً."))}</p>
+      </section>
+    `
+    : "";
+
+  let footerCta = "";
+  if (shouldShowConfirmInterest(participant, isEligible)) {
+    footerCta = `
+      <button data-action="join-campaign" data-campaign-id="${campaign.id}" class="campaign-preview-footer__primary">
+        ${escapeHtml(l("Confirm interest", "تأكيد الاهتمام"))}
+      </button>
+    `;
+  } else if (!participant && !isEligible) {
+    footerCta = `<span class="badge">${escapeHtml(l("Not currently available to join.", "غير متاحة حالياً للانضمام."))}</span>`;
+  }
+
+  const footer = `
+    <section class="block block--mauve campaign-preview-footer">
+      <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
+      ${footerCta}
+    </section>
+  `;
+
+  return `
+    <div class="member-feed">
+      ${hero}
+      ${bannerBlock}
+      ${captionGuideBlock}
+      ${statusBlock}
+      ${submissionBlock}
+      ${submittedBlock}
+      ${previousNote}
+      ${footer}
+    </div>
   `;
 }
 

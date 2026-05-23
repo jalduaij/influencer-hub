@@ -3281,6 +3281,227 @@ body.member-scope .block--hero > * {
   z-index: auto !important;
 }
 
+/* Member campaign preview */
+body.member-scope .campaign-preview-hero {
+  padding: 12px 0 4px;
+  display: grid;
+  gap: 8px;
+}
+
+body.member-scope .campaign-preview-hero__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+body.member-scope .campaign-preview-hero__title {
+  margin: 0;
+  font-family: var(--font-display-en);
+  font-weight: 800;
+  font-size: clamp(28px, 3.6vw, 44px);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+body.member-scope.rtl .campaign-preview-hero__title {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .campaign-preview-hero__deck {
+  margin: 4px 0 0;
+  font-family: var(--font-display-en);
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 17px;
+  max-width: 60ch;
+  line-height: 1.5;
+}
+
+body.member-scope.rtl .campaign-preview-hero__deck {
+  font-family: var(--font-body-ar);
+  font-style: normal;
+}
+
+body.member-scope .campaign-preview-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+body.member-scope .campaign-preview-visual {
+  display: grid;
+  gap: 16px;
+}
+
+body.member-scope .campaign-preview-visual .campaign-banner {
+  border-radius: 4px;
+}
+
+body.member-scope .campaign-preview-offer {
+  border-left: 3px solid var(--accent-deep);
+  padding-left: 14px;
+}
+
+body.member-scope.rtl .campaign-preview-offer {
+  border-left: 0;
+  border-right: 3px solid var(--accent-deep);
+  padding-left: 0;
+  padding-right: 14px;
+}
+
+body.member-scope .campaign-preview-offer .offer-eyebrow {
+  font-family: var(--font-body-en);
+  font-size: var(--t-eyebrow);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-deep);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+}
+
+body.member-scope.rtl .campaign-preview-offer .offer-eyebrow {
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--font-body-ar);
+}
+
+body.member-scope .campaign-preview-offer .offer-title {
+  font-family: var(--font-display-en);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+body.member-scope.rtl .campaign-preview-offer .offer-title {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .campaign-preview-offer .offer-uses {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+body.member-scope .campaign-preview-guide {
+  white-space: pre-wrap;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 12px 0 0;
+}
+
+body.member-scope .campaign-preview-status__code {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
+body.member-scope .block--bone .campaign-preview-status__code {
+  background: rgba(31, 22, 32, 0.05);
+  border-color: var(--rule-soft);
+}
+
+body.member-scope .campaign-preview-status__code-label {
+  font-family: var(--font-body-en);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: #f3b840;
+  font-weight: 700;
+}
+
+body.member-scope .block--bone .campaign-preview-status__code-label {
+  color: var(--accent-deep);
+}
+
+body.member-scope.rtl .campaign-preview-status__code-label {
+  letter-spacing: 0;
+}
+
+body.member-scope .campaign-preview-status__code code {
+  font-family: "Courier New", ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  color: var(--paper-brand-text);
+}
+
+body.member-scope .block--bone .campaign-preview-status__code code {
+  color: var(--ink);
+}
+
+body.member-scope .campaign-preview-status__helper {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper-brand-text);
+  opacity: 0.9;
+}
+
+body.member-scope .block--bone .campaign-preview-status__helper {
+  color: var(--ink-soft);
+}
+
+body.member-scope .campaign-preview-submission .submission-form--simple {
+  margin-top: 16px;
+}
+
+body.member-scope .campaign-preview-link {
+  font-size: 15px;
+  margin: 12px 0 4px;
+  overflow-wrap: anywhere;
+}
+
+body.member-scope .campaign-preview-link a {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+body.member-scope .campaign-preview-note {
+  background: var(--paper-ivory);
+  opacity: 0.85;
+}
+
+body.member-scope .campaign-preview-note .compact {
+  margin: 0;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+body.member-scope .campaign-preview-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body.member-scope .campaign-preview-footer__primary {
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  body.member-scope .campaign-preview-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  body.member-scope .campaign-preview-footer button {
+    width: 100%;
+  }
+}
+
 /* Final featured journal layout */
 body.member-scope .journal-feature {
   display: grid;
