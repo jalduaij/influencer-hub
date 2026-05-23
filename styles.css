@@ -3717,7 +3717,7 @@ body.member-scope .reject-trigger:disabled {
 }
 
 body.member-scope .campaign-preview-footer__confirm {
-  background: var(--accent);
+  background: #3a9b48;
   color: #fff;
   font-family: var(--font-body-en);
   font-weight: 700;
@@ -3732,7 +3732,7 @@ body.member-scope .campaign-preview-footer__confirm {
 }
 
 body.member-scope .campaign-preview-footer__confirm:hover {
-  background: var(--accent-deep);
+  background: #2e7d3a;
 }
 
 body.member-scope .campaign-preview-footer__confirm:disabled {
