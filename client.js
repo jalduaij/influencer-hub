@@ -2071,7 +2071,7 @@ function renderShell() {
         <div class="mobile-brand">
           ${
             isMember
-              ? `<img class="mobile-brand__logo" src="/uploads/branding/pick-logo.svg" alt="PICK Social Club" />`
+              ? `<img class="mobile-brand__logo" src="/uploads/branding/picksocialclub.svg" alt="PICK Social Club" />`
               : `<strong>${l("PICK Social Club", "نادي بك")}</strong>`
           }
         </div>
@@ -2081,7 +2081,7 @@ function renderShell() {
         <div class="brand-block">
           ${
             isMember
-              ? `<img class="brand-block__logo" src="/uploads/branding/pick-logo.svg" alt="PICK Social Club" />`
+              ? `<img class="brand-block__logo" src="/uploads/branding/picksocialclub.svg" alt="PICK Social Club" />`
               : `
                 <p class="eyebrow">PICK Internal</p>
                 <h1>${l("PICK Social Club", "نادي بك")}</h1>

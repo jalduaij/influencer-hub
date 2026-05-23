@@ -7744,8 +7744,8 @@ body.member-scope .desk-tile .desk-tile__cta {
 
 body.member-scope .brand-block__logo {
   display: block;
-  width: 80px;
-  height: 80px;
+  width: 180px;
+  height: auto;
   margin: 0 auto;
 }
 
@@ -7754,12 +7754,14 @@ body.member-scope .mobile-brand {
   align-items: center;
   justify-content: center;
   flex: 1;
+  min-width: 0;
 }
 
 body.member-scope .mobile-brand__logo {
   display: block;
-  width: 36px;
-  height: 36px;
+  width: 140px;
+  height: auto;
+  max-width: 100%;
 }
 
 html,
@@ -7796,5 +7798,17 @@ body {
   body.member-scope .member-feed {
     padding: 14px 0 48px;
     gap: 18px;
+  }
+}
+
+@media (max-width: 380px) {
+  body.member-scope .mobile-brand__logo {
+    width: 120px;
+  }
+}
+
+@media (max-width: 340px) {
+  body.member-scope .mobile-brand__logo {
+    width: 100px;
   }
 }
