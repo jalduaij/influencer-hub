@@ -2053,7 +2053,6 @@ const NAV_ICON = {
 };
 
 function renderShell() {
-  const isMember = state.currentUser?.role === "influencer";
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
@@ -2065,37 +2064,15 @@ function renderShell() {
           ${iconSvg("menu")}
         </button>
         <div class="mobile-brand">
-          ${
-            isMember
-              ? `
-                <img class="mobile-brand__logo" src="/uploads/branding/pick-logo.svg" alt="PICK" width="32" height="32" />
-                <span class="mobile-brand__wordmark">
-                  <strong>PICK</strong>
-                  <em>Social Club</em>
-                </span>
-              `
-              : `<strong>${l("PICK Social Club", "نادي بك")}</strong>`
-          }
+          <strong>${l("PICK Social Club", "نادي بك")}</strong>
         </div>
-        ${isMember ? renderNotificationsBell() : `<div class="mobile-spacer"></div>`}
+        <div class="mobile-spacer"></div>
       </header>
       <aside class="sidebar">
         <div class="brand-block">
-          ${
-            isMember
-              ? `
-                <img class="brand-block__logo" src="/uploads/branding/pick-logo.svg" alt="PICK" width="40" height="40" />
-                <div class="brand-block__text">
-                  <p class="eyebrow">PICK INTERNAL</p>
-                  <h1><strong>PICK</strong> <em>Social Club</em></h1>
-                </div>
-              `
-              : `
-                <p class="eyebrow">PICK Internal</p>
-                <h1>${l("PICK Social Club", "نادي بك")}</h1>
-                <p class="brand-copy">${l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد.")}</p>
-              `
-          }
+          <p class="eyebrow">PICK Internal</p>
+          <h1>${l("PICK Social Club", "نادي بك")}</h1>
+          <p class="brand-copy">${l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد.")}</p>
         </div>
         <div class="control-panel">
           <label class="field">
