@@ -5942,7 +5942,7 @@ body.member-scope.rtl .dashboard-card-code__label {
   text-transform: none;
 }
 
-body.member-scope a:not(.button):not(.link-button):not(.cover__cta):not(.featured-journal__cta):not(.dispatch) {
+body.member-scope a:not(.button):not(.link-button):not(.cover__cta):not(.featured-journal__cta):not(.dispatch):not(.campaign-card):not(.desk-tile) {
   color: var(--accent-deep);
   text-decoration: underline;
   text-decoration-thickness: 1px;
