@@ -911,6 +911,42 @@ function renderNotificationsBell() {
   `;
 }
 
+function updateNotificationPanelPosition() {
+  const bell = document.querySelector(".notification-bell");
+  const panel = document.querySelector(".notification-bell__panel");
+  if (!bell || !panel || !bell.open) return;
+  const rect = bell.getBoundingClientRect();
+  const isRtl = document.body.classList.contains("rtl");
+  const topPx = Math.round(rect.bottom + 8);
+  document.documentElement.style.setProperty("--notif-top", `${topPx}px`);
+  if (isRtl) {
+    const startPx = Math.round(rect.left);
+    document.documentElement.style.setProperty("--notif-start", `${startPx}px`);
+    document.documentElement.style.setProperty("--notif-end", "auto");
+    return;
+  }
+  const endPx = Math.round(window.innerWidth - rect.right);
+  document.documentElement.style.setProperty("--notif-end", `${endPx}px`);
+  document.documentElement.style.setProperty("--notif-start", "auto");
+}
+
+function attachNotificationPanelTracking() {
+  window.addEventListener("scroll", updateNotificationPanelPosition, { passive: true });
+  window.addEventListener("resize", updateNotificationPanelPosition);
+}
+
+function setupNotificationToggleListener() {
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      const target = event.target;
+      if (!target?.classList?.contains("notification-bell") || !target.open) return;
+      updateNotificationPanelPosition();
+    },
+    true
+  );
+}
+
 function auditActionLabel(action) {
   const labels = {
     "auth.login": l("Signed in", "سجل الدخول"),
@@ -5395,6 +5431,8 @@ function bindGlobalEvents() {
   app.addEventListener("keydown", handleKeyDown);
   app.addEventListener("focusout", handleFocusOut);
   window.addEventListener("popstate", handlePopState);
+  attachNotificationPanelTracking();
+  setupNotificationToggleListener();
 }
 
 function toggleMobileNav(force) {

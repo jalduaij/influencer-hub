@@ -3177,6 +3177,51 @@ body.member-scope .cover__cta {
   }
 }
 
+/* Final member notification stacking fix */
+body.member-scope .block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.12, 0 0 0 0 0.08, 0 0 0 0 0.14, 0 0 0 0.15 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.35;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+body.member-scope .notification-bell {
+  position: relative;
+  z-index: auto;
+}
+
+body.member-scope .notification-bell__panel {
+  position: fixed;
+  top: var(--notif-top, 80px);
+  inset-inline-end: var(--notif-end, 24px);
+  inset-inline-start: auto;
+  width: min(360px, calc(100vw - 28px));
+  background: var(--paper-page);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 24px 48px -16px rgba(31, 22, 32, 0.28);
+  z-index: 9999;
+  transform: none;
+}
+
+body.member-scope.rtl .notification-bell__panel {
+  inset-inline-end: auto;
+  inset-inline-start: var(--notif-start, 24px);
+}
+
+@media (max-width: 480px) {
+  body.member-scope .notification-bell__panel {
+    inset-inline-start: 12px !important;
+    inset-inline-end: 12px !important;
+    width: auto;
+  }
+}
+
 .back-bar {
   min-height: 36px;
   display: flex;
