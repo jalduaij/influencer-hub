@@ -7609,3 +7609,17 @@ body.member-scope.rtl .campaign-card__cta::after {
     font-size: 16px;
   }
 }
+/* Whole-card links should not inherit inline-link underlines */
+body.member-scope a.campaign-card,
+body.member-scope a.campaign-card *,
+body.member-scope a.desk-tile,
+body.member-scope a.desk-tile * {
+  text-decoration: none;
+  color: inherit;
+}
+
+body.member-scope .campaign-card__cta,
+body.member-scope .desk-tile__cta,
+body.member-scope .desk-tile .desk-tile__cta {
+  color: var(--accent-deep);
+}
