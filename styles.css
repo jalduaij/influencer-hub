@@ -5145,7 +5145,10 @@ body.member-scope .cover__cta {
 /* Final member mobile shell overrides */
 body.member-scope {
   overflow-x: clip;
-  max-width: 100vw;
+  max-width: 100%;
+  width: 100%;
+  position: relative;
+  touch-action: pan-y pinch-zoom;
 }
 
 body.mobile-nav-locked {
@@ -5177,6 +5180,11 @@ body.member-scope .dispatch {
   body.member-scope .block--mauve {
     overflow-x: clip;
   }
+}
+
+body.member-scope .desk-rail,
+body.member-scope .coming-soon-rail {
+  touch-action: pan-x pan-y;
 }
 
 body.member-scope img,
@@ -7678,8 +7686,8 @@ body.member-scope .mobile-brand__logo {
 
 html,
 body {
-  overflow-x: clip;
-  max-width: 100vw;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 @media (max-width: 900px) {
