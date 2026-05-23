@@ -7623,3 +7623,212 @@ body.member-scope .desk-tile__cta,
 body.member-scope .desk-tile .desk-tile__cta {
   color: var(--accent-deep);
 }
+/* Member mobile brand surfaces */
+body.member-scope .mobile-topbar {
+  background: var(--accent-deep);
+  border-bottom: 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px -4px rgba(31, 22, 32, 0.4);
+}
+
+body.member-scope .mobile-burger {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--paper-brand-text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+body.member-scope .mobile-burger:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+body.member-scope .mobile-burger svg {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+}
+
+body.member-scope .mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+body.member-scope .mobile-brand__logo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+body.member-scope .mobile-brand__wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--paper-brand-text);
+  font-family: var(--font-display-en);
+  line-height: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.member-scope.rtl .mobile-brand__wordmark {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .mobile-brand__wordmark strong {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+body.member-scope .mobile-brand__wordmark em {
+  font-style: italic;
+  font-weight: 400;
+  font-size: 12px;
+  color: rgba(243, 236, 220, 0.7);
+  letter-spacing: 0;
+}
+
+body.member-scope.rtl .mobile-brand__wordmark em {
+  font-style: normal;
+}
+
+body.member-scope .mobile-spacer {
+  flex-shrink: 0;
+}
+
+body.member-scope .mobile-topbar .notification-bell {
+  flex-shrink: 0;
+}
+
+body.member-scope .mobile-topbar .notification-bell__icon,
+body.member-scope .mobile-topbar .notification-bell svg {
+  color: var(--paper-brand-text);
+  stroke: currentColor;
+}
+
+body.member-scope .mobile-topbar .notification-bell__summary {
+  color: var(--paper-brand-text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  width: 38px;
+  height: 38px;
+}
+
+body.member-scope .mobile-topbar .notification-bell__summary:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+body.member-scope .mobile-topbar .notification-bell__count {
+  background: #f3b840;
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+body.member-scope .sidebar .brand-block {
+  background: var(--accent-deep);
+  color: var(--paper-brand-text);
+  padding: 22px 20px;
+  border-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+body.member-scope .sidebar .brand-block__logo {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+body.member-scope .sidebar .brand-block__text {
+  display: grid;
+  gap: 2px;
+}
+
+body.member-scope .sidebar .brand-block .eyebrow {
+  font-family: var(--font-body-en);
+  font-size: var(--t-eyebrow);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #f3b840;
+  font-weight: 700;
+  margin: 0;
+}
+
+body.member-scope.rtl .sidebar .brand-block .eyebrow {
+  font-family: var(--font-body-ar);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+body.member-scope .sidebar .brand-block h1 {
+  margin: 2px 0 0;
+  font-family: var(--font-display-en);
+  color: var(--paper-brand-text);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+body.member-scope.rtl .sidebar .brand-block h1 {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .sidebar .brand-block h1 strong {
+  font-weight: 800;
+}
+
+body.member-scope .sidebar .brand-block h1 em {
+  font-style: italic;
+  font-weight: 400;
+  font-size: 13px;
+  color: rgba(243, 236, 220, 0.75);
+  letter-spacing: 0;
+}
+
+body.member-scope.rtl .sidebar .brand-block h1 em {
+  font-style: normal;
+}
+
+body.member-scope .sidebar .brand-block .brand-copy {
+  display: none;
+}
+
+@media (max-width: 380px) {
+  body.member-scope .mobile-brand__wordmark strong {
+    font-size: 18px;
+  }
+
+  body.member-scope .mobile-brand__wordmark em {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 340px) {
+  body.member-scope .mobile-brand__wordmark {
+    display: none;
+  }
+}
