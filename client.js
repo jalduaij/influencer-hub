@@ -4666,7 +4666,6 @@ function renderJournalBlock(journalEntries) {
           <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
           <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
           <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
-          <p class="cover__deck">${escapeHtml(featuredBody.slice(0, 180))}${featuredBody.length > 180 ? "…" : ""}</p>
           <span class="cover__cta journal-toggle">
             <span class="journal-toggle__closed">${escapeHtml(l("Read the story", "اقرأ القصة"))} ↓</span>
             <span class="journal-toggle__open">${escapeHtml(l("Close", "إغلاق"))} ↑</span>
