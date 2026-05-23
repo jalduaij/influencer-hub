@@ -256,6 +256,7 @@ async function run() {
     const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
     const renderMemberCampaignsPageSource = clientSource.match(/function renderMemberCampaignsPage\(\) \{[\s\S]*?\n\}/)?.[0];
     const renderInfluencerPagesSource = clientSource.match(/function renderInfluencerPages\(\) \{[\s\S]*?\n\}/)?.[0];
+    const renderDeskRailSource = clientSource.match(/function renderDeskRail\(participants\) \{[\s\S]*?\n\}/)?.[0];
     const renderInfluencerDashboardSource = clientSource.match(/function renderInfluencerDashboard\(\) \{[\s\S]*?\n\}/)?.[0];
     const renderMemberCardSummarySource = clientSource.match(/function renderMemberCardSummary\(participant, campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
     const renderSubmissionFormSource = clientSource.match(/function renderSubmissionForm\(participant, campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
@@ -266,6 +267,7 @@ async function run() {
         generateCampaignShareTextSource &&
         renderMemberCampaignsPageSource &&
         renderInfluencerPagesSource &&
+        renderDeskRailSource &&
         renderInfluencerDashboardSource &&
         renderMemberCardSummarySource &&
         renderSubmissionFormSource &&
@@ -366,6 +368,7 @@ async function run() {
       escapeHtml: (value) => String(value ?? ""),
       participantCanSubmit: (participant) => ["confirmed", "visited"].includes(participant.status),
       eligibleCampaigns: () => [{ id: 501, titleEn: "Open campaign" }],
+      currentCampaigns: () => [{ id: 201, titleEn: "Cold Brew Shop Visit" }],
       findCampaignForParticipant: (participant) => ({ id: participant.campaignId, titleEn: "Cold Brew Shop Visit" }),
       campaignTitle: (campaign) => campaign?.titleEn || "",
       journalTitle: (entry) => entry?.titleEn || "",
@@ -376,12 +379,15 @@ async function run() {
       formatDateTime: (value) => value || "",
       renderAvailableCampaignCards: (rows) => `<div class="available-count">${rows.length}</div>`,
       renderNotificationsBell: () => '<div class="notification-bell"></div>',
+      memberIssueNumber: () => "21",
+      sectionHeader: () => "",
     };
     vm.createContext(dashboardSandbox);
-    vm.runInContext(renderInfluencerDashboardSource, dashboardSandbox);
+    vm.runInContext(`${renderDeskRailSource}\n${renderInfluencerDashboardSource}`, dashboardSandbox);
     const populatedDashboardHtml = dashboardSandbox.renderInfluencerDashboard();
     assert(/class="cover"/.test(String(populatedDashboardHtml)), "Member dashboard should render the featured journal cover when a published entry exists.");
-    assert(/class="dispatch"/.test(String(populatedDashboardHtml)), "Member dashboard should render the dispatch card when the member has an actionable participant.");
+    assert(/class="desk-block"/.test(String(populatedDashboardHtml)), "Member dashboard should render the desk block when the member has actionable participations.");
+    assert(/class="desk-tile"/.test(String(populatedDashboardHtml)), "Member dashboard should render one desk tile per actionable participation.");
 
     const quietDashboardSandbox = {
       state: {
@@ -399,6 +405,7 @@ async function run() {
       escapeHtml: (value) => String(value ?? ""),
       participantCanSubmit: () => false,
       eligibleCampaigns: () => [],
+      currentCampaigns: () => [],
       findCampaignForParticipant: () => null,
       campaignTitle: (campaign) => campaign?.titleEn || "",
       journalTitle: (entry) => entry?.titleEn || "",
@@ -409,15 +416,17 @@ async function run() {
       formatDateTime: (value) => value || "",
       renderAvailableCampaignCards: () => "",
       renderNotificationsBell: () => '<div class="notification-bell"></div>',
+      memberIssueNumber: () => "21",
+      sectionHeader: () => "",
     };
     vm.createContext(quietDashboardSandbox);
-    vm.runInContext(renderInfluencerDashboardSource, quietDashboardSandbox);
+    vm.runInContext(`${renderDeskRailSource}\n${renderInfluencerDashboardSource}`, quietDashboardSandbox);
     const quietDashboardHtml = quietDashboardSandbox.renderInfluencerDashboard();
     assert(/member-feed__empty/.test(String(quietDashboardHtml)), "Member dashboard should render the feed empty state when there is no journal, preview, eligibility, or actionable campaign.");
-    assert(!/class="dispatch"/.test(String(quietDashboardHtml)), "Member dashboard should not render the dispatch card when there is nothing actionable.");
+    assert(!/class="desk-block"/.test(String(quietDashboardHtml)), "Member dashboard should not render the desk block when there is nothing actionable.");
 
     const campaignCardsSandbox = {
-      state: { locale: "en", data: {} },
+      state: { locale: "en", data: {}, targetActiveParticipantId: null },
       l: (en) => en,
       escapeHtml: (value) => String(value ?? ""),
       participantCanSubmit: (participant) => ["confirmed", "visited"].includes(participant.status),
@@ -464,6 +473,16 @@ async function run() {
     );
     assert(/campaign-accordion--actionable/.test(String(campaignCardsHtml)), "Member campaigns cards should mark actionable rows with the actionable accordion class.");
     assert(/<details class="timeline-card campaign-accordion campaign-accordion--actionable" open>/.test(String(campaignCardsHtml)), "The first actionable member campaigns card should render open by default.");
+    campaignCardsSandbox.state.targetActiveParticipantId = 12;
+    const targetedCampaignCardsHtml = campaignCardsSandbox.renderMyCampaignCards(
+      [
+        { id: 11, campaignId: 201, status: "confirmed", joinedAt: "2026-05-11T10:00:00.000Z", assignedCodeValue: "CBS-001", socialLink: "", feedback: "", platform: "", images: [] },
+        { id: 12, campaignId: 202, status: "confirmed", joinedAt: "2026-05-10T10:00:00.000Z", assignedCodeValue: "LBD-002", socialLink: "", feedback: "", platform: "", images: [] },
+      ],
+      false,
+      false
+    );
+    assert(/Cold Brew Shop Visit[\s\S]*?<details class="timeline-card campaign-accordion campaign-accordion--actionable" open>[\s\S]*?Ladies Beauty Day/.test(String(targetedCampaignCardsHtml)), "Targeted participant navigation should open the requested actionable card instead of always opening the first one.");
 
     const adminBootstrapAfterCampaign = await fetch(`${baseUrl}/api/bootstrap`, {
       headers: { Cookie: cookie.split(";")[0] },

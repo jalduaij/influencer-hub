@@ -69,6 +69,7 @@ const state = {
   resetToken: new URLSearchParams(window.location.search).get("resetToken") || "",
   pendingCampaignDeeplink: null,
   justNavigatedToCampaigns: false,
+  targetActiveParticipantId: null,
   reportTab: "campaigns",
   reportSorts: defaultReportSorts(),
   influencerFilters: {
@@ -595,6 +596,49 @@ function canManageJournalEntryClient(entry) {
 
 function currentCampaigns() {
   return state.data?.campaigns || [];
+}
+
+function renderDeskRail(participants) {
+  if (!participants.length) return "";
+
+  const tiles = participants
+    .map((participant) => {
+      const campaign = currentCampaigns().find((item) => item.id === participant.campaignId);
+      if (!campaign) return "";
+      return `
+        <a class="desk-tile" data-action="open-active" data-participant-id="${participant.id}" href="#campaigns-active">
+          <div class="desk-tile__head">
+            <span class="desk-tile__title">${escapeHtml(campaignTitle(campaign))}</span>
+          </div>
+          ${participant.assignedCodeValue ? `
+            <div class="desk-tile__code">
+              <span class="desk-tile__code-label">${l("Code", "الكود")}</span>
+              <code>${escapeHtml(participant.assignedCodeValue)}</code>
+            </div>
+          ` : ""}
+          <div class="desk-tile__footer">
+            <span class="desk-tile__deadline">
+              ${l("BY", "قبل")} ${formatDate(campaign.submissionDeadline)}
+            </span>
+            <span class="desk-tile__cta">${l("Submit", "أرسل")} ${state.locale === "ar" ? "←" : "→"}</span>
+          </div>
+        </a>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="block block--bone desk-block" id="dashboard-desk">
+      <header class="section-head section-head--inline">
+        <span class="kicker">${l("ON YOUR DESK", "في انتظارك")}</span>
+        <h3>${l("Reserved codes", "أكوادك المحجوزة")} <em>(${participants.length})</em></h3>
+      </header>
+      <hr class="rule rule--hair">
+      <div class="desk-rail">
+        ${tiles}
+      </div>
+    </section>
+  `;
 }
 
 function allInfluencers() {
@@ -1565,6 +1609,7 @@ function render(options = {}) {
     scrollToActiveCampaigns();
     focusFirstActionableSubmission();
     state.justNavigatedToCampaigns = false;
+    state.targetActiveParticipantId = null;
   }
   syncFlashLayer();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
@@ -4319,31 +4364,13 @@ function renderInfluencerDashboard() {
     <hr class="rule rule--thick">
   `;
 
-  let actionBar = "";
-  if (readyToSubmit.length) {
-    const next = readyToSubmit[0];
-    const nextCampaign = findCampaignForParticipant(next);
-    const title = nextCampaign ? campaignTitle(nextCampaign) : l("a campaign", "حملة");
-    const more = readyToSubmit.length > 1
-      ? l(` + ${readyToSubmit.length - 1} more`, ` + ${readyToSubmit.length - 1} أخرى`)
-      : "";
-    actionBar = `
-      <a class="dispatch" data-nav="campaigns" href="#campaigns">
-        <span class="dispatch__eyebrow">${escapeHtml(l("ON YOUR DESK", "في انتظارك"))}</span>
-        <span class="dispatch__line">
-          ${escapeHtml(l("Your", "كود"))} <em>${escapeHtml(title)}</em> ${escapeHtml(l("code is ready to submit", "جاهز للإرسال"))}${escapeHtml(more)}
-        </span>
-        <span class="dispatch__arrow" aria-hidden="true">→</span>
-      </a>
-    `;
-  }
-
   let featuredJournal = "";
   let restJournal = [];
   if (journalEntries.length) {
     const featured = journalEntries[0];
     restJournal = journalEntries.slice(1, 3);
     const body = journalBody(featured) || "";
+    const excerpt = body.slice(0, 160);
     featuredJournal = `
       <article class="cover">
         <div class="cover__image-wrap">
@@ -4356,7 +4383,7 @@ function renderInfluencerDashboard() {
         <div class="cover__text">
           <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
           <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
-          <p class="cover__deck">${escapeHtml(body.slice(0, 200))}${body.length > 200 ? "…" : ""}</p>
+          <p class="cover__deck">${escapeHtml(excerpt)}${body.length > 160 ? "…" : ""}</p>
           <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
           ${
             featured.externalLink
@@ -4380,7 +4407,7 @@ function renderInfluencerDashboard() {
   return `
     <div class="member-feed">
       <section class="block block--hero">${greeting}</section>
-      ${actionBar ? `<section class="block block--bone dispatch-block">${actionBar}</section>` : ""}
+      ${renderDeskRail(readyToSubmit)}
       ${featuredJournal ? `<section class="block block--ivory">${featuredJournal}</section>` : ""}
       ${previewCampaigns.length ? `
         <section class="block block--blush">
@@ -4699,6 +4726,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
   });
   const useAccordion = true;
   const firstActionableIndex = sortedParticipants.findIndex((participant) => participantCanSubmit(participant));
+  const targetExists = Boolean(state.targetActiveParticipantId) && sortedParticipants.some((participant) => participant.id === state.targetActiveParticipantId);
 
   return participants.length
     ? `<div class="stack">${sortedParticipants
@@ -4747,8 +4775,9 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
 
           if (useAccordion) {
             const isActionable = participantCanSubmit(participant);
-            const isFirstActionable = isActionable && index === firstActionableIndex;
-            const openAttr = isFirstActionable ? " open" : "";
+            const hasTarget = targetExists && participant.id === state.targetActiveParticipantId;
+            const isFirstActionable = isActionable && index === firstActionableIndex && !targetExists;
+            const openAttr = hasTarget || isFirstActionable ? " open" : "";
             const accentClass = isActionable ? " campaign-accordion--actionable" : "";
             return `
               <details class="timeline-card campaign-accordion${accentClass}"${openAttr}>
@@ -5166,6 +5195,13 @@ function toggleMobileNav(force) {
   render();
 }
 
+function handleOpenActive(participantId) {
+  state.targetActiveParticipantId = Number(participantId) || null;
+  state.justNavigatedToCampaigns = true;
+  state.currentPage = "campaigns";
+  render();
+}
+
 async function handleClick(event) {
   const target = event.target.closest("[data-action], [data-nav]");
   if (!target) return;
@@ -5190,6 +5226,12 @@ async function handleClick(event) {
 
   if (action === "close-mobile-nav") {
     toggleMobileNav(false);
+    return;
+  }
+
+  if (action === "open-active") {
+    event.preventDefault();
+    handleOpenActive(target.dataset.participantId);
     return;
   }
 
