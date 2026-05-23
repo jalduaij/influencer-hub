@@ -772,9 +772,14 @@ function renderDeskRail(participants) {
 
   return `
     <section class="block block--brand desk-block" id="dashboard-desk">
-      <header class="section-head section-head--inline">
-        <span class="kicker">${l("ON YOUR DESK", "في انتظارك")}</span>
-        <h3>${l("Reserved codes", "أكوادك المحجوزة")} <em>(${participants.length})</em></h3>
+      <header class="desk-title">
+        <span class="kicker">${escapeHtml(l("ON YOUR DESK", "في انتظارك"))}</span>
+        <h2 class="desk-title__line">
+          <span class="desk-title__count">${participants.length}</span>
+          <span class="desk-title__label">${escapeHtml(
+            participants.length === 1 ? l("reserved code", "كود محجوز") : l("reserved codes", "أكواد محجوزة")
+          )}</span>
+        </h2>
       </header>
       <hr class="rule rule--hair">
       <div class="desk-rail">
@@ -4610,52 +4615,72 @@ function renderJournalBlock(journalEntries) {
   const featured = sorted[0];
   const rest = sorted.slice(1, 4);
   const featuredBody = journalBody(featured) || "";
-  const featuredExcerpt = featuredBody.slice(0, 180);
 
   const featuredCover = `
-    <article class="cover journal-feature">
-      <div class="cover__image-wrap">
-        ${
-          featured.imagePath
-            ? `<img class="cover__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
-            : `<div class="cover__image cover__image--placeholder"><span>📓</span></div>`
-        }
-      </div>
-      <div class="cover__text">
-        <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
-        <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
-        <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
-        <p class="cover__deck">${escapeHtml(featuredExcerpt)}${featuredBody.length > 180 ? "…" : ""}</p>
+    <details class="journal-feature journal-expandable">
+      <summary class="cover journal-feature__summary">
+        <div class="cover__image-wrap">
+          ${
+            featured.imagePath
+              ? `<img class="cover__image" src="${escapeHtml(featured.imagePath)}" alt="${escapeHtml(journalTitle(featured))}" />`
+              : `<div class="cover__image cover__image--placeholder"><span>📓</span></div>`
+          }
+        </div>
+        <div class="cover__text">
+          <span class="kicker">${escapeHtml(l(`FEATURE NO. ${String(featured.id).padStart(2, "0")}`, `مقال رقم ${String(featured.id).padStart(2, "0")}`))}</span>
+          <h2 class="cover__headline display-text">${escapeHtml(journalTitle(featured))}</h2>
+          <p class="byline">${escapeHtml(l("Published", "نشر"))} · ${escapeHtml(formatDate(featured.publishedAt || featured.createdAt))}</p>
+          <p class="cover__deck">${escapeHtml(featuredBody.slice(0, 180))}${featuredBody.length > 180 ? "…" : ""}</p>
+          <span class="cover__cta journal-toggle">
+            <span class="journal-toggle__closed">${escapeHtml(l("Read the story", "اقرأ القصة"))} ↓</span>
+            <span class="journal-toggle__open">${escapeHtml(l("Close", "إغلاق"))} ↑</span>
+          </span>
+        </div>
+      </summary>
+      <div class="journal-expandable__body">
+        <p>${escapeHtml(featuredBody)}</p>
         ${
           featured.externalLink
-            ? `<a class="cover__cta" href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read the story", "اقرأ القصة"))} ${state.locale === "ar" ? "←" : "→"}</a>`
+            ? `<p class="journal-expandable__source"><a href="${escapeHtml(featured.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("View original", "عرض الأصلي"))} ${state.locale === "ar" ? "←" : "→"}</a></p>`
             : ""
         }
       </div>
-    </article>
+    </details>
   `;
 
   const restGrid = rest.length
     ? `
       <div class="journal-more">
-        ${rest.map((entry) => `
-          <article class="journal-more__card">
-            ${
-              entry.imagePath
-                ? `<img class="journal-more__thumb" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />`
-                : `<div class="journal-more__thumb journal-more__thumb--placeholder">📓</div>`
-            }
-            <div class="journal-more__body">
-              <strong>${escapeHtml(journalTitle(entry))}</strong>
-              <p class="journal-more__date">${escapeHtml(formatDate(entry.publishedAt || entry.createdAt))}</p>
-              ${
-                entry.externalLink
-                  ? `<a class="journal-more__cta" href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</a>`
-                  : `<span class="journal-more__cta journal-more__cta--muted">${escapeHtml(l("Read more", "اقرأ المزيد"))} ${state.locale === "ar" ? "←" : "→"}</span>`
-              }
-            </div>
-          </article>
-        `).join("")}
+        ${rest.map((entry) => {
+          const body = journalBody(entry) || "";
+          return `
+            <details class="journal-more__card journal-expandable">
+              <summary class="journal-more__summary">
+                ${
+                  entry.imagePath
+                    ? `<img class="journal-more__thumb" src="${escapeHtml(entry.imagePath)}" alt="${escapeHtml(journalTitle(entry))}" />`
+                    : `<div class="journal-more__thumb journal-more__thumb--placeholder">📓</div>`
+                }
+                <div class="journal-more__body">
+                  <strong>${escapeHtml(journalTitle(entry))}</strong>
+                  <p class="journal-more__date">${escapeHtml(formatDate(entry.publishedAt || entry.createdAt))}</p>
+                  <span class="journal-more__cta journal-toggle">
+                    <span class="journal-toggle__closed">${escapeHtml(l("Read more", "اقرأ المزيد"))} ↓</span>
+                    <span class="journal-toggle__open">${escapeHtml(l("Close", "إغلاق"))} ↑</span>
+                  </span>
+                </div>
+              </summary>
+              <div class="journal-expandable__body">
+                <p>${escapeHtml(body)}</p>
+                ${
+                  entry.externalLink
+                    ? `<p class="journal-expandable__source"><a href="${escapeHtml(entry.externalLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("View original", "عرض الأصلي"))} ${state.locale === "ar" ? "←" : "→"}</a></p>`
+                    : ""
+                }
+              </div>
+            </details>
+          `;
+        }).join("")}
       </div>
     `
     : "";
