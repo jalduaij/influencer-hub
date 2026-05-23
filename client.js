@@ -4756,36 +4756,38 @@ function renderAvailableCampaignsPage() {
 }
 
 function renderAvailableCampaignCards(campaigns) {
-  return campaigns.length
-    ? `<div class="stack">${campaigns
-        .map(
-          (campaign) => `
-            <article class="campaign-card">
-              ${renderCampaignBanner(campaign, "card")}
-              <div class="offer-headline">
-                <span class="offer-eyebrow">${escapeHtml(l("What you get", "ما الذي ستحصل عليه"))}</span>
-                <strong class="offer-title">${escapeHtml(campaign.offerDescription || l("Campaign offer attached to this code.", "عرض الحملة مرتبط بهذا الكود."))}</strong>
-                ${(campaign.offerUsageCount || 1) > 1 ? `<span class="offer-uses">${l("Uses", "عدد الاستخدام")}: ${escapeHtml(campaign.offerUsageCount)}</span>` : ""}
-              </div>
-              <div class="row">
-                <strong>${renderCampaignTitleLink(campaign)}</strong>
-                <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
-              </div>
-              <p>${escapeHtml(campaignDescription(campaign))}</p>
-              <div class="row-wrap" style="margin-top: 10px;">
-                <span class="badge">${escapeHtml(campaignAudience(campaign))}</span>
-                <span class="badge">${campaign.codeStats.available} ${l("codes available", "كود متاح")}</span>
-                <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
-              </div>
-              <div class="row-wrap" style="margin-top: 12px;">
-                <button class="secondary" data-action="preview-campaign" data-campaign-id="${campaign.id}">${l("View", "عرض")}</button>
-                <button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>
-              </div>
-            </article>
-          `
-        )
-        .join("")}</div>`
-    : `<div class="empty-state">${l("No campaigns matching you right now — we'll be in touch when there's something for you 💜", "لا توجد حملات تناسبك حالياً — سنخبرك عند توفر شيء يناسبك 💜")}</div>`;
+  if (!campaigns.length) {
+    return `<div class="empty-state">${l("No campaigns matching you right now — we'll be in touch when there's something for you 💜", "لا توجد حملات تناسبك حالياً — سنخبرك عند توفر شيء يناسبك 💜")}</div>`;
+  }
+
+  return `<div class="stack">${campaigns
+    .map(
+      (campaign) => `
+        <a class="campaign-card" data-action="preview-campaign" data-campaign-id="${campaign.id}" href="#campaign/${campaign.id}">
+          <div class="campaign-card__image-wrap">
+            ${renderCampaignBanner(campaign, "card")}
+          </div>
+          <div class="campaign-card__body">
+            <h3 class="campaign-card__title">${escapeHtml(campaignTitle(campaign))}</h3>
+            <p class="campaign-card__deck">${escapeHtml(campaignDescription(campaign))}</p>
+            <div class="campaign-card__offer">
+              <span class="offer-eyebrow">${escapeHtml(l("WHAT YOU GET", "ما الذي ستحصل عليه"))}</span>
+              <strong class="offer-title">${escapeHtml(campaign.offerDescription || l("Campaign offer attached to this code.", "عرض الحملة مرتبط بهذا الكود."))}</strong>
+              ${(campaign.offerUsageCount || 1) > 1
+                ? `<span class="offer-uses">${escapeHtml(l("Uses", "عدد الاستخدام"))}: ${escapeHtml(campaign.offerUsageCount)}</span>`
+                : ""}
+            </div>
+            <p class="campaign-card__meta">
+              <span><strong>${escapeHtml(campaign.codeStats?.available ?? 0)}</strong> ${escapeHtml(l("codes left", "كود متبقي"))}</span>
+              <span class="campaign-card__meta-sep">·</span>
+              <span>${escapeHtml(l("Visit by", "آخر زيارة"))} ${escapeHtml(formatDate(campaign.visitDeadline))}</span>
+            </p>
+            <span class="campaign-card__cta">${escapeHtml(l("View campaign", "عرض الحملة"))}</span>
+          </div>
+        </a>
+      `
+    )
+    .join("")}</div>`;
 }
 
 function renderMyCampaignsPage() {
@@ -5793,6 +5795,7 @@ async function handleClick(event) {
   }
 
   if (action === "preview-campaign") {
+    event.preventDefault();
     navigateTo("campaign-preview", { selectedCampaignId: Number(target.dataset.campaignId) });
     return;
   }
