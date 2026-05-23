@@ -2053,6 +2053,7 @@ const NAV_ICON = {
 };
 
 function renderShell() {
+  const isMember = state.currentUser?.role === "influencer";
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
@@ -2064,15 +2065,25 @@ function renderShell() {
           ${iconSvg("menu")}
         </button>
         <div class="mobile-brand">
-          <strong>${l("PICK Social Club", "نادي بك")}</strong>
+          ${
+            isMember
+              ? `<img class="mobile-brand__logo" src="/uploads/branding/pick-logo.svg" alt="PICK Social Club" />`
+              : `<strong>${l("PICK Social Club", "نادي بك")}</strong>`
+          }
         </div>
         <div class="mobile-spacer"></div>
       </header>
       <aside class="sidebar">
         <div class="brand-block">
-          <p class="eyebrow">PICK Internal</p>
-          <h1>${l("PICK Social Club", "نادي بك")}</h1>
-          <p class="brand-copy">${l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد.")}</p>
+          ${
+            isMember
+              ? `<img class="brand-block__logo" src="/uploads/branding/pick-logo.svg" alt="PICK Social Club" />`
+              : `
+                <p class="eyebrow">PICK Internal</p>
+                <h1>${l("PICK Social Club", "نادي بك")}</h1>
+                <p class="brand-copy">${l("Run the club from here — campaigns, members, codes, deadlines.", "أدر النادي من هنا — الحملات والأعضاء والأكواد والمواعيد.")}</p>
+              `
+          }
         </div>
         <div class="control-panel">
           <label class="field">

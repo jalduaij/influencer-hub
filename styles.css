@@ -7623,3 +7623,23 @@ body.member-scope .desk-tile__cta,
 body.member-scope .desk-tile .desk-tile__cta {
   color: var(--accent-deep);
 }
+
+body.member-scope .brand-block__logo {
+  display: block;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto;
+}
+
+body.member-scope .mobile-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+body.member-scope .mobile-brand__logo {
+  display: block;
+  width: 36px;
+  height: 36px;
+}
