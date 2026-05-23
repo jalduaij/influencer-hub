@@ -806,7 +806,22 @@ function campaignParticipants(campaignId) {
 }
 
 function myParticipantForCampaign(campaignId) {
-  return (state.data?.participants || []).find((participant) => participant.campaignId === Number(campaignId)) || null;
+  const list = state.data?.participants || [];
+  const id = Number(campaignId);
+  const active = list
+    .filter((participant) => participant.campaignId === id && participant.status !== "canceled")
+    .sort((left, right) => {
+      const leftTime = new Date(left.joinedAt || 0).getTime();
+      const rightTime = new Date(right.joinedAt || 0).getTime();
+      return rightTime - leftTime;
+    });
+  return active[0] || null;
+}
+
+function shouldShowConfirmInterest(participant, isEligible) {
+  if (!isEligible) return false;
+  if (!participant) return true;
+  return participant.status === "canceled";
 }
 
 function findCampaignForParticipant(participant) {
@@ -2195,7 +2210,7 @@ function participantStatusLabel(status) {
   if (status === "visited") return l("Code reserved — ready to submit", "الكود محجوز — جاهز للإرسال");
   if (status === "submitted") return l("Proof submitted", "تم إرسال الإثبات");
   if (status === "completed") return l("Completed", "مكتمل");
-  if (status === "canceled") return l("Campaign canceled", "تم إلغاء الحملة");
+  if (status === "canceled") return l("You canceled this", "ألغيتَ هذه المشاركة");
   return status;
 }
 
@@ -5111,11 +5126,11 @@ function renderInfluencerCampaignPreviewPage() {
       <div class="row-wrap">
         <button class="secondary" data-nav="campaigns">${l("Back to campaigns", "العودة إلى الحملات")}</button>
         ${
-          participant
+          shouldShowConfirmInterest(participant, isEligible)
+            ? `<button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>`
+            : participant
             ? `<button data-nav="campaigns">${l("Open campaigns", "افتح الحملات")}</button>`
-            : isEligible
-              ? `<button data-action="join-campaign" data-campaign-id="${campaign.id}">${l("Confirm interest", "تأكيد الاهتمام")}</button>`
-              : `<span class="badge danger">${l("This campaign is not currently available to join.", "هذه الحملة غير متاحة حالياً للانضمام.")}</span>`
+            : `<span class="badge danger">${l("This campaign is not currently available to join.", "هذه الحملة غير متاحة حالياً للانضمام.")}</span>`
         }
       </div>
     </section>
