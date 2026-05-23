@@ -5190,43 +5190,64 @@ body.member-scope .submission-form textarea {
 }
 
 body.member-scope .mobile-topbar {
-  background: var(--paper-page);
-  border-bottom: 1px solid var(--rule);
-  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(74, 31, 93, 0.98), rgba(47, 19, 61, 1));
+  border-bottom: 0;
+  padding: 10px 14px;
+  box-shadow: 0 2px 8px -4px rgba(31, 22, 32, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 body.member-scope .mobile-burger {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3ecdc;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 3px;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
 
 body.member-scope .mobile-burger:hover {
-  background: rgba(31, 22, 32, 0.04);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 body.member-scope .mobile-burger svg,
 body.member-scope .mobile-burger .icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  stroke: currentColor;
 }
 
-body.member-scope .mobile-brand strong {
-  font-family: var(--font-display-en);
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.015em;
-  color: var(--ink);
+body.member-scope .mobile-topbar .notification-bell__summary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f3ecdc;
+  border-radius: 3px;
+  width: 38px;
+  height: 38px;
 }
 
-body.member-scope.rtl .mobile-brand strong {
-  font-family: var(--font-display-ar);
+body.member-scope .mobile-topbar .notification-bell__summary:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+body.member-scope .mobile-topbar .notification-bell__icon,
+body.member-scope .mobile-topbar .notification-bell svg {
+  color: #f3ecdc;
+  stroke: currentColor;
+}
+
+body.member-scope .mobile-topbar .notification-bell__count {
+  background: #f3b840;
+  color: #4a1f5d;
+  font-weight: 700;
 }
 
 body.member-scope .mobile-nav-backdrop {
