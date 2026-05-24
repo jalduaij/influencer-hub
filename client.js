@@ -4802,7 +4802,7 @@ function renderAvailableCampaignCards(campaigns) {
               <span class="campaign-card__meta-sep">·</span>
               <span>${escapeHtml(l("Visit by", "آخر زيارة"))} ${escapeHtml(formatDate(campaign.visitDeadline))}</span>
             </p>
-            <span class="campaign-card__cta">${escapeHtml(l("View campaign", "عرض الحملة"))}</span>
+            <span class="campaign-card__cta">${escapeHtml(l("Get this code", "احصل على الكود"))}</span>
           </div>
         </a>
       `
@@ -5980,16 +5980,18 @@ async function handleClick(event) {
     const campaignId = Number(target.dataset.campaignId);
     target.disabled = true;
     try {
-      const response = await api(`/api/campaigns/${campaignId}/join`, {
+      await api(`/api/campaigns/${campaignId}/join`, {
         method: "POST",
         body: JSON.stringify({}),
       });
       await loadBootstrap();
-      const newParticipantId = response?.participantId ?? null;
-      navigateTo("campaigns", {
-        justNavigatedToCampaigns: true,
-        targetActiveParticipantId: newParticipantId,
-      });
+      state.rejectingCampaignId = null;
+      setTimeout(() => {
+        const statusBlock = document.querySelector(".campaign-preview-status");
+        if (statusBlock) {
+          statusBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 100);
       flash(l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"), "success");
     } catch (error) {
       flash(error.message, "error");

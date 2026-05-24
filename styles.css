@@ -3420,26 +3420,39 @@ body.member-scope .campaign-card__meta-sep {
 }
 
 body.member-scope .campaign-card__cta {
-  margin-top: 6px;
-  font-family: var(--font-display-en);
-  font-style: italic;
-  font-weight: 600;
+  display: inline-block;
+  background: #3a9b48;
+  color: #fff;
+  font-family: var(--font-body-en);
+  font-weight: 700;
+  font-style: normal;
   font-size: 14px;
-  color: var(--accent-deep);
-  align-self: end;
+  letter-spacing: 0.02em;
+  padding: 12px 22px;
+  border-radius: 3px;
+  margin-top: 12px;
+  text-decoration: none;
+  text-align: center;
+  align-self: flex-start;
+  transition: background 120ms ease;
 }
 
 body.member-scope .campaign-card__cta::after {
-  content: " →";
+  content: "";
 }
 
 body.member-scope.rtl .campaign-card__cta {
-  font-family: var(--font-display-ar);
+  font-family: var(--font-body-ar);
   font-style: normal;
+  letter-spacing: 0;
 }
 
 body.member-scope.rtl .campaign-card__cta::after {
-  content: " ←";
+  content: "";
+}
+
+body.member-scope a.campaign-card:hover .campaign-card__cta {
+  background: #2e7d3a;
 }
 
 @media (max-width: 720px) {
@@ -7779,6 +7792,16 @@ body.member-scope .campaign-card__cta,
 body.member-scope .desk-tile__cta,
 body.member-scope .desk-tile .desk-tile__cta {
   color: var(--accent-deep);
+}
+
+body.member-scope a.campaign-card .campaign-card__cta {
+  color: #fff !important;
+  background: #3a9b48 !important;
+  text-decoration: none !important;
+}
+
+body.member-scope a.campaign-card:hover .campaign-card__cta {
+  background: #2e7d3a !important;
 }
 
 body.member-scope .brand-block__logo {
