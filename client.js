@@ -86,6 +86,7 @@ const state = {
   apiInflightCount: 0,
   passwordEditorUserId: null,
   rejectingCampaignId: null,
+  codeCardParticipantId: null,
   masterDataEditor: {
     type: "",
     id: null,
@@ -100,6 +101,17 @@ const state = {
 
 const app = document.getElementById("app");
 let pendingNavScrollY = null;
+let codeCardLogoDataUrlPromise = null;
+
+const QR_CODE_CARD = Object.freeze({
+  version: 5,
+  size: 37,
+  dataCodewords: 108,
+  ecCodewords: 26,
+  maxBytes: 106,
+  alignmentCenters: [6, 30],
+  formatInfo: 0x77c4,
+});
 
 initialize();
 
@@ -340,6 +352,7 @@ function navigateTo(page, extraParams = {}) {
 
   state.currentPage = page;
   if (page !== "campaign-preview") state.rejectingCampaignId = null;
+  state.codeCardParticipantId = null;
   for (const key of Object.keys(extraParams)) {
     state[key] = extraParams[key];
   }
@@ -360,6 +373,7 @@ function goBack() {
     const previous = state.navStack.pop();
     applyNavSnapshot(previous);
     if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
+    state.codeCardParticipantId = null;
     pushBrowserHistory();
     render();
     return;
@@ -370,6 +384,7 @@ function goBack() {
     syncCurrentHistoryEntry();
     state.currentPage = fallback;
     state.rejectingCampaignId = null;
+    state.codeCardParticipantId = null;
     pushBrowserHistory();
     render();
   }
@@ -392,6 +407,7 @@ function handlePopState(event) {
   state.navStack = cloneNavStack(event.state.navStack);
   applyNavSnapshot(event.state.snapshot);
   if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
+  state.codeCardParticipantId = null;
   render();
 }
 
@@ -768,7 +784,14 @@ function renderDeskRail(participants) {
             <span class="desk-tile__deadline">
               ${l("BY", "قبل")} ${formatDate(campaign.submissionDeadline)}
             </span>
-            <span class="desk-tile__cta">${l("Submit", "أرسل")} ${state.locale === "ar" ? "←" : "→"}</span>
+            <span class="desk-tile__actions">
+              ${
+                participant.assignedCodeValue && participant.verificationUrl
+                  ? `<button class="desk-tile__save" data-action="open-code-card" data-participant-id="${participant.id}">${escapeHtml(l("Save", "احفظ"))}</button>`
+                  : ""
+              }
+              <span class="desk-tile__cta">${l("Submit", "أرسل")} ${state.locale === "ar" ? "←" : "→"}</span>
+            </span>
           </div>
         </a>
       `;
@@ -1783,6 +1806,12 @@ async function loadBootstrap() {
   ) {
     state.selectedJournalEntryId = null;
   }
+  if (
+    state.codeCardParticipantId &&
+    !(state.data?.participants || []).some((participant) => participant.id === Number(state.codeCardParticipantId))
+  ) {
+    state.codeCardParticipantId = null;
+  }
   state.currentPage = normalizePage(state.currentPage);
   if (state.pendingCampaignDeeplink) {
     const target = (state.data?.campaigns || []).find((campaign) => campaign.id === state.pendingCampaignDeeplink);
@@ -1817,7 +1846,7 @@ function render(options = {}) {
   }
   document.title = currentDocumentTitle();
   app.innerHTML = renderShell();
-  document.body.classList.toggle("nav-locked", state.mobileNavOpen);
+  document.body.classList.toggle("nav-locked", state.mobileNavOpen || Boolean(state.codeCardParticipantId));
   document.body.classList.toggle("mobile-nav-locked", state.mobileNavOpen);
   if (state.currentPage === "campaigns" && state.justNavigatedToCampaigns) {
     deferHistorySync = true;
@@ -1837,6 +1866,7 @@ function render(options = {}) {
     }, 30);
   }
   syncFlashLayer();
+  setTimeout(renderPendingQrCodes, 20);
   if (!deferHistorySync) syncCurrentHistoryEntry();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
@@ -2131,7 +2161,462 @@ function renderShell() {
         ${renderPage()}
       </main>
     </div>
+    ${renderCodeCard()}
   `;
+}
+
+function renderCodeCard() {
+  if (!state.codeCardParticipantId) return "";
+  const participant = (state.data?.participants || []).find((item) => item.id === Number(state.codeCardParticipantId));
+  if (!participant || !participant.assignedCodeValue || !participant.verificationUrl) return "";
+  const campaign = findCampaignForParticipant(participant);
+  if (!campaign) return "";
+  const offerCopy = campaign.offerDescription ? `<p class="code-card__offer">${escapeHtml(campaign.offerDescription)}</p>` : "";
+  return `
+    <div class="code-card-overlay" data-action="close-code-card-backdrop">
+      <article class="code-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(l("Your reserved code", "كودك المحجوز"))}">
+        <button class="code-card__close" data-action="close-code-card" aria-label="${escapeHtml(l("Close", "إغلاق"))}">×</button>
+        <header class="code-card__header">
+          <img class="code-card__logo" src="/uploads/branding/picksocialclub.png" alt="PICK Social Club" />
+        </header>
+        <div class="code-card__body">
+          <p class="code-card__kicker">${escapeHtml(l("YOUR CODE", "كودك"))}</p>
+          <h2 class="code-card__title">${escapeHtml(campaignTitle(campaign))}</h2>
+          <div class="code-card__code-box">
+            <code>${escapeHtml(participant.assignedCodeValue)}</code>
+          </div>
+          ${offerCopy}
+          <dl class="code-card__meta">
+            <div>
+              <dt>${escapeHtml(l("Visit by", "آخر زيارة"))}</dt>
+              <dd>${escapeHtml(formatDate(campaign.visitDeadline))}</dd>
+            </div>
+            <div>
+              <dt>${escapeHtml(l("Submit by", "آخر تسليم"))}</dt>
+              <dd>${escapeHtml(formatDate(campaign.submissionDeadline))}</dd>
+            </div>
+            <div>
+              <dt>${escapeHtml(l("Branch", "الفرع"))}</dt>
+              <dd>${escapeHtml(l("Any PICK branch", "أي فرع PICK"))}</dd>
+            </div>
+          </dl>
+          <div class="code-card__qr" data-qr-target data-qr-url="${escapeHtml(participant.verificationUrl)}"></div>
+          <p class="code-card__hint">${escapeHtml(l("Show this code at the branch when you redeem your offer.", "اعرض هذا الكود عند الفرع لاستلام عرضك."))}</p>
+        </div>
+        <footer class="code-card__footer">
+          <button class="code-card__share" data-action="share-code-card" data-participant-id="${participant.id}">
+            ${escapeHtml(l("Share / Save to Photos", "مشاركة / حفظ في الصور"))}
+          </button>
+        </footer>
+      </article>
+    </div>
+  `;
+}
+
+function renderPendingQrCodes() {
+  document.querySelectorAll("[data-qr-target]:not([data-qr-rendered])").forEach((target) => {
+    const url = target.dataset.qrUrl;
+    if (!url) return;
+    const matrix = createQrMatrix(url);
+    if (!matrix) {
+      target.setAttribute("data-qr-rendered", "true");
+      target.textContent = l("QR unavailable", "رمز QR غير متاح");
+      return;
+    }
+    target.setAttribute("data-qr-rendered", "true");
+    target.innerHTML = buildQrSvgMarkup(matrix, 180);
+  });
+}
+
+function qrFieldMultiply(a, b) {
+  if (!a || !b) return 0;
+  const cache = qrFieldMultiply.cache ||= (() => {
+    const exp = new Array(512).fill(0);
+    const log = new Array(256).fill(0);
+    let value = 1;
+    for (let index = 0; index < 255; index += 1) {
+      exp[index] = value;
+      log[value] = index;
+      value <<= 1;
+      if (value & 0x100) value ^= 0x11d;
+    }
+    for (let index = 255; index < 512; index += 1) {
+      exp[index] = exp[index - 255];
+    }
+    return { exp, log };
+  })();
+  return cache.exp[cache.log[a] + cache.log[b]];
+}
+
+function qrGeneratorPolynomial(degree) {
+  const cache = qrGeneratorPolynomial.cache ||= new Map();
+  if (cache.has(degree)) return cache.get(degree).slice();
+  const exp = qrFieldMultiply.cache?.exp || (() => {
+    qrFieldMultiply(1, 1);
+    return qrFieldMultiply.cache.exp;
+  })();
+  let polynomial = [1];
+  for (let step = 0; step < degree; step += 1) {
+    const next = new Array(polynomial.length + 1).fill(0);
+    for (let index = 0; index < polynomial.length; index += 1) {
+      next[index] ^= polynomial[index];
+      next[index + 1] ^= qrFieldMultiply(polynomial[index], exp[step]);
+    }
+    polynomial = next;
+  }
+  cache.set(degree, polynomial.slice());
+  return polynomial;
+}
+
+function qrErrorCodewords(dataCodewords, degree) {
+  const generator = qrGeneratorPolynomial(degree);
+  const errorCodewords = new Array(degree).fill(0);
+  for (const value of dataCodewords) {
+    const factor = value ^ errorCodewords[0];
+    for (let index = 0; index < degree - 1; index += 1) {
+      errorCodewords[index] = errorCodewords[index + 1];
+    }
+    errorCodewords[degree - 1] = 0;
+    for (let index = 0; index < degree; index += 1) {
+      errorCodewords[index] ^= qrFieldMultiply(generator[index + 1], factor);
+    }
+  }
+  return errorCodewords;
+}
+
+function pushBits(target, value, length) {
+  for (let bit = length - 1; bit >= 0; bit -= 1) {
+    target.push((value >> bit) & 1);
+  }
+}
+
+function createQrDataCodewords(textValue) {
+  const bytes = Array.from(new TextEncoder().encode(String(textValue || "")));
+  if (bytes.length > QR_CODE_CARD.maxBytes) return null;
+  const bits = [];
+  pushBits(bits, 0x4, 4);
+  pushBits(bits, bytes.length, 8);
+  bytes.forEach((value) => pushBits(bits, value, 8));
+  const capacity = QR_CODE_CARD.dataCodewords * 8;
+  const terminator = Math.min(4, Math.max(0, capacity - bits.length));
+  for (let index = 0; index < terminator; index += 1) bits.push(0);
+  while (bits.length % 8 !== 0) bits.push(0);
+  const codewords = [];
+  for (let index = 0; index < bits.length; index += 8) {
+    let value = 0;
+    for (let offset = 0; offset < 8; offset += 1) {
+      value = (value << 1) | bits[index + offset];
+    }
+    codewords.push(value);
+  }
+  for (let padIndex = 0; codewords.length < QR_CODE_CARD.dataCodewords; padIndex += 1) {
+    codewords.push(padIndex % 2 === 0 ? 0xec : 0x11);
+  }
+  return codewords;
+}
+
+function createQrMatrix(textValue) {
+  const dataCodewords = createQrDataCodewords(textValue);
+  if (!dataCodewords) return null;
+
+  const size = QR_CODE_CARD.size;
+  const modules = Array.from({ length: size }, () => Array(size).fill(false));
+  const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+  const allCodewords = dataCodewords.concat(qrErrorCodewords(dataCodewords, QR_CODE_CARD.ecCodewords));
+
+  function setFunctionModule(row, col, dark) {
+    if (row < 0 || col < 0 || row >= size || col >= size) return;
+    modules[row][col] = Boolean(dark);
+    reserved[row][col] = true;
+  }
+
+  function setupFinderPattern(row, col) {
+    for (let r = -1; r <= 7; r += 1) {
+      for (let c = -1; c <= 7; c += 1) {
+        const targetRow = row + r;
+        const targetCol = col + c;
+        if (targetRow < 0 || targetCol < 0 || targetRow >= size || targetCol >= size) continue;
+        const dark =
+          (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+          (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+          (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        setFunctionModule(targetRow, targetCol, dark);
+      }
+    }
+  }
+
+  function setupAlignmentPattern(centerRow, centerCol) {
+    if (reserved[centerRow][centerCol]) return;
+    for (let r = -2; r <= 2; r += 1) {
+      for (let c = -2; c <= 2; c += 1) {
+        setFunctionModule(
+          centerRow + r,
+          centerCol + c,
+          r === -2 || r === 2 || c === -2 || c === 2 || (r === 0 && c === 0)
+        );
+      }
+    }
+  }
+
+  function reserveFormatInfo() {
+    for (let index = 0; index < 9; index += 1) {
+      if (index !== 6) {
+        setFunctionModule(8, index, false);
+        setFunctionModule(index, 8, false);
+      }
+    }
+    for (let index = 0; index < 8; index += 1) {
+      setFunctionModule(8, size - 1 - index, false);
+      setFunctionModule(size - 1 - index, 8, false);
+    }
+    setFunctionModule(size - 8, 8, true);
+  }
+
+  setupFinderPattern(0, 0);
+  setupFinderPattern(size - 7, 0);
+  setupFinderPattern(0, size - 7);
+
+  for (let index = 8; index < size - 8; index += 1) {
+    if (!reserved[index][6]) setFunctionModule(index, 6, index % 2 === 0);
+    if (!reserved[6][index]) setFunctionModule(6, index, index % 2 === 0);
+  }
+
+  QR_CODE_CARD.alignmentCenters.forEach((row) => {
+    QR_CODE_CARD.alignmentCenters.forEach((col) => {
+      setupAlignmentPattern(row, col);
+    });
+  });
+
+  reserveFormatInfo();
+
+  let bitIndex = 7;
+  let codewordIndex = 0;
+  let row = size - 1;
+  let rowStep = -1;
+
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col -= 1;
+    while (true) {
+      for (let colOffset = 0; colOffset < 2; colOffset += 1) {
+        const currentCol = col - colOffset;
+        if (reserved[row][currentCol]) continue;
+        const codeword = allCodewords[codewordIndex] ?? 0;
+        const dataBit = ((codeword >>> bitIndex) & 1) === 1;
+        const masked = (row + currentCol) % 2 === 0 ? !dataBit : dataBit;
+        modules[row][currentCol] = masked;
+        bitIndex -= 1;
+        if (bitIndex < 0) {
+          codewordIndex += 1;
+          bitIndex = 7;
+        }
+      }
+      row += rowStep;
+      if (row < 0 || row >= size) {
+        row -= rowStep;
+        rowStep = -rowStep;
+        break;
+      }
+    }
+  }
+
+  for (let index = 0; index < 15; index += 1) {
+    const dark = ((QR_CODE_CARD.formatInfo >>> index) & 1) === 1;
+    if (index < 6) {
+      modules[index][8] = dark;
+    } else if (index < 8) {
+      modules[index + 1][8] = dark;
+    } else {
+      modules[size - 15 + index][8] = dark;
+    }
+
+    if (index < 8) {
+      modules[8][size - index - 1] = dark;
+    } else if (index < 9) {
+      modules[8][7] = dark;
+    } else {
+      modules[8][15 - index - 1] = dark;
+    }
+  }
+
+  modules[size - 8][8] = true;
+  return modules;
+}
+
+function buildQrSvgModules(matrix) {
+  let rects = "";
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix[row].length; col += 1) {
+      if (!matrix[row][col]) continue;
+      rects += `<rect x="${col}" y="${row}" width="1" height="1"></rect>`;
+    }
+  }
+  return rects;
+}
+
+function buildQrSvgMarkup(matrix, pixelSize = 180) {
+  if (!matrix?.length) return "";
+  const size = matrix.length;
+  return `
+    <svg viewBox="0 0 ${size} ${size}" width="${pixelSize}" height="${pixelSize}" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+      <rect width="${size}" height="${size}" fill="#ffffff"></rect>
+      <g fill="#1f1620">${buildQrSvgModules(matrix)}</g>
+    </svg>
+  `;
+}
+
+function wrapSvgText(value, maxCharsPerLine) {
+  const textValue = String(value || "").trim();
+  if (!textValue) return [];
+  const words = textValue.split(/\s+/);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxCharsPerLine || !current) {
+      current = candidate;
+      return;
+    }
+    lines.push(current);
+    current = word;
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+function svgTextLines(lines, x, y, lineHeight, className) {
+  if (!lines.length) return "";
+  return `
+    <text x="${x}" y="${y}" class="${className}" text-anchor="middle">
+      ${lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeHtml(line)}</tspan>`).join("")}
+    </text>
+  `;
+}
+
+async function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read file."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function getCodeCardLogoDataUrl() {
+  if (!codeCardLogoDataUrlPromise) {
+    codeCardLogoDataUrlPromise = fetch("/uploads/branding/picksocialclub.png", { credentials: "same-origin" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load code card logo.");
+        return response.blob();
+      })
+      .then(readBlobAsDataUrl)
+      .catch(() => "");
+  }
+  return codeCardLogoDataUrlPromise;
+}
+
+async function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not render code card."));
+    image.src = src;
+  });
+}
+
+function buildCodeCardShareSvg(participant, campaign, logoDataUrl) {
+  const qrMatrix = createQrMatrix(participant.verificationUrl || "");
+  const titleLines = wrapSvgText(campaignTitle(campaign), 22).slice(0, 3);
+  const offerLines = wrapSvgText(campaign.offerDescription || "", 30).slice(0, 4);
+  const qrSize = 41;
+  const qrRects = qrMatrix ? buildQrSvgModules(qrMatrix) : "";
+  const titleBlock = svgTextLines(titleLines, 540, 352, 38, "title");
+  const offerBlock = offerLines.length ? svgTextLines(offerLines, 540, 760, 28, "offer") : "";
+  const logoBlock = logoDataUrl
+    ? `<image href="${escapeHtml(logoDataUrl)}" x="290" y="74" width="500" height="107"></image>`
+    : `<text x="540" y="142" class="wordmark" text-anchor="middle">PICK SOCIAL CLUB</text>`;
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1800" viewBox="0 0 1080 1800">
+      <style>
+        .page { fill: #f3ecdc; }
+        .header { fill: #4a1f5d; }
+        .kicker { fill: #7f6d78; font: 700 28px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 8px; }
+        .title { fill: #1f1620; font: 700 58px Georgia, serif; }
+        .codebox { fill: #4a1f5d; }
+        .code { fill: #ffffff; font: 700 86px 'Courier New', monospace; letter-spacing: 10px; }
+        .offer { fill: #5d4f59; font: 400 32px 'Helvetica Neue', Arial, sans-serif; }
+        .meta-box { fill: rgba(31, 22, 32, 0.05); }
+        .meta-label { fill: #7f6d78; font: 700 20px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 4px; }
+        .meta-value { fill: #1f1620; font: 700 28px 'Helvetica Neue', Arial, sans-serif; }
+        .hint { fill: #7f6d78; font: italic 400 26px Georgia, serif; }
+        .wordmark { fill: #ffffff; font: 700 48px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 3px; }
+      </style>
+      <rect class="page" width="1080" height="1800" rx="48" ry="48"></rect>
+      <rect class="header" width="1080" height="236"></rect>
+      ${logoBlock}
+      <text x="540" y="286" class="kicker" text-anchor="middle">${escapeHtml(l("YOUR CODE", "كودك"))}</text>
+      ${titleBlock}
+      <rect class="codebox" x="120" y="456" width="840" height="170" rx="28" ry="28"></rect>
+      <text x="540" y="562" class="code" text-anchor="middle">${escapeHtml(participant.assignedCodeValue || "")}</text>
+      ${offerBlock}
+      <rect class="meta-box" x="120" y="840" width="840" height="220" rx="22" ry="22"></rect>
+      <text x="180" y="900" class="meta-label">${escapeHtml(l("VISIT BY", "آخر زيارة"))}</text>
+      <text x="900" y="900" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.visitDeadline))}</text>
+      <text x="180" y="970" class="meta-label">${escapeHtml(l("SUBMIT BY", "آخر تسليم"))}</text>
+      <text x="900" y="970" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.submissionDeadline))}</text>
+      <text x="180" y="1040" class="meta-label">${escapeHtml(l("BRANCH", "الفرع"))}</text>
+      <text x="900" y="1040" class="meta-value" text-anchor="end">${escapeHtml(l("Any PICK branch", "أي فرع PICK"))}</text>
+      <rect x="305" y="1120" width="470" height="470" rx="24" ry="24" fill="#ffffff"></rect>
+      ${
+        qrMatrix
+          ? `<g transform="translate(330 1145) scale(${420 / qrSize})"><rect width="${qrSize}" height="${qrSize}" fill="#ffffff"></rect><g fill="#1f1620">${qrRects}</g></g>`
+          : `<text x="540" y="1360" class="meta-value" text-anchor="middle">${escapeHtml(l("QR unavailable", "رمز QR غير متاح"))}</text>`
+      }
+      <text x="540" y="1660" class="hint" text-anchor="middle">${escapeHtml(l("Show this code at the branch when you redeem your offer.", "اعرض هذا الكود عند الفرع لاستلام عرضك."))}</text>
+    </svg>
+  `;
+}
+
+async function buildCodeCardShareFile(participant, campaign) {
+  const logoDataUrl = await getCodeCardLogoDataUrl();
+  const svgMarkup = buildCodeCardShareSvg(participant, campaign, logoDataUrl);
+  const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(svgBlob);
+  try {
+    const image = await loadImageElement(objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1800;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not create image.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pngBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not export code card."));
+      }, "image/png");
+    });
+    const fileStem = String(participant.assignedCodeValue || participant.id)
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "pick-code";
+    return new File([pngBlob], `pick-code-${fileStem}.png`, {
+      type: "image/png",
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 function renderFlash() {
@@ -5180,6 +5665,11 @@ function renderInfluencerCampaignPreviewPage() {
         </header>
         <hr class="rule rule--hair">
         ${codeChip}
+        ${
+          participant.assignedCodeValue && participant.verificationUrl
+            ? `<button class="save-code-btn" data-action="open-code-card" data-participant-id="${participant.id}">${escapeHtml(l("Save my code", "احفظ كودي"))}</button>`
+            : ""
+        }
         ${helper ? `<p class="campaign-preview-status__helper">${escapeHtml(helper)}</p>` : ""}
         ${cancelBtn}
       </section>
@@ -5678,6 +6168,22 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "open-code-card") {
+    event.preventDefault();
+    event.stopPropagation();
+    state.codeCardParticipantId = Number(target.dataset.participantId);
+    render();
+    return;
+  }
+
+  if (action === "close-code-card" || action === "close-code-card-backdrop") {
+    if (action === "close-code-card-backdrop" && event.target !== target) return;
+    event.preventDefault();
+    state.codeCardParticipantId = null;
+    render();
+    return;
+  }
+
   if (action === "set-auth-mode") {
     state.authMode = target.dataset.mode;
     if (state.authMode !== "reset") state.generatedLink = "";
@@ -5689,6 +6195,42 @@ async function handleClick(event) {
     state.flash = null;
     window.clearTimeout(flash._timeout);
     syncFlashLayer();
+    return;
+  }
+
+  if (action === "share-code-card") {
+    event.preventDefault();
+    const participantId = Number(target.dataset.participantId);
+    const participant = (state.data?.participants || []).find((item) => item.id === participantId);
+    const campaign = findCampaignForParticipant(participant);
+    if (!participant || !campaign) return;
+
+    const shareData = {
+      title: `PICK Social Club — ${campaignTitle(campaign)}`,
+      text: [
+        `My PICK code: ${participant.assignedCodeValue}`,
+        `Campaign: ${campaignTitle(campaign)}`,
+        `Visit by: ${formatDate(campaign.visitDeadline)}`,
+        participant.verificationUrl,
+      ].filter(Boolean).join("\n"),
+    };
+
+    try {
+      const shareFile = await buildCodeCardShareFile(participant, campaign);
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [shareFile] }))) {
+        await navigator.share({ ...shareData, files: [shareFile] });
+      } else {
+        downloadFile(shareFile);
+        flash(l("Code card downloaded.", "تم تنزيل بطاقة الكود."), "success");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(shareData.text).catch(() => {});
+        }
+        flash(error?.message || l("Could not share.", "تعذرت المشاركة."), "error");
+      }
+    }
     return;
   }
 
@@ -5708,6 +6250,7 @@ async function handleClick(event) {
     document.body.classList.toggle("nav-locked", false);
     state.currentUser = null;
     state.data = null;
+    state.codeCardParticipantId = null;
     state.currentPage = null;
     state.navStack = [];
     state.generatedLink = "";
@@ -6468,6 +7011,11 @@ function handleInput(event) {
 }
 
 function handleKeyDown(event) {
+  if (event.key === "Escape" && state.codeCardParticipantId) {
+    state.codeCardParticipantId = null;
+    render();
+    return;
+  }
   if (event.key === "Escape" && state.mobileNavOpen) {
     toggleMobileNav(false);
   }

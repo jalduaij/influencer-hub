@@ -1,4 +1,5 @@
 const http = require("node:http");
+const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -17,6 +18,7 @@ const PORT = Number(process.env.PORT || 5050);
 const APP_BASE_URL = normalizeBaseUrl(process.env.APP_BASE_URL || `http://localhost:${PORT}`);
 const SESSION_COOKIE = "pick_sid";
 const IS_SECURE_APP = APP_BASE_URL.startsWith("https://");
+const SECRET_DIR = path.join(DATA_DIR, ".secrets");
 const RESET_LINKS_LOG_PATH = path.join(DATA_DIR, "reset-links.log");
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
@@ -33,6 +35,7 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 const CASHIER_VISIT_FLOW_ENABLED = false;
 const rateLimitBuckets = new Map();
 const CSRF_EXEMPT_PATHS = new Set(["/api/visits/confirm"]);
+const QR_HMAC_SECRET = process.env.QR_HMAC_SECRET || generatePersistentSecret("qr-hmac");
 
 const sessions = new Map();
 let storeWriteChain = Promise.resolve();
@@ -69,6 +72,47 @@ function normalizeBaseUrl(value) {
   const normalized = String(value || "").trim().replace(/\/+$/, "");
   if (!normalized) return "";
   return normalized;
+}
+
+function generatePersistentSecret(name) {
+  const file = path.join(SECRET_DIR, `${name}.txt`);
+  try {
+    if (fsSync.existsSync(file)) {
+      const existing = fsSync.readFileSync(file, "utf8").trim();
+      if (existing) return existing;
+    }
+    fsSync.mkdirSync(SECRET_DIR, { recursive: true });
+    const secret = crypto.randomBytes(32).toString("hex");
+    fsSync.writeFileSync(file, secret, "utf8");
+    return secret;
+  } catch (error) {
+    return crypto.randomBytes(32).toString("hex");
+  }
+}
+
+function getRequestBaseUrl(req) {
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim();
+  const forwardedHost = String(req?.headers?.["x-forwarded-host"] || req?.headers?.host || "")
+    .split(",")[0]
+    .trim();
+  if (forwardedHost) {
+    const protocol = forwardedProto || (IS_SECURE_APP ? "https" : "http");
+    return normalizeBaseUrl(`${protocol}://${forwardedHost}`);
+  }
+  return APP_BASE_URL;
+}
+
+function signedVerificationUrl(participant, baseUrl) {
+  if (!participant?.id) return "";
+  const payload = `p=${participant.id}`;
+  const sig = crypto
+    .createHmac("sha256", QR_HMAC_SECRET)
+    .update(payload)
+    .digest("hex")
+    .slice(0, 16);
+  return `${normalizeBaseUrl(baseUrl || APP_BASE_URL)}/branch/verify?${payload}&sig=${sig}`;
 }
 
 function safeFileNameSegment(value) {
@@ -1223,10 +1267,11 @@ function serializeCampaignCode(store, code) {
   };
 }
 
-function serializeParticipant(store, participant) {
+function serializeParticipant(store, participant, options = {}) {
   const campaign = campaignById(store, participant.campaignId);
   const influencer = userById(store, participant.influencerId);
   const assignedCode = assignedCodeForParticipant(store, participant);
+  const verificationUrl = assignedCode ? signedVerificationUrl(participant, options.baseUrl) : "";
   return {
     ...participant,
     campaignTitleEn: campaign?.titleEn || "",
@@ -1238,6 +1283,7 @@ function serializeParticipant(store, participant) {
     assignedCodeValue: assignedCode?.codeValue || "",
     assignedCodeUsageCount: campaign?.offerUsageCount || assignedCode?.usageCount || 1,
     assignedCodeOfferText: campaign?.offerDescription || assignedCode?.offerText || "",
+    verificationUrl,
   };
 }
 
@@ -1786,7 +1832,8 @@ function generateNotifications(store, user) {
   return notifications;
 }
 
-function buildBootstrap(store, user) {
+function buildBootstrap(store, user, options = {}) {
+  const serializeParticipantForRequest = (participant) => serializeParticipant(store, participant, { baseUrl: options.baseUrl });
   const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
   const reports = reportBundleForCampaigns(store, store.campaigns);
   const includeBranchPin = ["admin", "campaign_manager"].includes(user.role);
@@ -1806,7 +1853,7 @@ function buildBootstrap(store, user) {
     return {
       ...common,
       users: store.users.map(sanitizeUser),
-      participants: store.participants.map((participant) => serializeParticipant(store, participant)),
+      participants: store.participants.map((participant) => serializeParticipantForRequest(participant)),
       reports,
       journalEntries,
       auditEvents: store.auditEvents.slice(-200),
@@ -1815,7 +1862,7 @@ function buildBootstrap(store, user) {
 
   const myParticipants = store.participants
     .filter((participant) => participant.influencerId === user.id)
-    .map((participant) => serializeParticipant(store, participant));
+    .map((participant) => serializeParticipantForRequest(participant));
 
   return {
     ...common,
@@ -2217,7 +2264,7 @@ async function handleResetPassword(req, res, store) {
 }
 
 async function handleBootstrap(req, res, store, user) {
-  return sendJson(res, 200, buildBootstrap(store, user));
+  return sendJson(res, 200, buildBootstrap(store, user, { baseUrl: getRequestBaseUrl(req) }));
 }
 
 async function handleUserStatus(req, res, store, actor, userId) {
