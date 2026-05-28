@@ -78,6 +78,8 @@ const state = {
   campaignCodesByCampaign: {},
   manualReserveCodeId: null,
   authMode: "login",
+  signupDraft: null,
+  signupAddressExpanded: false,
   generatedLink: "",
   resetToken: new URLSearchParams(window.location.search).get("resetToken") || "",
   pendingCampaignDeeplink: null,
@@ -191,6 +193,51 @@ function localizedCopy(value) {
 }
 
 const ADDRESS_OTHER_VALUE = "__OTHER__";
+const SIGNUP_ADDRESS_GEO_FIELDS = Object.freeze([
+  "country",
+  "governorateId",
+  "regionId",
+  "cityId",
+  "cityOther",
+  "areaId",
+  "districtId",
+  "districtOther",
+]);
+const SIGNUP_ADDRESS_FIELDS = Object.freeze([
+  "country",
+  "governorateId",
+  "regionId",
+  "cityId",
+  "cityOther",
+  "areaId",
+  "districtId",
+  "districtOther",
+  "block",
+  "street",
+  "buildingNumber",
+  "floor",
+  "apartmentNumber",
+  "paciNumber",
+  "postalCode",
+  "additionalNumber",
+  "landmark",
+]);
+const SIGNUP_FORM_FIELDS = Object.freeze([
+  "fullName",
+  "email",
+  "password",
+  "mobile",
+  "gender",
+  "cityId",
+  "categoryId",
+  "instagram",
+  "instagramFollowers",
+  "tiktok",
+  "tiktokFollowers",
+  "snapchat",
+  "snapchatFollowers",
+  "preferredPlatform",
+]);
 const EMPTY_ADDRESS_REFERENCE = Object.freeze({
   countries: [],
   kuwait: { governorates: [], areas: [] },
@@ -243,6 +290,32 @@ function emptyShippingAddressDraft() {
   };
 }
 
+function emptySignupDraft() {
+  return {
+    fullName: "",
+    email: "",
+    password: "",
+    mobile: "",
+    gender: "",
+    cityId: "",
+    categoryId: "",
+    instagram: "",
+    instagramFollowers: "0",
+    tiktok: "",
+    tiktokFollowers: "0",
+    snapchat: "",
+    snapchatFollowers: "0",
+    preferredPlatform: "",
+  };
+}
+
+function signupDraftValue() {
+  return {
+    ...emptySignupDraft(),
+    ...(state.signupDraft || {}),
+  };
+}
+
 function shippingAddressDraftFrom(address) {
   const draft = {
     ...emptyShippingAddressDraft(),
@@ -257,6 +330,12 @@ function currentShippingAddress() {
   return state.currentUser?.address || null;
 }
 
+function clearShippingAddressComposer() {
+  state.shippingAddressDraft = null;
+  state.shippingAddressPickerOpen = "";
+  state.shippingAddressPickerQueries = {};
+}
+
 function openShippingAddressEditor(address = currentShippingAddress()) {
   state.shippingAddressEditorOpen = true;
   state.shippingAddressDraft = shippingAddressDraftFrom(address);
@@ -266,9 +345,28 @@ function openShippingAddressEditor(address = currentShippingAddress()) {
 
 function closeShippingAddressEditor() {
   state.shippingAddressEditorOpen = false;
-  state.shippingAddressDraft = null;
+  clearShippingAddressComposer();
+}
+
+function openSignupAddressSection() {
+  state.signupAddressExpanded = true;
+  state.shippingAddressDraft = shippingAddressDraftFrom(null);
   state.shippingAddressPickerOpen = "";
   state.shippingAddressPickerQueries = {};
+}
+
+function closeSignupAddressSection({ clearDraft = true } = {}) {
+  state.signupAddressExpanded = false;
+  state.shippingAddressPickerOpen = "";
+  state.shippingAddressPickerQueries = {};
+  if (clearDraft) {
+    state.shippingAddressDraft = null;
+  }
+}
+
+function resetSignupAddressState() {
+  state.signupAddressExpanded = false;
+  clearShippingAddressComposer();
 }
 
 function shippingAddressDraftValue() {
@@ -286,6 +384,32 @@ function normalizedShippingAddressPayload(draft) {
   if (payload.districtId === ADDRESS_OTHER_VALUE) payload.districtId = "";
   delete payload.updatedAt;
   return payload;
+}
+
+function shippingAddressHasSignupInput(draft) {
+  return SIGNUP_ADDRESS_GEO_FIELDS.some((field) => String(draft?.[field] || "").trim());
+}
+
+function pickSignupAddressPayload() {
+  if (!state.signupAddressExpanded) return null;
+  const draft = normalizedShippingAddressPayload(shippingAddressDraftValue());
+  return shippingAddressHasSignupInput(draft) ? draft : null;
+}
+
+function isShippingAddressFieldName(name) {
+  return SIGNUP_ADDRESS_FIELDS.includes(name);
+}
+
+function isSignupFieldName(name) {
+  return SIGNUP_FORM_FIELDS.includes(name);
+}
+
+function updateSignupDraft(name, rawValue) {
+  if (!isSignupFieldName(name)) return;
+  const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
+  const next = signupDraftValue();
+  next[name] = value;
+  state.signupDraft = next;
 }
 
 function updateShippingAddressDraft(name, rawValue) {
@@ -1241,6 +1365,7 @@ function auditActionLabel(action) {
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
     address_updated: l("Updated shipping address", "حدّث عنوان الشحن"),
+    address_rejected: l("Rejected shipping address at signup", "رفض عنوان الشحن أثناء التسجيل"),
     address_cleared: l("Cleared shipping address", "حذف عنوان الشحن"),
     address_viewed: l("Viewed shipping address", "عرض عنوان الشحن"),
     "journal.created": l("Created journal entry", "أنشأ منشوراً"),
@@ -2226,23 +2351,25 @@ function renderLoginForm() {
 }
 
 function renderSignupForm() {
+  const draft = signupDraftValue();
   return `
     <form id="signupForm" class="form-grid two-col">
-      <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required /></label>
-      <label class="field"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required /></label>
-      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), minLength: 8 })}
-      <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", "", true)}</label>
-      <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", "", true)}</label>
-      <label class="field"><span>${l("City", "المدينة")} <em class="required-mark">*</em></span>${renderCitySelect("cityId", "", false, true)}</label>
-      <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", "")}</label>
-      <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required /></label>
-      <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="0" /></label>
-      <label class="field"><span>TikTok</span><input name="tiktok" /></label>
-      <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" min="0" value="0" /></label>
-      <label class="field"><span>Snapchat</span><input name="snapchat" /></label>
-      <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" min="0" value="0" /></label>
-      <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", "")}</label>
+      <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(draft.fullName || "")}" /></label>
+      <label class="field"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required value="${escapeHtml(draft.email || "")}" /></label>
+      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), value: draft.password || "", minLength: 8 })}
+      <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", draft.mobile || "", true)}</label>
+      <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", draft.gender || "", true)}</label>
+      <label class="field"><span>${l("City", "المدينة")} <em class="required-mark">*</em></span>${renderCitySelect("cityId", draft.cityId || "", false, true)}</label>
+      <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", draft.categoryId || "")}</label>
+      <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required value="${escapeHtml(draft.instagram || "")}" /></label>
+      <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="${escapeHtml(draft.instagramFollowers || "0")}" /></label>
+      <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(draft.tiktok || "")}" /></label>
+      <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" min="0" value="${escapeHtml(draft.tiktokFollowers || "0")}" /></label>
+      <label class="field"><span>Snapchat</span><input name="snapchat" value="${escapeHtml(draft.snapchat || "")}" /></label>
+      <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" min="0" value="${escapeHtml(draft.snapchatFollowers || "0")}" /></label>
+      <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", draft.preferredPlatform || "")}</label>
       <p class="compact field-span-full">${l("Follower counts help us match you with relevant campaigns. You can update them later in your profile.", "أعداد المتابعين تساعدنا على مطابقتك مع الحملات المناسبة. يمكنك تحديثها لاحقاً من ملفك الشخصي.")}</p>
+      ${renderSignupAddressSection()}
       <button type="submit" style="grid-column: 1 / -1;">${l("Send my request", "إرسال طلبي")}</button>
     </form>
   `;
@@ -6259,92 +6386,128 @@ function renderShippingAddressSearchSelect({ field, label, options, placeholder,
   `;
 }
 
-function renderShippingAddressEditor() {
+function renderShippingAddressFields({ countryRequired = true } = {}) {
   const draft = shippingAddressDraftValue();
   const areaOptions = draft.governorateId ? kuwaitAreas(draft.governorateId) : [];
   const cityOptions = draft.regionId ? saudiCities(draft.regionId) : [];
   const districtOptions = draft.cityId && !isAddressOtherSelection(draft.cityId) ? saudiDistricts(draft.cityId) : [];
-  const hasSavedAddress = Boolean(currentShippingAddress());
 
   return `
+    <label class="field">
+      <span>${l("Country", "الدولة")}</span>
+      <select name="country" ${countryRequired ? "required" : ""}>
+        <option value="">${escapeHtml(l("Select", "اختر"))}</option>
+        ${(addressReference().countries || []).map((country) => `
+          <option value="${country.code}" ${draft.country === country.code ? "selected" : ""}>${escapeHtml(addressLocalizedName(country))}</option>
+        `).join("")}
+      </select>
+    </label>
+
+    ${draft.country === "KW" ? `
+      ${renderShippingAddressSearchSelect({
+        field: "governorateId",
+        label: l("Governorate", "المحافظة"),
+        options: kuwaitGovernorates(),
+        placeholder: l("Choose governorate", "اختر المحافظة"),
+      })}
+      ${renderShippingAddressSearchSelect({
+        field: "areaId",
+        label: l("Area", "المنطقة"),
+        options: areaOptions,
+        placeholder: draft.governorateId ? l("Choose area", "اختر المنطقة") : l("Pick governorate first", "اختر المحافظة أولاً"),
+        disabled: !draft.governorateId,
+      })}
+      <label class="field"><span>${l("Block", "القطعة")}</span><input name="block" value="${escapeHtml(draft.block || "")}" /></label>
+      <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
+      <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
+      <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
+      <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
+      <label class="field"><span>${l("PACI number", "الرقم الآلي")}</span><input name="paciNumber" inputmode="numeric" maxlength="8" value="${escapeHtml(draft.paciNumber || "")}" /></label>
+      <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
+    ` : ""}
+
+    ${draft.country === "SA" ? `
+      ${renderShippingAddressSearchSelect({
+        field: "regionId",
+        label: l("Region", "المنطقة"),
+        options: saudiRegions(),
+        placeholder: l("Choose region", "اختر المنطقة"),
+      })}
+      ${renderShippingAddressSearchSelect({
+        field: "cityId",
+        label: l("City", "المدينة"),
+        options: cityOptions,
+        placeholder: draft.regionId ? l("Choose city", "اختر المدينة") : l("Pick region first", "اختر المنطقة أولاً"),
+        disabled: !draft.regionId,
+        otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
+      })}
+      ${(draft.cityId === ADDRESS_OTHER_VALUE || (!draft.cityId && draft.cityOther)) ? `
+        <label class="field"><span>${l("City (other)", "المدينة (أخرى)")}</span><input name="cityOther" value="${escapeHtml(draft.cityOther || "")}" /></label>
+      ` : ""}
+      ${renderShippingAddressSearchSelect({
+        field: "districtId",
+        label: l("District", "الحي"),
+        options: districtOptions,
+        placeholder: draft.cityId ? l("Choose district", "اختر الحي") : l("Pick city first", "اختر المدينة أولاً"),
+        disabled: !draft.cityId,
+        otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
+      })}
+      ${(draft.districtId === ADDRESS_OTHER_VALUE || (!draft.districtId && draft.districtOther)) ? `
+        <label class="field"><span>${l("District (other)", "الحي (أخرى)")}</span><input name="districtOther" value="${escapeHtml(draft.districtOther || "")}" /></label>
+      ` : ""}
+      <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
+      <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
+      <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
+      <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
+      <label class="field"><span>${l("Postal code", "الرمز البريدي")}</span><input name="postalCode" inputmode="numeric" maxlength="5" value="${escapeHtml(draft.postalCode || "")}" /></label>
+      <label class="field"><span>${l("Additional number", "الرقم الإضافي")}</span><input name="additionalNumber" inputmode="numeric" maxlength="4" value="${escapeHtml(draft.additionalNumber || "")}" /></label>
+      <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
+    ` : ""}
+  `;
+}
+
+function renderShippingAddressEditor() {
+  const hasSavedAddress = Boolean(currentShippingAddress());
+  return `
     <form id="shippingAddressForm" class="form-grid two-col">
-      <label class="field">
-        <span>${l("Country", "الدولة")}</span>
-        <select name="country" required>
-          <option value="">${escapeHtml(l("Select", "اختر"))}</option>
-          ${(addressReference().countries || []).map((country) => `
-            <option value="${country.code}" ${draft.country === country.code ? "selected" : ""}>${escapeHtml(addressLocalizedName(country))}</option>
-          `).join("")}
-        </select>
-      </label>
-
-      ${draft.country === "KW" ? `
-        ${renderShippingAddressSearchSelect({
-          field: "governorateId",
-          label: l("Governorate", "المحافظة"),
-          options: kuwaitGovernorates(),
-          placeholder: l("Choose governorate", "اختر المحافظة"),
-        })}
-        ${renderShippingAddressSearchSelect({
-          field: "areaId",
-          label: l("Area", "المنطقة"),
-          options: areaOptions,
-          placeholder: draft.governorateId ? l("Choose area", "اختر المنطقة") : l("Pick governorate first", "اختر المحافظة أولاً"),
-          disabled: !draft.governorateId,
-        })}
-        <label class="field"><span>${l("Block", "القطعة")}</span><input name="block" value="${escapeHtml(draft.block || "")}" /></label>
-        <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
-        <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
-        <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
-        <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
-        <label class="field"><span>${l("PACI number", "الرقم الآلي")}</span><input name="paciNumber" inputmode="numeric" maxlength="8" value="${escapeHtml(draft.paciNumber || "")}" /></label>
-        <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
-      ` : ""}
-
-      ${draft.country === "SA" ? `
-        ${renderShippingAddressSearchSelect({
-          field: "regionId",
-          label: l("Region", "المنطقة"),
-          options: saudiRegions(),
-          placeholder: l("Choose region", "اختر المنطقة"),
-        })}
-        ${renderShippingAddressSearchSelect({
-          field: "cityId",
-          label: l("City", "المدينة"),
-          options: cityOptions,
-          placeholder: draft.regionId ? l("Choose city", "اختر المدينة") : l("Pick region first", "اختر المنطقة أولاً"),
-          disabled: !draft.regionId,
-          otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
-        })}
-        ${(draft.cityId === ADDRESS_OTHER_VALUE || (!draft.cityId && draft.cityOther)) ? `
-          <label class="field"><span>${l("City (other)", "المدينة (أخرى)")}</span><input name="cityOther" value="${escapeHtml(draft.cityOther || "")}" /></label>
-        ` : ""}
-        ${renderShippingAddressSearchSelect({
-          field: "districtId",
-          label: l("District", "الحي"),
-          options: districtOptions,
-          placeholder: draft.cityId ? l("Choose district", "اختر الحي") : l("Pick city first", "اختر المدينة أولاً"),
-          disabled: !draft.cityId,
-          otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
-        })}
-        ${(draft.districtId === ADDRESS_OTHER_VALUE || (!draft.districtId && draft.districtOther)) ? `
-          <label class="field"><span>${l("District (other)", "الحي (أخرى)")}</span><input name="districtOther" value="${escapeHtml(draft.districtOther || "")}" /></label>
-        ` : ""}
-        <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
-        <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
-        <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
-        <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
-        <label class="field"><span>${l("Postal code", "الرمز البريدي")}</span><input name="postalCode" inputmode="numeric" maxlength="5" value="${escapeHtml(draft.postalCode || "")}" /></label>
-        <label class="field"><span>${l("Additional number", "الرقم الإضافي")}</span><input name="additionalNumber" inputmode="numeric" maxlength="4" value="${escapeHtml(draft.additionalNumber || "")}" /></label>
-        <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
-      ` : ""}
-
+      ${renderShippingAddressFields({ countryRequired: true })}
       <div class="row-wrap shipping-address__actions" style="grid-column: 1 / -1;">
         <button type="submit">${l("Save address", "حفظ العنوان")}</button>
         <button type="button" class="secondary" data-action="cancel-shipping-address">${l("Cancel", "إلغاء")}</button>
         ${hasSavedAddress ? `<button type="button" class="link-button" data-action="clear-shipping-address">${l("Remove address", "حذف العنوان")}</button>` : ""}
       </div>
     </form>
+  `;
+}
+
+function renderSignupAddressSection() {
+  if (!state.signupAddressExpanded) {
+    return `
+      <div class="signup-address-signpost field-span-full">
+        <div class="signup-address-signpost__copy">
+          <strong>${escapeHtml(l("Shipping address (optional)", "عنوان الشحن (اختياري)"))}</strong>
+          <span>${escapeHtml(l("Add it if you'd like to receive packages and gifts from PICK. You can also add it later from your profile.", "أضفه إذا كنت ترغب في استلام الطرود والهدايا من بِك. يمكنك إضافته لاحقاً من ملفك الشخصي."))}</span>
+        </div>
+        <button type="button" class="secondary button-small signup-address-signpost__toggle" data-action="open-signup-address">
+          ${escapeHtml(l("+ Add address", "+ إضافة عنوان"))}
+        </button>
+      </div>
+    `;
+  }
+
+  return `
+    <section class="signup-address-panel field-span-full">
+      <div class="row signup-address-panel__head">
+        <div>
+          <strong>${escapeHtml(l("Shipping address (optional)", "عنوان الشحن (اختياري)"))}</strong>
+          <p class="compact">${escapeHtml(l("Add it if you'd like to receive packages and gifts from PICK. You can also add it later from your profile.", "أضفه إذا كنت ترغب في استلام الطرود والهدايا من بِك. يمكنك إضافته لاحقاً من ملفك الشخصي."))}</p>
+        </div>
+        <button type="button" class="link-button signup-address-panel__skip" data-action="skip-signup-address">${escapeHtml(l("Skip for now", "تخطّى"))}</button>
+      </div>
+      <div class="form-grid two-col signup-address-panel__fields">
+        ${renderShippingAddressFields({ countryRequired: false })}
+      </div>
+    </section>
   `;
 }
 
@@ -6799,6 +6962,20 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "open-signup-address") {
+    event.preventDefault();
+    openSignupAddressSection();
+    render();
+    return;
+  }
+
+  if (action === "skip-signup-address") {
+    event.preventDefault();
+    closeSignupAddressSection({ clearDraft: true });
+    render();
+    return;
+  }
+
   if (action === "start-shipping-address" || action === "edit-shipping-address") {
     event.preventDefault();
     openShippingAddressEditor();
@@ -6866,6 +7043,8 @@ async function handleClick(event) {
   if (action === "set-auth-mode") {
     state.authMode = target.dataset.mode;
     if (state.authMode !== "reset") state.generatedLink = "";
+    state.signupDraft = null;
+    resetSignupAddressState();
     render();
     return;
   }
@@ -6935,6 +7114,8 @@ async function handleClick(event) {
     state.currentPage = null;
     state.navStack = [];
     state.generatedLink = "";
+    state.signupDraft = null;
+    resetSignupAddressState();
     state.authMode = "login";
     flash(l("Signed out.", "تم تسجيل الخروج."), "success");
     render();
@@ -7407,6 +7588,8 @@ async function handleSubmit(event) {
       await api("/api/login", { method: "POST", body: JSON.stringify(payload) });
       const session = await api("/api/session");
       state.currentUser = session.user;
+      state.signupDraft = null;
+      resetSignupAddressState();
       state.navStack = [];
       state.currentPage = defaultPageForRole(session.user.role);
       await loadBootstrap();
@@ -7427,9 +7610,24 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(mobileError);
       }
-      await api("/api/signup", { method: "POST", body: JSON.stringify(values) });
+      const signupAddress = pickSignupAddressPayload();
+      const payload = {
+        ...values,
+        ...(signupAddress ? { address: signupAddress } : {}),
+      };
+      const response = await api("/api/signup", { method: "POST", body: JSON.stringify(payload) });
+      state.signupDraft = null;
+      resetSignupAddressState();
       state.authMode = "login";
-      flash(l("We got your request. The team will review it and welcome you in soon.", "وصلنا طلبك. سنرحب بك قريباً بعد المراجعة."), "success");
+      flash(
+        response?.addressWarning
+          ? l(
+            "Your account was created, but we couldn't save your address. Please add it from your profile.",
+            "تم إنشاء حسابك ولكن لم نتمكن من حفظ العنوان. يُرجى إضافته من ملفك الشخصي."
+          )
+          : l("We got your request. The team will review it and welcome you in soon.", "وصلنا طلبك. سنرحب بك قريباً بعد المراجعة."),
+        response?.addressWarning ? "info" : "success"
+      );
       render();
       return;
     }
@@ -7762,6 +7960,9 @@ function handleChange(event) {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
     clearFieldError(event.target);
   }
+  if (event.target.closest("#signupForm") && event.target.name) {
+    updateSignupDraft(event.target.name, event.target.value);
+  }
   if (event.target.matches("input[type='file'][accept*='image']")) {
     syncImagePreview(event.target);
   }
@@ -7784,7 +7985,7 @@ function handleChange(event) {
     return;
   }
 
-  if (event.target.closest("#shippingAddressForm")) {
+  if ((event.target.closest("#shippingAddressForm") || event.target.closest("#signupForm")) && isShippingAddressFieldName(event.target.name)) {
     if (event.target.name) {
       updateShippingAddressDraft(event.target.name, event.target.value);
     }
@@ -7823,7 +8024,14 @@ function handleInput(event) {
   }
   if (event.target.matches("[data-kuwait-mobile]")) {
     event.target.value = kuwaitMobileLocal(event.target.value).slice(0, 8);
+    if (event.target.closest("#signupForm") && event.target.name) {
+      updateSignupDraft(event.target.name, event.target.value);
+    }
     return;
+  }
+
+  if (event.target.closest("#signupForm") && event.target.name) {
+    updateSignupDraft(event.target.name, event.target.value);
   }
 
   if (event.target.matches("[name='campaignSearch']")) {
@@ -7838,7 +8046,7 @@ function handleInput(event) {
     return;
   }
 
-  if (event.target.closest("#shippingAddressForm") && event.target.name) {
+  if ((event.target.closest("#shippingAddressForm") || event.target.closest("#signupForm")) && isShippingAddressFieldName(event.target.name)) {
     updateShippingAddressDraft(event.target.name, event.target.value);
   }
 

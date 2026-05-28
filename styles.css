@@ -189,6 +189,66 @@ a {
   margin-bottom: 20px;
 }
 
+.signup-address-signpost,
+.signup-address-panel {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(112, 47, 138, 0.14);
+  background: rgba(252, 248, 255, 0.88);
+}
+
+.signup-address-signpost {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.signup-address-signpost__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.signup-address-signpost__copy strong,
+.signup-address-panel__head strong {
+  color: var(--accent-dark);
+  font-size: 0.96rem;
+}
+
+.signup-address-signpost__copy span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.signup-address-signpost__toggle {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.signup-address-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 16px;
+}
+
+.signup-address-panel__head {
+  align-items: flex-start;
+}
+
+.signup-address-panel__head p {
+  margin: 4px 0 0;
+}
+
+.signup-address-panel__skip {
+  flex-shrink: 0;
+}
+
+.signup-address-panel__fields {
+  margin-top: 2px;
+}
+
 .sidebar,
 .panel,
 .hero-card,
@@ -2247,6 +2307,21 @@ button:disabled {
     gap: 12px;
     align-items: flex-start;
   }
+
+  .signup-address-signpost,
+  .signup-address-panel__head {
+    display: grid;
+  }
+
+  .signup-address-signpost__toggle,
+  .signup-address-panel__skip {
+    justify-self: start;
+  }
+}
+
+body.rtl .signup-address-signpost__toggle,
+body.rtl .signup-address-panel__skip {
+  justify-self: end;
 }
 
 @media (min-width: 1181px) {

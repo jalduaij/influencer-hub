@@ -2445,8 +2445,29 @@ async function handleSignup(req, res, store) {
   };
 
   store.users.push(user);
+  let signupAddressWarning = null;
+  if (body.address !== undefined && body.address !== null) {
+    const result = validateAddress(body.address);
+    if (result.ok && result.value) {
+      user.address = result.value;
+      appendAuditEvent(store, user, "address_updated", "user", user.id, {
+        country: result.value.country,
+        source: "signup",
+      });
+    } else if (!result.ok) {
+      signupAddressWarning = result.error || "invalid_address";
+      appendAuditEvent(store, user, "address_rejected", "user", user.id, {
+        reason: signupAddressWarning,
+        source: "signup",
+      });
+    }
+  }
   await writeStore(store);
-  return sendJson(res, 201, { ok: true });
+  return sendJson(res, 200, {
+    ok: true,
+    user: sanitizeUser(user),
+    ...(signupAddressWarning ? { addressWarning: signupAddressWarning } : {}),
+  });
 }
 
 async function handleForgotPassword(req, res, store) {
