@@ -116,6 +116,15 @@
       background: #2e7d3a;
     }
 
+    .btn--warn {
+      background: #c98a2e;
+      color: #fff;
+    }
+
+    .btn--warn:hover {
+      background: #a06f1f;
+    }
+
     .btn--secondary {
       background: transparent;
       color: var(--ink);
@@ -299,7 +308,18 @@
         document.getElementById("codeMember").textContent = data.memberName;
         document.getElementById("codeCampaign").textContent = data.campaignTitle;
         document.getElementById("codeOffer").textContent = data.offer || "—";
-        document.getElementById("alreadyVisited").hidden = !data.alreadyVisited;
+        const alreadyVisited = !!data.alreadyVisited;
+        document.getElementById("alreadyVisited").hidden = !alreadyVisited;
+        const redeemBtn = document.getElementById("redeemBtn");
+        if (alreadyVisited) {
+          redeemBtn.classList.remove("btn--success");
+          redeemBtn.classList.add("btn--warn");
+          redeemBtn.textContent = "Mark Visit Anyway";
+        } else {
+          redeemBtn.classList.add("btn--success");
+          redeemBtn.classList.remove("btn--warn");
+          redeemBtn.textContent = "Mark Redeemed";
+        }
         show("step-reveal");
       } catch (error) {
         setMessage("revealError", error.message || "Reveal failed");
