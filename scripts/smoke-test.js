@@ -250,6 +250,10 @@ async function run() {
     const freshCampaignId = createdCampaignPayload.campaign.id;
     assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
     assert(createdCampaignPayload.campaign.whatsappMessage === "Custom body for smoke", "Created campaign should return its whatsappMessage.");
+    assert(
+      /^PICK-[A-Z0-9]+$/.test(String(createdCampaignPayload.campaign.verificationPassword || "")),
+      "Created campaign should return a generated verification password."
+    );
     const clientSource = await fs.readFile(path.join(ROOT, "client.js"), "utf8");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
     const defaultCampaignShareBodySource = clientSource.match(/function defaultCampaignShareBody\(campaign\) \{[\s\S]*?\n\}/)?.[0];
@@ -901,6 +905,9 @@ async function run() {
     assert(firstParticipant, "Expected a confirmed participant after joining.");
     assert(firstParticipant.id === joinOnePayload.participantId, "Join response participantId should match the confirmed participant row.");
     assert(firstParticipant.assignedCodeId, "Expected the first join to reserve a code.");
+    assert(firstParticipant.verificationRef, "Influencer bootstrap should include a verification reference.");
+    assert(firstParticipant.verificationUrl?.includes("/branch/verify?p="), "Influencer bootstrap should include a signed verification URL.");
+    assert(!firstParticipant.assignedCodeValue, "Influencer bootstrap should not expose the raw assigned code.");
 
     const femaleTwoLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
@@ -946,12 +953,75 @@ async function run() {
     assert(activeParticipant, "Expected a new confirmed participant after rejoining.");
     assert(activeParticipant.id === joinTwoPayload.participantId, "Rejoin participantId should match the new confirmed participant.");
     assert(activeParticipant.campaignTitleEn, "Expected the participation row to include a campaign title for clickable campaign links.");
+    assert(activeParticipant.verificationRef, "Rejoined participation should include a verification reference.");
+    assert(!activeParticipant.assignedCodeValue, "Rejoined influencer bootstrap should continue hiding the raw code.");
     const proofNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-proof-1");
     assert(proofNotification?.title?.en && proofNotification?.title?.ar, "Notifications should expose bilingual titles.");
     assert(proofNotification?.body?.en && proofNotification?.body?.ar, "Notifications should expose bilingual bodies.");
 
     const branchPage = await fetch(`${baseUrl}/branch`);
     assert(branchPage.status === 404, `Mothballed branch page should return 404, got ${branchPage.status}.`);
+
+    const verifyPage = await fetch(`${baseUrl}/branch/verify`);
+    assert(verifyPage.ok, `Verify page should load with status 200, got ${verifyPage.status}.`);
+    const verifyPageHtml = await verifyPage.text();
+    assert(verifyPageHtml.includes("PICK Cashier Verify"), "Verify page should render cashier verification copy.");
+
+    const verifyLookup = await fetch(`${baseUrl}/api/branch/verify/lookup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: activeParticipant.verificationRef }),
+    });
+    assert(verifyLookup.ok, `Verification lookup failed with status ${verifyLookup.status}.`);
+    const verifyLookupPayload = await verifyLookup.json();
+    assert(String(verifyLookupPayload.p) === String(activeParticipant.id), "Verification lookup should resolve the active participant.");
+    assert(verifyLookupPayload.sig, "Verification lookup should return a signature.");
+
+    const wrongReveal = await fetch(`${baseUrl}/api/branch/verify/reveal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        p: verifyLookupPayload.p,
+        sig: verifyLookupPayload.sig,
+        password: "PICK-WRONG1",
+      }),
+    });
+    assert(wrongReveal.status === 403, `Wrong verification password should return 403, got ${wrongReveal.status}.`);
+
+    const storeAfterJoinTwo = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const joinedParticipantRecord = storeAfterJoinTwo.participants.find((participant) => participant.id === activeParticipant.id);
+    const joinedCodeRecord = storeAfterJoinTwo.campaignCodes.find((code) => code.id === joinedParticipantRecord?.assignedCodeId);
+    assert(joinedCodeRecord?.codeValue, "Expected a reserved campaign code after rejoin.");
+
+    const reveal = await fetch(`${baseUrl}/api/branch/verify/reveal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        p: verifyLookupPayload.p,
+        sig: verifyLookupPayload.sig,
+        password: createdCampaignPayload.campaign.verificationPassword,
+      }),
+    });
+    assert(reveal.ok, `Verification reveal failed with status ${reveal.status}.`);
+    const revealPayload = await reveal.json();
+    assert(revealPayload.code === joinedCodeRecord.codeValue, "Verification reveal should return the reserved code value.");
+    assert(revealPayload.memberName, "Verification reveal should return the member name.");
+
+    const redeem = await fetch(`${baseUrl}/api/branch/verify/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        p: verifyLookupPayload.p,
+        sig: verifyLookupPayload.sig,
+        password: createdCampaignPayload.campaign.verificationPassword,
+      }),
+    });
+    assert(redeem.ok, `Verification redeem failed with status ${redeem.status}.`);
+    const storeAfterRedeem = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const redeemedParticipant = storeAfterRedeem.participants.find((participant) => participant.id === activeParticipant.id);
+    assert(redeemedParticipant?.visitedAt, "Cashier redeem should stamp visitedAt.");
+    assert(redeemedParticipant?.cashierVerifiedAt, "Cashier redeem should stamp cashierVerifiedAt.");
+    assert(redeemedParticipant?.visitedConfirmedByCashier === true, "Cashier redeem should flag visitedConfirmedByCashier.");
 
     const visitConfirm = await fetch(`${baseUrl}/api/visits/confirm`, {
       method: "POST",
