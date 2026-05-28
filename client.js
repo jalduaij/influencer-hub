@@ -8094,13 +8094,13 @@ function handleFocusOut(event) {
   if (!field) return;
   const relatedWrapper = event.relatedTarget?.closest?.(".field--search-select");
   if (relatedWrapper?.dataset.shippingAddressField === field) return;
-  requestAnimationFrame(() => {
+  window.setTimeout(() => {
     if (state.shippingAddressPickerOpen !== field) return;
     const activeWrapper = document.activeElement?.closest?.(".field--search-select");
     if (activeWrapper?.dataset.shippingAddressField === field) return;
     state.shippingAddressPickerOpen = "";
     render({ preserveFocus: true });
-  });
+  }, 40);
 }
 
 function formDataToObject(formData) {
