@@ -8091,8 +8091,13 @@ function handleFocusOut(event) {
   const wrapper = event.target.closest(".field--search-select");
   if (!wrapper) return;
   if (event.relatedTarget && wrapper.contains(event.relatedTarget)) return;
-  state.shippingAddressPickerOpen = "";
-  render({ preserveFocus: true });
+  const openField = state.shippingAddressPickerOpen;
+  setTimeout(() => {
+    if (state.shippingAddressPickerOpen !== openField) return;
+    if (wrapper.contains(document.activeElement)) return;
+    state.shippingAddressPickerOpen = "";
+    render({ preserveFocus: true });
+  }, 0);
 }
 
 function formDataToObject(formData) {
