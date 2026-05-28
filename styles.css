@@ -158,6 +158,11 @@ a {
   padding: 24px;
 }
 
+.login-shell--solo {
+  grid-template-columns: minmax(0, 560px);
+  justify-content: center;
+}
+
 .login-card,
 .login-sidecard {
   padding: 32px;

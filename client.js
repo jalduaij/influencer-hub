@@ -52,7 +52,7 @@ const state = {
   locale: loadLocale(),
   currentUser: null,
   data: null,
-  publicData: { cities: [], categories: [], platforms: [], tags: [] },
+  publicData: { cities: [], categories: [], platforms: [], tags: [], showUatPanel: false },
   flash: null,
   currentPage: null,
   navStack: [],
@@ -122,7 +122,13 @@ async function initialize() {
     state.pendingCampaignDeeplink = campaignParam;
     window.history.replaceState({}, "", window.location.pathname);
   }
-  state.publicData = await api("/api/public-metadata").catch(() => ({ cities: [], categories: [], platforms: [], tags: [] }));
+  state.publicData = await api("/api/public-metadata").catch(() => ({
+    cities: [],
+    categories: [],
+    platforms: [],
+    tags: [],
+    showUatPanel: false,
+  }));
   const session = await api("/api/session").catch(() => ({ authenticated: false }));
   if (session.authenticated) {
     state.currentUser = session.user;
@@ -1904,12 +1910,13 @@ function currentDocumentTitle() {
 
 function renderAuth() {
   const resetMode = state.authMode === "reset" || state.resetToken;
+  const showUatPanel = Boolean(state.publicData?.showUatPanel);
   return `
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
     <div id="global-loading-bar" data-global-loading-bar class="${state.apiInflightCount > 0 ? "is-active" : ""}"></div>
     <div class="flash-layer" data-flash-layer></div>
-    <section class="login-shell">
+    <section class="login-shell${showUatPanel ? "" : " login-shell--solo"}">
       <article class="login-card">
         <p class="eyebrow">PICK Internal</p>
         <h1>${l("PICK Social Club", "نادي بك")}</h1>
@@ -1929,6 +1936,7 @@ function renderAuth() {
         ${resetMode ? renderResetPasswordForm() : state.authMode === "signup" ? renderSignupForm() : state.authMode === "forgot" ? renderForgotPasswordForm() : renderLoginForm()}
         ${state.generatedLink ? `<article class="note-card" style="margin-top: 18px;"><strong>${l("Generated link", "الرابط المولد")}</strong><p>${escapeHtml(state.generatedLink)}</p></article>` : ""}
       </article>
+      ${showUatPanel ? `
       <article class="login-sidecard">
         <p class="eyebrow">${l("UAT demo accounts", "حسابات الاختبار")}</p>
         <h2>${l("PICK Social Club", "نادي بك")}</h2>
@@ -1984,6 +1992,7 @@ function renderAuth() {
           </div>
         </div>
       </article>
+      ` : ""}
     </section>
   `;
 }

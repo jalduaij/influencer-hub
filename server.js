@@ -18,6 +18,19 @@ const PORT = Number(process.env.PORT || 5050);
 const APP_BASE_URL = normalizeBaseUrl(process.env.APP_BASE_URL || `http://localhost:${PORT}`);
 const SESSION_COOKIE = "pick_sid";
 const IS_SECURE_APP = APP_BASE_URL.startsWith("https://");
+const SHOW_UAT_PANEL = (() => {
+  const explicit = String(process.env.SHOW_UAT_PANEL || "").toLowerCase();
+  if (explicit === "true") return true;
+  if (explicit === "false") return false;
+  try {
+    const host = new URL(APP_BASE_URL).hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    if (host.endsWith(".onrender.com") && /(stage|staging)/.test(host)) return true;
+  } catch (_) {
+    // Fall through to the safe production default.
+  }
+  return false;
+})();
 const SECRET_DIR = path.join(DATA_DIR, ".secrets");
 const RESET_LINKS_LOG_PATH = path.join(DATA_DIR, "reset-links.log");
 const SCRYPT_N = 16384;
@@ -2009,6 +2022,7 @@ function publicMetadata(store) {
     categories: store.categories.filter((category) => category.status === "active"),
     platforms: store.platforms.filter((platform) => platform.status === "active"),
     tags: store.tags.filter((tag) => tag.status === "active"),
+    showUatPanel: SHOW_UAT_PANEL,
   };
 }
 

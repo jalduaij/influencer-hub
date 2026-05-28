@@ -29,10 +29,10 @@ function usage() {
 
 function parseArgs(argv) {
   const parsed = {
-    fullName: process.env.BOOTSTRAP_ADMIN_FULL_NAME || "",
-    email: process.env.BOOTSTRAP_ADMIN_EMAIL || "",
-    password: process.env.BOOTSTRAP_ADMIN_PASSWORD || "",
-    language: process.env.BOOTSTRAP_ADMIN_LANGUAGE || "en",
+    fullName: "",
+    email: "",
+    password: "",
+    language: "",
     help: false,
   };
 
@@ -79,10 +79,10 @@ async function main() {
     return;
   }
 
-  const fullName = text(options.fullName);
-  const email = text(options.email).toLowerCase();
-  const password = String(options.password || "");
-  const preferredLanguage = text(options.language).toLowerCase() === "ar" ? "ar" : "en";
+  const fullName = text(options.fullName || process.env.BOOTSTRAP_ADMIN_FULL_NAME);
+  const email = text(options.email || process.env.BOOTSTRAP_ADMIN_EMAIL).toLowerCase();
+  const password = String(options.password || process.env.BOOTSTRAP_ADMIN_PASSWORD || "");
+  const preferredLanguage = text(options.language || process.env.BOOTSTRAP_ADMIN_LANGUAGE || "en").toLowerCase() === "ar" ? "ar" : "en";
 
   if (!fullName || !email || !password) {
     throw new Error(`Full name, email, and password are required.\n\n${usage()}`);
@@ -100,6 +100,10 @@ async function main() {
 
   const existingUser = store.users.find((user) => text(user.email).toLowerCase() === email);
   if (existingUser) {
+    if (existingUser.role === "admin") {
+      console.log(`Admin ${email} already exists in ${STORE_PATH}; no changes.`);
+      return;
+    }
     throw new Error(`A user with email ${email} already exists (role: ${existingUser.role}).`);
   }
   const existingAdmin = store.users.find((user) => user.role === "admin");
