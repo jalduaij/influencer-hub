@@ -52,7 +52,18 @@ const state = {
   locale: loadLocale(),
   currentUser: null,
   data: null,
-  publicData: { cities: [], categories: [], platforms: [], tags: [], showUatPanel: false },
+  publicData: {
+    cities: [],
+    categories: [],
+    platforms: [],
+    tags: [],
+    showUatPanel: false,
+    addressReference: {
+      countries: [],
+      kuwait: { governorates: [], areas: [] },
+      saudiArabia: { regions: [], cities: [], districts: [] },
+    },
+  },
   flash: null,
   currentPage: null,
   navStack: [],
@@ -97,6 +108,11 @@ const state = {
     platform: false,
     tag: false,
   },
+  shippingAddressEditorOpen: false,
+  shippingAddressDraft: null,
+  shippingAddressPickerOpen: "",
+  shippingAddressPickerQueries: {},
+  adminAddressCards: {},
 };
 
 const app = document.getElementById("app");
@@ -128,6 +144,11 @@ async function initialize() {
     platforms: [],
     tags: [],
     showUatPanel: false,
+    addressReference: {
+      countries: [],
+      kuwait: { governorates: [], areas: [] },
+      saudiArabia: { regions: [], cities: [], districts: [] },
+    },
   }));
   const session = await api("/api/session").catch(() => ({ authenticated: false }));
   if (session.authenticated) {
@@ -167,6 +188,196 @@ function localizedCopy(value) {
     return state.locale === "ar" ? value.ar || value.en || "" : value.en || value.ar || "";
   }
   return String(value || "");
+}
+
+const ADDRESS_OTHER_VALUE = "__OTHER__";
+const EMPTY_ADDRESS_REFERENCE = Object.freeze({
+  countries: [],
+  kuwait: { governorates: [], areas: [] },
+  saudiArabia: { regions: [], cities: [], districts: [] },
+});
+
+function addressReference() {
+  return state.publicData?.addressReference || EMPTY_ADDRESS_REFERENCE;
+}
+
+function addressLocalizedName(row) {
+  if (!row) return "";
+  return state.locale === "ar" ? row.nameAr || row.nameEn || "" : row.nameEn || row.nameAr || "";
+}
+
+function addressCountryRow(code) {
+  return (addressReference().countries || []).find((country) => country.code === String(code || "").toUpperCase()) || null;
+}
+
+function addressCountryName(code) {
+  return addressLocalizedName(addressCountryRow(code)) || code || l("Not set", "غير محدد");
+}
+
+function addressCountryFlag(code) {
+  if (String(code || "").toUpperCase() === "KW") return "🇰🇼";
+  if (String(code || "").toUpperCase() === "SA") return "🇸🇦";
+  return "📦";
+}
+
+function emptyShippingAddressDraft() {
+  return {
+    country: "",
+    governorateId: "",
+    regionId: "",
+    cityId: "",
+    cityOther: "",
+    areaId: "",
+    districtId: "",
+    districtOther: "",
+    block: "",
+    street: "",
+    buildingNumber: "",
+    floor: "",
+    apartmentNumber: "",
+    paciNumber: "",
+    postalCode: "",
+    additionalNumber: "",
+    landmark: "",
+    updatedAt: "",
+  };
+}
+
+function shippingAddressDraftFrom(address) {
+  const draft = {
+    ...emptyShippingAddressDraft(),
+    ...(address || {}),
+  };
+  if (draft.country === "SA" && !draft.cityId && draft.cityOther) draft.cityId = ADDRESS_OTHER_VALUE;
+  if (draft.country === "SA" && !draft.districtId && draft.districtOther) draft.districtId = ADDRESS_OTHER_VALUE;
+  return draft;
+}
+
+function currentShippingAddress() {
+  return state.currentUser?.address || null;
+}
+
+function openShippingAddressEditor(address = currentShippingAddress()) {
+  state.shippingAddressEditorOpen = true;
+  state.shippingAddressDraft = shippingAddressDraftFrom(address);
+  state.shippingAddressPickerOpen = "";
+  state.shippingAddressPickerQueries = {};
+}
+
+function closeShippingAddressEditor() {
+  state.shippingAddressEditorOpen = false;
+  state.shippingAddressDraft = null;
+  state.shippingAddressPickerOpen = "";
+  state.shippingAddressPickerQueries = {};
+}
+
+function shippingAddressDraftValue() {
+  return state.shippingAddressDraft || shippingAddressDraftFrom(currentShippingAddress());
+}
+
+function isAddressOtherSelection(value) {
+  return value === ADDRESS_OTHER_VALUE;
+}
+
+function normalizedShippingAddressPayload(draft) {
+  if (!draft) return null;
+  const payload = { ...draft };
+  if (payload.cityId === ADDRESS_OTHER_VALUE) payload.cityId = "";
+  if (payload.districtId === ADDRESS_OTHER_VALUE) payload.districtId = "";
+  delete payload.updatedAt;
+  return payload;
+}
+
+function updateShippingAddressDraft(name, rawValue) {
+  const draft = shippingAddressDraftValue();
+  const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
+  draft[name] = value;
+
+  if (name === "country") {
+    if (value === "KW") {
+      draft.regionId = "";
+      draft.cityId = "";
+      draft.cityOther = "";
+      draft.districtId = "";
+      draft.districtOther = "";
+      draft.postalCode = "";
+      draft.additionalNumber = "";
+    }
+    if (value === "SA") {
+      draft.governorateId = "";
+      draft.areaId = "";
+      draft.block = "";
+      draft.paciNumber = "";
+    }
+    if (!value) {
+      Object.assign(draft, emptyShippingAddressDraft());
+    }
+  }
+
+  if (name === "governorateId") {
+    draft.areaId = "";
+  }
+  if (name === "regionId") {
+    draft.cityId = "";
+    draft.cityOther = "";
+    draft.districtId = "";
+    draft.districtOther = "";
+  }
+  if (name === "cityId") {
+    if (!isAddressOtherSelection(value)) draft.cityOther = "";
+    draft.districtId = "";
+    draft.districtOther = "";
+  }
+  if (name === "districtId" && !isAddressOtherSelection(value)) {
+    draft.districtOther = "";
+  }
+  if (name === "paciNumber") draft.paciNumber = value.replace(/\D/g, "").slice(0, 8);
+  if (name === "postalCode") draft.postalCode = value.replace(/\D/g, "").slice(0, 5);
+  if (name === "additionalNumber") draft.additionalNumber = value.replace(/\D/g, "").slice(0, 4);
+
+  state.shippingAddressDraft = draft;
+}
+
+function kuwaitGovernorates() {
+  return addressReference().kuwait?.governorates || [];
+}
+
+function kuwaitAreas(governorateId) {
+  return (addressReference().kuwait?.areas || []).filter((area) => area.governorateId === governorateId);
+}
+
+function saudiRegions() {
+  return addressReference().saudiArabia?.regions || [];
+}
+
+function saudiCities(regionId) {
+  return (addressReference().saudiArabia?.cities || []).filter((city) => city.regionId === regionId);
+}
+
+function saudiDistricts(cityId) {
+  return (addressReference().saudiArabia?.districts || []).filter((district) => district.cityId === cityId);
+}
+
+function addressRowById(collection, id) {
+  return (collection || []).find((row) => row.id === id) || null;
+}
+
+function addressSearchQuery(field) {
+  return state.shippingAddressPickerQueries[field] || "";
+}
+
+function setAddressSearchQuery(field, query) {
+  state.shippingAddressPickerQueries = {
+    ...state.shippingAddressPickerQueries,
+    [field]: query,
+  };
+}
+
+function clearAddressSearchQuery(field) {
+  if (!state.shippingAddressPickerQueries[field]) return;
+  const next = { ...state.shippingAddressPickerQueries };
+  delete next[field];
+  state.shippingAddressPickerQueries = next;
 }
 
 function captureFocusedField() {
@@ -358,6 +569,7 @@ function navigateTo(page, extraParams = {}) {
 
   state.currentPage = page;
   if (page !== "campaign-preview") state.rejectingCampaignId = null;
+  if (page !== "profile") closeShippingAddressEditor();
   state.codeCardParticipantId = null;
   for (const key of Object.keys(extraParams)) {
     state[key] = extraParams[key];
@@ -379,6 +591,7 @@ function goBack() {
     const previous = state.navStack.pop();
     applyNavSnapshot(previous);
     if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
+    if (state.currentPage !== "profile") closeShippingAddressEditor();
     state.codeCardParticipantId = null;
     pushBrowserHistory();
     render();
@@ -390,6 +603,7 @@ function goBack() {
     syncCurrentHistoryEntry();
     state.currentPage = fallback;
     state.rejectingCampaignId = null;
+    closeShippingAddressEditor();
     state.codeCardParticipantId = null;
     pushBrowserHistory();
     render();
@@ -1026,6 +1240,9 @@ function auditActionLabel(action) {
     "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+    address_updated: l("Updated shipping address", "حدّث عنوان الشحن"),
+    address_cleared: l("Cleared shipping address", "حذف عنوان الشحن"),
+    address_viewed: l("Viewed shipping address", "عرض عنوان الشحن"),
     "journal.created": l("Created journal entry", "أنشأ منشوراً"),
     "journal.updated": l("Updated journal entry", "حدّث منشوراً"),
     "journal.deleted": l("Deleted journal entry", "حذف منشوراً"),
@@ -1810,6 +2027,7 @@ async function loadBootstrap() {
   const previousRole = state.currentUser?.role || null;
   state.data = await api("/api/bootstrap");
   state.currentUser = state.data.currentUser;
+  state.adminAddressCards = {};
   if (previousRole && previousRole !== state.currentUser?.role) {
     state.navStack = [];
   }
@@ -5860,6 +6078,350 @@ function renderInfluencerCampaignPreviewPage() {
   `;
 }
 
+function addressFieldLabel(key) {
+  const labels = {
+    governorateId: l("Governorate", "المحافظة"),
+    areaId: l("Area", "المنطقة"),
+    regionId: l("Region", "المنطقة"),
+    cityId: l("City", "المدينة"),
+    districtId: l("District", "الحي"),
+    block: l("Block", "القطعة"),
+    street: l("Street", "الشارع"),
+    buildingNumber: l("Building number", "رقم المبنى"),
+    floor: l("Floor", "الدور"),
+    apartmentNumber: l("Apartment / unit", "الشقة / الوحدة"),
+    paciNumber: l("PACI number", "الرقم الآلي"),
+    postalCode: l("Postal code", "الرمز البريدي"),
+    additionalNumber: l("Additional number", "الرقم الإضافي"),
+    landmark: l("Landmark", "علامة مميزة"),
+  };
+  return labels[key] || key;
+}
+
+function addressFieldLine(label, value) {
+  if (!value) return "";
+  return `${label}: ${value}`;
+}
+
+function localizedAddressValue(address, field) {
+  if (!address) return "";
+  if (field === "governorateId") return addressLocalizedName(addressRowById(kuwaitGovernorates(), address.governorateId));
+  if (field === "areaId") return addressLocalizedName(addressRowById(addressReference().kuwait?.areas || [], address.areaId));
+  if (field === "regionId") return addressLocalizedName(addressRowById(saudiRegions(), address.regionId));
+  if (field === "cityId") return addressLocalizedName(addressRowById(addressReference().saudiArabia?.cities || [], address.cityId));
+  if (field === "districtId") return addressLocalizedName(addressRowById(addressReference().saudiArabia?.districts || [], address.districtId));
+  return address[field] || "";
+}
+
+function formattedAddressLines(address, options = {}) {
+  if (!address?.country) return [];
+  const lines = options.includeCountry === false ? [] : [`${addressCountryFlag(address.country)} ${addressCountryName(address.country)}`];
+  if (address.country === "KW") {
+    lines.push(addressFieldLine(addressFieldLabel("governorateId"), localizedAddressValue(address, "governorateId")));
+    lines.push(addressFieldLine(addressFieldLabel("areaId"), localizedAddressValue(address, "areaId")));
+    lines.push(addressFieldLine(addressFieldLabel("block"), address.block));
+    lines.push(addressFieldLine(addressFieldLabel("street"), address.street));
+    lines.push(addressFieldLine(addressFieldLabel("buildingNumber"), address.buildingNumber));
+    lines.push(addressFieldLine(addressFieldLabel("floor"), address.floor));
+    lines.push(addressFieldLine(addressFieldLabel("apartmentNumber"), address.apartmentNumber));
+    lines.push(addressFieldLine(addressFieldLabel("paciNumber"), address.paciNumber));
+    lines.push(addressFieldLine(addressFieldLabel("landmark"), address.landmark));
+  } else if (address.country === "SA") {
+    lines.push(addressFieldLine(addressFieldLabel("regionId"), localizedAddressValue(address, "regionId")));
+    lines.push(addressFieldLine(addressFieldLabel("cityId"), address.cityOther || localizedAddressValue(address, "cityId")));
+    lines.push(addressFieldLine(addressFieldLabel("districtId"), address.districtOther || localizedAddressValue(address, "districtId")));
+    lines.push(addressFieldLine(addressFieldLabel("street"), address.street));
+    lines.push(addressFieldLine(addressFieldLabel("buildingNumber"), address.buildingNumber));
+    lines.push(addressFieldLine(addressFieldLabel("floor"), address.floor));
+    lines.push(addressFieldLine(addressFieldLabel("apartmentNumber"), address.apartmentNumber));
+    lines.push(addressFieldLine(addressFieldLabel("postalCode"), address.postalCode));
+    lines.push(addressFieldLine(addressFieldLabel("additionalNumber"), address.additionalNumber));
+    lines.push(addressFieldLine(addressFieldLabel("landmark"), address.landmark));
+  }
+  return lines.filter(Boolean);
+}
+
+function formattedAddressHtml(address, options = {}) {
+  return formattedAddressLines(address, options).map((line) => escapeHtml(line)).join("<br />");
+}
+
+function formattedAddressText(address, userName = "") {
+  return [userName, ...formattedAddressLines(address)].filter(Boolean).join("\n");
+}
+
+function addressApiErrorMessage(code) {
+  const messages = {
+    invalid_payload: l("Could not read the address details.", "تعذر قراءة بيانات العنوان."),
+    invalid_country: l("Please choose Kuwait or Saudi Arabia.", "يرجى اختيار الكويت أو السعودية."),
+    invalid_governorate: l("Choose a valid governorate.", "اختر محافظة صحيحة."),
+    invalid_area: l("Choose a valid area.", "اختر منطقة صحيحة."),
+    area_governorate_mismatch: l("That area does not belong to the selected governorate.", "هذه المنطقة لا تتبع المحافظة المختارة."),
+    invalid_paci: l("PACI number must be exactly 8 digits.", "الرقم الآلي يجب أن يكون 8 أرقام."),
+    invalid_region: l("Choose a valid region.", "اختر منطقة صحيحة."),
+    invalid_city: l("Choose a valid city.", "اختر مدينة صحيحة."),
+    city_region_mismatch: l("That city does not belong to the selected region.", "هذه المدينة لا تتبع المنطقة المختارة."),
+    invalid_district: l("Choose a valid district.", "اختر حياً صحيحاً."),
+    district_city_mismatch: l("That district does not belong to the selected city.", "هذا الحي لا يتبع المدينة المختارة."),
+    invalid_postal: l("Postal code must be exactly 5 digits.", "الرمز البريدي يجب أن يكون 5 أرقام."),
+    invalid_additional: l("Additional number must be exactly 4 digits.", "الرقم الإضافي يجب أن يكون 4 أرقام."),
+  };
+  return messages[code] || code || l("Address could not be saved.", "تعذر حفظ العنوان.");
+}
+
+function applyAddressApiErrors(form, code, message) {
+  const mappings = {
+    invalid_country: ["country"],
+    invalid_governorate: ["governorateId"],
+    invalid_area: ["areaId"],
+    area_governorate_mismatch: ["governorateId", "areaId"],
+    invalid_paci: ["paciNumber"],
+    invalid_region: ["regionId"],
+    invalid_city: ["cityId"],
+    city_region_mismatch: ["regionId", "cityId"],
+    invalid_district: ["districtId"],
+    district_city_mismatch: ["cityId", "districtId"],
+    invalid_postal: ["postalCode"],
+    invalid_additional: ["additionalNumber"],
+  };
+  (mappings[code] || []).forEach((name) => setFieldError(form, name, message));
+  syncInvalidFields(form);
+}
+
+function renderShippingAddressSearchSelect({ field, label, options, placeholder, disabled = false, otherLabel = "" }) {
+  const draft = shippingAddressDraftValue();
+  const open = state.shippingAddressPickerOpen === field && !disabled;
+  const query = addressSearchQuery(field);
+  const selectedValue = draft[field] || "";
+  const selectedOption = addressRowById(options, selectedValue);
+  const selectedLabel = isAddressOtherSelection(selectedValue)
+    ? otherLabel
+    : addressLocalizedName(selectedOption);
+  const filtered = (options || []).filter((option) =>
+    addressLocalizedName(option).toLowerCase().includes(query.toLowerCase())
+  );
+  const optionButtons = filtered
+    .map(
+      (option) => `
+        <button
+          type="button"
+          class="search-select__option${selectedValue === option.id ? " is-selected" : ""}"
+          data-action="select-shipping-address-option"
+          data-field="${field}"
+          data-value="${option.id}"
+        >
+          ${escapeHtml(addressLocalizedName(option))}
+        </button>
+      `
+    )
+    .join("");
+
+  return `
+    <label class="field field--search-select${disabled ? " is-disabled" : ""}">
+      <span>${label}</span>
+      <input type="hidden" name="${field}" value="${escapeHtml(isAddressOtherSelection(selectedValue) ? "" : selectedValue)}" />
+      <button
+        type="button"
+        class="search-select__trigger"
+        data-action="toggle-shipping-address-picker"
+        data-field="${field}"
+        ${disabled ? "disabled" : ""}
+      >
+        <span>${escapeHtml(selectedLabel || placeholder)}</span>
+      </button>
+      ${open ? `
+        <div class="search-select__panel">
+          <input
+            id="shipping-address-query-${field}"
+            type="search"
+            class="search-select__input"
+            data-shipping-address-query="${field}"
+            placeholder="${escapeHtml(l("Type to filter", "اكتب للتصفية"))}"
+            value="${escapeHtml(query)}"
+            autocomplete="off"
+          />
+          <div class="search-select__options">
+            ${optionButtons || `<p class="compact search-select__empty">${escapeHtml(l("No matches found.", "لا توجد نتائج مطابقة."))}</p>`}
+            ${otherLabel ? `
+              <button
+                type="button"
+                class="search-select__option${isAddressOtherSelection(selectedValue) ? " is-selected" : ""}"
+                data-action="select-shipping-address-option"
+                data-field="${field}"
+                data-value="${ADDRESS_OTHER_VALUE}"
+              >
+                ${escapeHtml(otherLabel)}
+              </button>
+            ` : ""}
+          </div>
+        </div>
+      ` : ""}
+    </label>
+  `;
+}
+
+function renderShippingAddressEditor() {
+  const draft = shippingAddressDraftValue();
+  const areaOptions = draft.governorateId ? kuwaitAreas(draft.governorateId) : [];
+  const cityOptions = draft.regionId ? saudiCities(draft.regionId) : [];
+  const districtOptions = draft.cityId && !isAddressOtherSelection(draft.cityId) ? saudiDistricts(draft.cityId) : [];
+  const hasSavedAddress = Boolean(currentShippingAddress());
+
+  return `
+    <form id="shippingAddressForm" class="form-grid two-col">
+      <label class="field">
+        <span>${l("Country", "الدولة")}</span>
+        <select name="country" required>
+          <option value="">${escapeHtml(l("Select", "اختر"))}</option>
+          ${(addressReference().countries || []).map((country) => `
+            <option value="${country.code}" ${draft.country === country.code ? "selected" : ""}>${escapeHtml(addressLocalizedName(country))}</option>
+          `).join("")}
+        </select>
+      </label>
+
+      ${draft.country === "KW" ? `
+        ${renderShippingAddressSearchSelect({
+          field: "governorateId",
+          label: l("Governorate", "المحافظة"),
+          options: kuwaitGovernorates(),
+          placeholder: l("Choose governorate", "اختر المحافظة"),
+        })}
+        ${renderShippingAddressSearchSelect({
+          field: "areaId",
+          label: l("Area", "المنطقة"),
+          options: areaOptions,
+          placeholder: draft.governorateId ? l("Choose area", "اختر المنطقة") : l("Pick governorate first", "اختر المحافظة أولاً"),
+          disabled: !draft.governorateId,
+        })}
+        <label class="field"><span>${l("Block", "القطعة")}</span><input name="block" value="${escapeHtml(draft.block || "")}" /></label>
+        <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
+        <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
+        <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
+        <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
+        <label class="field"><span>${l("PACI number", "الرقم الآلي")}</span><input name="paciNumber" inputmode="numeric" maxlength="8" value="${escapeHtml(draft.paciNumber || "")}" /></label>
+        <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
+      ` : ""}
+
+      ${draft.country === "SA" ? `
+        ${renderShippingAddressSearchSelect({
+          field: "regionId",
+          label: l("Region", "المنطقة"),
+          options: saudiRegions(),
+          placeholder: l("Choose region", "اختر المنطقة"),
+        })}
+        ${renderShippingAddressSearchSelect({
+          field: "cityId",
+          label: l("City", "المدينة"),
+          options: cityOptions,
+          placeholder: draft.regionId ? l("Choose city", "اختر المدينة") : l("Pick region first", "اختر المنطقة أولاً"),
+          disabled: !draft.regionId,
+          otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
+        })}
+        ${(draft.cityId === ADDRESS_OTHER_VALUE || (!draft.cityId && draft.cityOther)) ? `
+          <label class="field"><span>${l("City (other)", "المدينة (أخرى)")}</span><input name="cityOther" value="${escapeHtml(draft.cityOther || "")}" /></label>
+        ` : ""}
+        ${renderShippingAddressSearchSelect({
+          field: "districtId",
+          label: l("District", "الحي"),
+          options: districtOptions,
+          placeholder: draft.cityId ? l("Choose district", "اختر الحي") : l("Pick city first", "اختر المدينة أولاً"),
+          disabled: !draft.cityId,
+          otherLabel: l("Other / not listed", "أخرى / غير مدرجة"),
+        })}
+        ${(draft.districtId === ADDRESS_OTHER_VALUE || (!draft.districtId && draft.districtOther)) ? `
+          <label class="field"><span>${l("District (other)", "الحي (أخرى)")}</span><input name="districtOther" value="${escapeHtml(draft.districtOther || "")}" /></label>
+        ` : ""}
+        <label class="field"><span>${l("Street", "الشارع")}</span><input name="street" value="${escapeHtml(draft.street || "")}" /></label>
+        <label class="field"><span>${l("Building number", "رقم المبنى")}</span><input name="buildingNumber" value="${escapeHtml(draft.buildingNumber || "")}" /></label>
+        <label class="field"><span>${l("Floor", "الدور")}</span><input name="floor" value="${escapeHtml(draft.floor || "")}" /></label>
+        <label class="field"><span>${l("Apartment / unit", "الشقة / الوحدة")}</span><input name="apartmentNumber" value="${escapeHtml(draft.apartmentNumber || "")}" /></label>
+        <label class="field"><span>${l("Postal code", "الرمز البريدي")}</span><input name="postalCode" inputmode="numeric" maxlength="5" value="${escapeHtml(draft.postalCode || "")}" /></label>
+        <label class="field"><span>${l("Additional number", "الرقم الإضافي")}</span><input name="additionalNumber" inputmode="numeric" maxlength="4" value="${escapeHtml(draft.additionalNumber || "")}" /></label>
+        <label class="field" style="grid-column: 1 / -1;"><span>${l("Landmark", "علامة مميزة")}</span><input name="landmark" value="${escapeHtml(draft.landmark || "")}" /></label>
+      ` : ""}
+
+      <div class="row-wrap shipping-address__actions" style="grid-column: 1 / -1;">
+        <button type="submit">${l("Save address", "حفظ العنوان")}</button>
+        <button type="button" class="secondary" data-action="cancel-shipping-address">${l("Cancel", "إلغاء")}</button>
+        ${hasSavedAddress ? `<button type="button" class="link-button" data-action="clear-shipping-address">${l("Remove address", "حذف العنوان")}</button>` : ""}
+      </div>
+    </form>
+  `;
+}
+
+function renderShippingAddressSection() {
+  const address = currentShippingAddress();
+  if (!state.shippingAddressEditorOpen) {
+    return `
+      <section class="block block--bone shipping-address-block">
+        <div class="row" style="justify-content: space-between; align-items: flex-start; gap: 12px;">
+          <div>
+            <p class="eyebrow">${escapeHtml(l("Shipping address", "عنوان الشحن"))}</p>
+            <h3>${escapeHtml(l("Shipping address", "عنوان الشحن"))}</h3>
+            <p class="panel-subtitle">${escapeHtml(
+              address
+                ? l("Saved for packages, gifts, and physical offers from PICK.", "محفوظ للشحنات والهدايا والعروض المادية من PICK.")
+                : l("Add a shipping address to receive special packages and offers from PICK.", "أضف عنوان شحن لتصلك الهدايا والعروض الخاصة من PICK.")
+            )}</p>
+          </div>
+          <button type="button" class="secondary" data-action="${address ? "edit-shipping-address" : "start-shipping-address"}">
+            ${escapeHtml(address ? l("Edit", "تعديل") : l("Add address", "إضافة عنوان"))}
+          </button>
+        </div>
+        ${address ? `
+          <div class="address-summary">
+            <p>${formattedAddressHtml(address)}</p>
+            ${address.updatedAt ? `<p class="compact">${escapeHtml(l("Updated", "آخر تحديث"))}: ${escapeHtml(formatDate(address.updatedAt))}</p>` : ""}
+          </div>
+          <button type="button" class="link-button" data-action="clear-shipping-address">${escapeHtml(l("Remove address", "حذف العنوان"))}</button>
+        ` : ""}
+      </section>
+    `;
+  }
+
+  return `
+    <section class="block block--bone shipping-address-block">
+      <p class="eyebrow">${escapeHtml(l("Shipping address", "عنوان الشحن"))}</p>
+      <h3>${escapeHtml(l("Shipping address", "عنوان الشحن"))}</h3>
+      <p class="panel-subtitle">${escapeHtml(l("Save a delivery address so PICK can send physical packages, gifts, and offers when needed.", "احفظ عنوان التوصيل حتى يتمكن PICK من إرسال الشحنات والهدايا والعروض المادية عند الحاجة."))}</p>
+      ${renderShippingAddressEditor()}
+    </section>
+  `;
+}
+
+function renderAdminAddressCard(user) {
+  const cardState = state.adminAddressCards[user.id] || { expanded: false, loading: false, loaded: false, address: null, error: "" };
+  return `
+    <article class="note-card profile-address-view">
+      <div class="row" style="justify-content: space-between; align-items: center; gap: 12px;">
+        <strong>${escapeHtml(l("Shipping address", "عنوان الشحن"))}</strong>
+        <button
+          type="button"
+          class="secondary button-small"
+          data-action="toggle-admin-address-card"
+          data-user-id="${user.id}"
+        >
+          ${escapeHtml(cardState.expanded ? l("Hide", "إخفاء") : l("View", "عرض"))}
+        </button>
+      </div>
+      ${cardState.expanded ? `
+        <div class="profile-address-view__body">
+          ${cardState.loading ? `<p class="compact">${escapeHtml(l("Loading address…", "جارٍ تحميل العنوان…"))}</p>` : ""}
+          ${cardState.error ? `<p class="compact status-strip-danger">${escapeHtml(cardState.error)}</p>` : ""}
+          ${cardState.loaded && !cardState.address ? `<p class="compact">${escapeHtml(l("Member has not added a shipping address.", "لم يضف العضو عنوان شحن بعد."))}</p>` : ""}
+          ${cardState.address ? `
+            <p class="profile-address-view__country">${escapeHtml(`${addressCountryFlag(cardState.address.country)} ${addressCountryName(cardState.address.country)}`)}</p>
+            <p class="profile-address-view__copy">${formattedAddressHtml(cardState.address, { includeCountry: false })}</p>
+            <div class="row-wrap" style="margin-top: 12px;">
+              <button type="button" class="secondary button-small" data-action="copy-admin-address" data-user-id="${user.id}">${escapeHtml(l("Copy address", "نسخ العنوان"))}</button>
+              ${cardState.address.updatedAt ? `<span class="compact">${escapeHtml(l("Updated", "آخر تحديث"))}: ${escapeHtml(formatDate(cardState.address.updatedAt))}</span>` : ""}
+            </div>
+          ` : ""}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
 function renderProfilePage() {
   const user = state.currentUser;
   const isInfluencer = user.role === "influencer";
@@ -5896,6 +6458,7 @@ function renderProfilePage() {
         <button type="submit" style="grid-column: 1 / -1;">${l("Save profile", "حفظ الملف")}</button>
       </form>
     </section>
+    ${isInfluencer ? renderShippingAddressSection() : ""}
   `;
 }
 
@@ -5966,6 +6529,7 @@ function renderInfluencerProfilePage() {
           <strong>${l("Internal notes", "الملاحظات الداخلية")}</strong>
           <p>${escapeHtml((user.notes || []).length ? (user.notes || []).join(", ") : l("No internal notes yet.", "لا توجد ملاحظات داخلية بعد."))}</p>
         </article>
+        ${renderAdminAddressCard(user)}
       </section>
       <section class="panel">
         <h3>${l("Manager actions", "إجراءات الإدارة")}</h3>
@@ -6235,6 +6799,62 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "start-shipping-address" || action === "edit-shipping-address") {
+    event.preventDefault();
+    openShippingAddressEditor();
+    render();
+    return;
+  }
+
+  if (action === "cancel-shipping-address") {
+    event.preventDefault();
+    closeShippingAddressEditor();
+    render();
+    return;
+  }
+
+  if (action === "clear-shipping-address") {
+    event.preventDefault();
+    if (!window.confirm(l("Remove the saved shipping address?", "هل تريد حذف عنوان الشحن المحفوظ؟"))) return;
+    try {
+      await api("/api/me/address", { method: "DELETE" });
+      await loadBootstrap();
+      closeShippingAddressEditor();
+      flash(l("Shipping address removed.", "تم حذف عنوان الشحن."), "success");
+      render();
+    } catch (error) {
+      flash(error.message, "error");
+    }
+    return;
+  }
+
+  if (action === "toggle-shipping-address-picker") {
+    event.preventDefault();
+    const field = target.dataset.field || "";
+    const isOpen = state.shippingAddressPickerOpen === field;
+    state.shippingAddressPickerOpen = isOpen ? "" : field;
+    if (!isOpen) {
+      setAddressSearchQuery(field, "");
+    }
+    render({ preserveFocus: true });
+    if (!isOpen) {
+      setTimeout(() => {
+        document.getElementById(`shipping-address-query-${field}`)?.focus();
+      }, 0);
+    }
+    return;
+  }
+
+  if (action === "select-shipping-address-option") {
+    event.preventDefault();
+    const field = target.dataset.field || "";
+    updateShippingAddressDraft(field, target.dataset.value || "");
+    state.shippingAddressPickerOpen = "";
+    clearAddressSearchQuery(field);
+    render();
+    return;
+  }
+
   if (action === "close-code-card" || action === "close-code-card-backdrop") {
     if (action === "close-code-card-backdrop" && event.target !== target) return;
     event.preventDefault();
@@ -6307,9 +6927,11 @@ async function handleClick(event) {
     state.mobileNavOpen = false;
     document.body.classList.toggle("mobile-nav-locked", false);
     document.body.classList.toggle("nav-locked", false);
+    closeShippingAddressEditor();
     state.currentUser = null;
     state.data = null;
     state.codeCardParticipantId = null;
+    state.adminAddressCards = {};
     state.currentPage = null;
     state.navStack = [];
     state.generatedLink = "";
@@ -6351,6 +6973,73 @@ async function handleClick(event) {
 
   if (action === "back-from-influencer-profile") {
     navigateTo(state.influencerProfileReturnPage || "influencers");
+    return;
+  }
+
+  if (action === "toggle-admin-address-card") {
+    event.preventDefault();
+    const userId = Number(target.dataset.userId);
+    const current = state.adminAddressCards[userId] || { expanded: false, loading: false, loaded: false, address: null, error: "" };
+    const expanded = !current.expanded;
+    state.adminAddressCards = {
+      ...state.adminAddressCards,
+      [userId]: {
+        ...current,
+        expanded,
+      },
+    };
+    render();
+    if (!expanded || current.loaded || current.loading) return;
+    state.adminAddressCards = {
+      ...state.adminAddressCards,
+      [userId]: {
+        ...current,
+        expanded: true,
+        loading: true,
+        error: "",
+      },
+    };
+    render();
+    try {
+      const payload = await api(`/api/admin/users/${userId}/address`);
+      state.adminAddressCards = {
+        ...state.adminAddressCards,
+        [userId]: {
+          expanded: true,
+          loading: false,
+          loaded: true,
+          address: payload.address || null,
+          error: "",
+        },
+      };
+    } catch (error) {
+      state.adminAddressCards = {
+        ...state.adminAddressCards,
+        [userId]: {
+          expanded: true,
+          loading: false,
+          loaded: false,
+          address: null,
+          error: error.message || l("Could not load the address.", "تعذر تحميل العنوان."),
+        },
+      };
+    }
+    render();
+    return;
+  }
+
+  if (action === "copy-admin-address") {
+    event.preventDefault();
+    const userId = Number(target.dataset.userId);
+    const user = (state.data?.users || []).find((row) => row.id === userId);
+    const address = state.adminAddressCards[userId]?.address;
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(formattedAddressText(address, user?.fullName || ""));
+      flash(l("Address copied.", "تم نسخ العنوان."), "success");
+    } catch (error) {
+      flash(l("Could not copy the address.", "تعذر نسخ العنوان."), "error");
+    }
     return;
   }
 
@@ -6870,6 +7559,69 @@ async function handleSubmit(event) {
       form.reset();
       return;
     }
+    if (form.id === "shippingAddressForm") {
+      const values = formDataToObject(new FormData(form));
+      const payload = {
+        ...normalizedShippingAddressPayload(shippingAddressDraftValue()),
+        ...values,
+      };
+      if (!payload.country) {
+        const message = l("Please choose a country.", "يرجى اختيار الدولة.");
+        setFieldError(form, "country", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
+      if (payload.country === "KW") {
+        if (!payload.governorateId) {
+          const message = l("Please choose a governorate.", "يرجى اختيار المحافظة.");
+          setFieldError(form, "governorateId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+        if (!payload.areaId) {
+          const message = l("Please choose an area.", "يرجى اختيار المنطقة.");
+          setFieldError(form, "areaId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+      }
+      if (payload.country === "SA") {
+        if (!payload.regionId) {
+          const message = l("Please choose a region.", "يرجى اختيار المنطقة.");
+          setFieldError(form, "regionId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+        if (!payload.cityId && !String(payload.cityOther || "").trim()) {
+          const message = l("Please choose a city or enter the city name.", "يرجى اختيار المدينة أو كتابة اسمها.");
+          setFieldError(form, "cityId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+        if (!payload.districtId && !String(payload.districtOther || "").trim()) {
+          const message = l("Please choose a district or enter the district name.", "يرجى اختيار الحي أو كتابة اسمه.");
+          setFieldError(form, "districtId", message);
+          reportFormValidity(form);
+          throw new Error(message);
+        }
+      }
+      try {
+        await api("/api/me/address", {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        await loadBootstrap();
+        closeShippingAddressEditor();
+        flash(l("Shipping address saved.", "تم حفظ عنوان الشحن."), "success");
+        render();
+        return;
+      } catch (error) {
+        const code = String(error.message || "");
+        const message = addressApiErrorMessage(code);
+        applyAddressApiErrors(form, code, message);
+        throw new Error(message);
+      }
+    }
     if (form.id === "profileForm") {
       const formData = new FormData(form);
       const mobileError = validateKuwaitMobile(formData.get("mobile"));
@@ -7032,6 +7784,18 @@ function handleChange(event) {
     return;
   }
 
+  if (event.target.closest("#shippingAddressForm")) {
+    if (event.target.name) {
+      updateShippingAddressDraft(event.target.name, event.target.value);
+    }
+    if (event.target.name === "country") {
+      state.shippingAddressPickerOpen = "";
+      state.shippingAddressPickerQueries = {};
+      render({ preserveFocus: true });
+      return;
+    }
+  }
+
   if (event.target.closest("#influencerFilterForm")) {
     const form = event.target.form;
     state.influencerFilters = {
@@ -7068,6 +7832,16 @@ function handleInput(event) {
     return;
   }
 
+  if (event.target.matches("[data-shipping-address-query]")) {
+    setAddressSearchQuery(event.target.dataset.shippingAddressQuery || "", event.target.value);
+    render({ preserveFocus: true });
+    return;
+  }
+
+  if (event.target.closest("#shippingAddressForm") && event.target.name) {
+    updateShippingAddressDraft(event.target.name, event.target.value);
+  }
+
   if (event.target.closest("#reportFilterForm")) {
     syncReportFilters(event.target.form);
     render({ preserveFocus: true });
@@ -7089,6 +7863,11 @@ function handleInput(event) {
 }
 
 function handleKeyDown(event) {
+  if (event.key === "Escape" && state.shippingAddressPickerOpen) {
+    state.shippingAddressPickerOpen = "";
+    render({ preserveFocus: true });
+    return;
+  }
   if (event.key === "Escape" && state.codeCardParticipantId) {
     state.codeCardParticipantId = null;
     render();
@@ -7100,7 +7879,12 @@ function handleKeyDown(event) {
 }
 
 function handleFocusOut(event) {
-  void event;
+  if (!state.shippingAddressPickerOpen) return;
+  const wrapper = event.target.closest(".field--search-select");
+  if (!wrapper) return;
+  if (event.relatedTarget && wrapper.contains(event.relatedTarget)) return;
+  state.shippingAddressPickerOpen = "";
+  render({ preserveFocus: true });
 }
 
 function formDataToObject(formData) {

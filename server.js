@@ -32,6 +32,28 @@ const SHOW_UAT_PANEL = (() => {
   return false;
 })();
 const SECRET_DIR = path.join(DATA_DIR, ".secrets");
+const ADDRESS_REFERENCE_PATH = path.join(ROOT, "data", "seeds", "address-reference.json");
+let ADDRESS_REFERENCE = {
+  countries: [],
+  kuwait: { governorates: [], areas: [] },
+  saudiArabia: { regions: [], cities: [], districts: [] },
+};
+try {
+  ADDRESS_REFERENCE = JSON.parse(fsSync.readFileSync(ADDRESS_REFERENCE_PATH, "utf8"));
+} catch (error) {
+  console.warn(`[address] could not load ${ADDRESS_REFERENCE_PATH}: ${error.message}`);
+}
+const ADDRESS_LOOKUPS = (() => {
+  const map = (rows) => Object.fromEntries((rows || []).map((row) => [row.id, row]));
+  return {
+    countries: new Set((ADDRESS_REFERENCE.countries || []).map((country) => country.code)),
+    governorates: map(ADDRESS_REFERENCE.kuwait?.governorates),
+    areas: map(ADDRESS_REFERENCE.kuwait?.areas),
+    regions: map(ADDRESS_REFERENCE.saudiArabia?.regions),
+    cities: map(ADDRESS_REFERENCE.saudiArabia?.cities),
+    districts: map(ADDRESS_REFERENCE.saudiArabia?.districts),
+  };
+})();
 const RESET_LINKS_LOG_PATH = path.join(DATA_DIR, "reset-links.log");
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
@@ -399,8 +421,11 @@ function resolveUploadRequestPath(pathname) {
   return null;
 }
 
-function sanitizeUser(user) {
-  const { password, ...safeUser } = user;
+function sanitizeUser(user, options = {}) {
+  const { password, address, ...safeUser } = user;
+  if (options.includeAddress && address) {
+    safeUser.address = address;
+  }
   return safeUser;
 }
 
@@ -414,6 +439,102 @@ function normalizeCode(value) {
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function validateAddress(input) {
+  if (input === null || input === undefined) return { ok: true, value: null };
+  if (typeof input !== "object" || Array.isArray(input)) return { ok: false, error: "invalid_payload" };
+
+  const country = String(input.country || "").toUpperCase();
+  if (!ADDRESS_LOOKUPS.countries.has(country)) {
+    return { ok: false, error: "invalid_country" };
+  }
+
+  const trim = (value) => String(value || "").trim().slice(0, 200);
+  const out = {
+    country,
+    governorateId: "",
+    regionId: "",
+    cityId: "",
+    cityOther: "",
+    areaId: "",
+    districtId: "",
+    districtOther: "",
+    block: trim(input.block),
+    street: trim(input.street),
+    buildingNumber: trim(input.buildingNumber),
+    floor: trim(input.floor),
+    apartmentNumber: trim(input.apartmentNumber),
+    paciNumber: trim(input.paciNumber),
+    postalCode: trim(input.postalCode),
+    additionalNumber: trim(input.additionalNumber),
+    landmark: trim(input.landmark),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (country === "KW") {
+    if (input.governorateId) {
+      if (!ADDRESS_LOOKUPS.governorates[input.governorateId]) return { ok: false, error: "invalid_governorate" };
+      out.governorateId = input.governorateId;
+    }
+    if (input.areaId) {
+      const area = ADDRESS_LOOKUPS.areas[input.areaId];
+      if (!area) return { ok: false, error: "invalid_area" };
+      if (out.governorateId && area.governorateId !== out.governorateId) {
+        return { ok: false, error: "area_governorate_mismatch" };
+      }
+      out.areaId = input.areaId;
+    }
+    if (out.paciNumber && !/^\d{8}$/.test(out.paciNumber)) {
+      return { ok: false, error: "invalid_paci" };
+    }
+    out.regionId = "";
+    out.cityId = "";
+    out.cityOther = "";
+    out.districtId = "";
+    out.districtOther = "";
+    out.postalCode = "";
+    out.additionalNumber = "";
+  }
+
+  if (country === "SA") {
+    if (input.regionId) {
+      if (!ADDRESS_LOOKUPS.regions[input.regionId]) return { ok: false, error: "invalid_region" };
+      out.regionId = input.regionId;
+    }
+    if (input.cityId) {
+      const city = ADDRESS_LOOKUPS.cities[input.cityId];
+      if (!city) return { ok: false, error: "invalid_city" };
+      if (out.regionId && city.regionId !== out.regionId) {
+        return { ok: false, error: "city_region_mismatch" };
+      }
+      out.cityId = input.cityId;
+    } else if (input.cityOther) {
+      out.cityOther = trim(input.cityOther);
+    }
+    if (input.districtId) {
+      const district = ADDRESS_LOOKUPS.districts[input.districtId];
+      if (!district) return { ok: false, error: "invalid_district" };
+      if (out.cityId && district.cityId !== out.cityId) {
+        return { ok: false, error: "district_city_mismatch" };
+      }
+      out.districtId = input.districtId;
+    } else if (input.districtOther) {
+      out.districtOther = trim(input.districtOther);
+    }
+    if (out.postalCode && !/^\d{5}$/.test(out.postalCode)) {
+      return { ok: false, error: "invalid_postal" };
+    }
+    if (out.additionalNumber && !/^\d{4}$/.test(out.additionalNumber)) {
+      return { ok: false, error: "invalid_additional" };
+    }
+    out.governorateId = "";
+    out.areaId = "";
+    out.block = "";
+    out.paciNumber = "";
+  }
+
+  return { ok: true, value: out };
 }
 
 function localizedText(en, ar) {
@@ -1945,7 +2066,7 @@ function buildBootstrap(store, user, options = {}) {
   const includeBranchPin = ["admin", "campaign_manager"].includes(user.role);
   const journalEntries = visibleJournalEntriesFor(store, user).map((entry) => serializeJournalEntry(store, entry));
   const common = {
-    currentUser: sanitizeUser(user),
+    currentUser: sanitizeUser(user, { includeAddress: true }),
     cities: store.cities,
     categories: store.categories,
     platforms: store.platforms,
@@ -2022,6 +2143,7 @@ function publicMetadata(store) {
     categories: store.categories.filter((category) => category.status === "active"),
     platforms: store.platforms.filter((platform) => platform.status === "active"),
     tags: store.tags.filter((tag) => tag.status === "active"),
+    addressReference: ADDRESS_REFERENCE,
     showUatPanel: SHOW_UAT_PANEL,
   };
 }
@@ -2514,6 +2636,59 @@ async function handleProfileUpdate(req, res, store, actor) {
 
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
+}
+
+async function handleGetMyAddress(req, res, store, actor) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const user = userById(store, actor.id);
+  if (!user) return sendJson(res, 404, { error: "User not found." });
+  return sendJson(res, 200, { address: user.address || null });
+}
+
+async function handleUpdateMyAddress(req, res, store, actor) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const result = validateAddress(jsonOrForm(await readBody(req), req));
+  if (!result.ok) return sendJson(res, 400, { error: result.error });
+  const user = userById(store, actor.id);
+  if (!user) return sendJson(res, 404, { error: "User not found." });
+
+  if (!result.value) {
+    delete user.address;
+    appendAuditEvent(store, user, "address_cleared", "user", user.id);
+    await writeStore(store);
+    return sendJson(res, 200, { address: null });
+  }
+
+  user.address = result.value;
+  appendAuditEvent(store, user, "address_updated", "user", user.id, {
+    country: result.value.country || "",
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { address: user.address });
+}
+
+async function handleClearMyAddress(req, res, store, actor) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const user = userById(store, actor.id);
+  if (!user) return sendJson(res, 404, { error: "User not found." });
+  if (user.address) {
+    delete user.address;
+    appendAuditEvent(store, user, "address_cleared", "user", user.id);
+    await writeStore(store);
+  }
+  return sendJson(res, 200, { ok: true });
+}
+
+async function handleAdminGetUserAddress(req, res, store, actor, userIdParam) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  if (!requireRole(actor, ["admin", "campaign_manager"])) {
+    return sendJson(res, 403, { error: "Forbidden" });
+  }
+  const target = userById(store, Number(userIdParam));
+  if (!target) return sendJson(res, 404, { error: "User not found." });
+  appendAuditEvent(store, actor, "address_viewed", "user", target.id, { viewerRole: actor.role });
+  await writeStore(store);
+  return sendJson(res, 200, { address: target.address || null });
 }
 
 async function handleCreateManager(req, res, store, actor) {
@@ -3711,9 +3886,22 @@ async function requestHandler(req, res) {
   }
 
   const actor = getSessionUser(req, store);
+  const adminUserAddressMatch = routeMatch(pathname, /^\/api\/admin\/users\/(\d+)\/address$/);
   if (req.method === "GET" && pathname === "/api/bootstrap") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleBootstrap(req, res, store, actor);
+  }
+  if (req.method === "GET" && pathname === "/api/me/address") {
+    return handleGetMyAddress(req, res, store, actor);
+  }
+  if (req.method === "PUT" && pathname === "/api/me/address") {
+    return handleUpdateMyAddress(req, res, store, actor);
+  }
+  if (req.method === "DELETE" && pathname === "/api/me/address") {
+    return handleClearMyAddress(req, res, store, actor);
+  }
+  if (req.method === "GET" && adminUserAddressMatch) {
+    return handleAdminGetUserAddress(req, res, store, actor, adminUserAddressMatch[0]);
   }
   if (req.method === "GET" && pathname === "/api/reports/export.csv") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });

@@ -2923,7 +2923,7 @@ body.member-scope .dashboard-summary__cta {
   border-radius: 999px;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share) {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):not(.search-select__trigger) {
   background: var(--ink);
   color: var(--cream);
   border: 0;
@@ -2938,7 +2938,7 @@ body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not
   transition: transform 80ms ease, background 120ms ease;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):hover {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dispatch):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):not(.search-select__trigger):hover {
   background: var(--accent-dark);
 }
 
@@ -6282,6 +6282,146 @@ body.member-scope .profile-block .form-grid {
   gap: 14px;
 }
 
+.shipping-address-block {
+  display: grid;
+  gap: 16px;
+}
+
+.shipping-address-block h3 {
+  margin: 0;
+}
+
+.address-summary {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(31, 22, 32, 0.03);
+}
+
+.address-summary p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.field--search-select {
+  position: relative;
+}
+
+.field--search-select input[type="hidden"] {
+  display: none;
+}
+
+.search-select__trigger {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-select__trigger::after {
+  content: "▾";
+  color: var(--muted);
+  margin-inline-start: 12px;
+  flex-shrink: 0;
+}
+
+.field--search-select.is-disabled .search-select__trigger,
+.search-select__trigger:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: rgba(31, 22, 32, 0.04);
+}
+
+.search-select__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 25;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+}
+
+.search-select__input {
+  width: 100%;
+}
+
+.search-select__options {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.search-select__option {
+  width: 100%;
+  border: 1px solid rgba(31, 22, 32, 0.08);
+  border-radius: 10px;
+  background: rgba(31, 22, 32, 0.02);
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.search-select__option:hover,
+.search-select__option.is-selected {
+  background: rgba(112, 47, 138, 0.08);
+  border-color: rgba(112, 47, 138, 0.22);
+}
+
+body.rtl .search-select__trigger,
+body.rtl .search-select__option,
+body.member-scope.rtl .search-select__trigger,
+body.member-scope.rtl .search-select__option {
+  text-align: right;
+}
+
+.search-select__empty {
+  margin: 0;
+  padding: 8px 4px;
+}
+
+.shipping-address__actions {
+  align-items: center;
+}
+
+.profile-address-view {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-address-view__body {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-address-view__country,
+.profile-address-view__copy {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.profile-address-view__country {
+  font-weight: 700;
+}
+
 body.member-scope .campaign-preview-block .campaign-banner,
 body.member-scope .campaign-preview-block img {
   border-radius: 4px;
@@ -7236,7 +7376,7 @@ body.member-scope .block--sage .campaign-card {
   box-shadow: 0 1px 0 rgba(31, 22, 32, 0.04), 0 6px 14px -12px rgba(31, 22, 32, 0.18);
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share) {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):not(.search-select__trigger) {
   background: var(--accent);
   color: #fff;
   border: 0;
@@ -7250,11 +7390,11 @@ body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not
   transition: background 120ms ease, transform 80ms ease;
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):hover {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):not(.search-select__trigger):hover {
   background: var(--accent-deep);
 }
 
-body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):active {
+body.member-scope button:not(.secondary):not(.icon-button):not(.link-button):not(.pill-button):not(.nav-chip):not(.mobile-burger):not(.dashboard-summary__cta):not(.reject-trigger):not(.reject-confirm):not(.campaign-preview-footer__confirm):not(.save-code-btn):not(.desk-tile__save):not(.code-card__close):not(.code-card__share):not(.search-select__trigger):active {
   transform: translateY(1px);
 }
 
