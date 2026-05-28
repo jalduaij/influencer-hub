@@ -6343,7 +6343,7 @@ function renderShippingAddressSearchSelect({ field, label, options, placeholder,
     .join("");
 
   return `
-    <label class="field field--search-select${disabled ? " is-disabled" : ""}">
+    <label class="field field--search-select${disabled ? " is-disabled" : ""}" data-shipping-address-field="${field}">
       <span>${label}</span>
       <input type="hidden" name="${field}" value="${escapeHtml(isAddressOtherSelection(selectedValue) ? "" : selectedValue)}" />
       <button
@@ -8090,14 +8090,17 @@ function handleFocusOut(event) {
   if (!state.shippingAddressPickerOpen) return;
   const wrapper = event.target.closest(".field--search-select");
   if (!wrapper) return;
-  if (event.relatedTarget && wrapper.contains(event.relatedTarget)) return;
-  const openField = state.shippingAddressPickerOpen;
-  setTimeout(() => {
-    if (state.shippingAddressPickerOpen !== openField) return;
-    if (wrapper.contains(document.activeElement)) return;
+  const field = wrapper.dataset.shippingAddressField || "";
+  if (!field) return;
+  const relatedWrapper = event.relatedTarget?.closest?.(".field--search-select");
+  if (relatedWrapper?.dataset.shippingAddressField === field) return;
+  requestAnimationFrame(() => {
+    if (state.shippingAddressPickerOpen !== field) return;
+    const activeWrapper = document.activeElement?.closest?.(".field--search-select");
+    if (activeWrapper?.dataset.shippingAddressField === field) return;
     state.shippingAddressPickerOpen = "";
     render({ preserveFocus: true });
-  }, 0);
+  });
 }
 
 function formDataToObject(formData) {
