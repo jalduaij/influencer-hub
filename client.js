@@ -774,22 +774,16 @@ function renderDeskRail(participants) {
           <div class="desk-tile__head">
             <span class="desk-tile__title">${escapeHtml(campaignTitle(campaign))}</span>
           </div>
-          ${participant.assignedCodeValue ? `
-            <div class="desk-tile__code">
-              <span class="desk-tile__code-label">${l("Code", "الكود")}</span>
-              <code>${escapeHtml(participant.assignedCodeValue)}</code>
-            </div>
-          ` : ""}
+          <div class="desk-tile__code">
+            <span class="desk-tile__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
+            <span class="desk-tile__code-value">${escapeHtml(l("Tap Save to show QR", "اضغط حفظ لإظهار QR"))}</span>
+          </div>
           <div class="desk-tile__footer">
             <span class="desk-tile__deadline">
               ${l("BY", "قبل")} ${formatDate(campaign.submissionDeadline)}
             </span>
             <span class="desk-tile__actions">
-              ${
-                participant.assignedCodeValue && participant.verificationUrl
-                  ? `<button class="desk-tile__save" data-action="open-code-card" data-participant-id="${participant.id}">${escapeHtml(l("Save", "احفظ"))}</button>`
-                  : ""
-              }
+              ${renderSaveCodeButton(participant, l("Save", "احفظ"), "desk-tile__save")}
               <span class="desk-tile__cta">${l("Submit", "أرسل")} ${state.locale === "ar" ? "←" : "→"}</span>
             </span>
           </div>
@@ -859,6 +853,19 @@ function campaignWasDeclined(campaignId) {
 function findCampaignForParticipant(participant) {
   if (!participant) return null;
   return currentCampaigns().find((campaign) => campaign.id === Number(participant.campaignId)) || null;
+}
+
+function participantHasWallet(participant) {
+  return Boolean(participant?.verificationUrl && participant?.verificationRef);
+}
+
+function renderSaveCodeButton(participant, label = l("Save my code", "احفظ كودي"), className = "save-code-btn") {
+  if (!participantHasWallet(participant)) return "";
+  return `
+    <button class="${className}" data-action="open-code-card" data-participant-id="${participant.id}">
+      ${escapeHtml(label)}
+    </button>
+  `;
 }
 
 function eligibleCampaigns() {
@@ -2168,7 +2175,7 @@ function renderShell() {
 function renderCodeCard() {
   if (!state.codeCardParticipantId) return "";
   const participant = (state.data?.participants || []).find((item) => item.id === Number(state.codeCardParticipantId));
-  if (!participant || !participant.assignedCodeValue || !participant.verificationUrl) return "";
+  if (!participant || !participantHasWallet(participant)) return "";
   const campaign = findCampaignForParticipant(participant);
   if (!campaign) return "";
   const offerCopy = campaign.offerDescription ? `<p class="code-card__offer">${escapeHtml(campaign.offerDescription)}</p>` : "";
@@ -2180,10 +2187,11 @@ function renderCodeCard() {
           <img class="code-card__logo" src="/uploads/branding/picksocialclub.png" alt="PICK Social Club" />
         </header>
         <div class="code-card__body">
-          <p class="code-card__kicker">${escapeHtml(l("YOUR CODE", "كودك"))}</p>
+          <p class="code-card__kicker">${escapeHtml(l("YOUR RESERVATION", "حجزك"))}</p>
           <h2 class="code-card__title">${escapeHtml(campaignTitle(campaign))}</h2>
-          <div class="code-card__code-box">
-            <code>${escapeHtml(participant.assignedCodeValue)}</code>
+          <div class="code-card__reserved">
+            <p class="code-card__reserved-label">${escapeHtml(l("Reserved", "محجوز"))}</p>
+            <p class="code-card__reserved-help">${escapeHtml(l("Show your QR or read the reference to a PICK team member.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي لعضو فريق PICK."))}</p>
           </div>
           ${offerCopy}
           <dl class="code-card__meta">
@@ -2201,7 +2209,11 @@ function renderCodeCard() {
             </div>
           </dl>
           <div class="code-card__qr" data-qr-target data-qr-url="${escapeHtml(participant.verificationUrl)}"></div>
-          <p class="code-card__hint">${escapeHtml(l("Show this code at the branch when you redeem your offer.", "اعرض هذا الكود عند الفرع لاستلام عرضك."))}</p>
+          <div class="code-card__ref">
+            <span class="code-card__ref-label">${escapeHtml(l("REF", "رقم"))}</span>
+            <code>${escapeHtml(participant.verificationRef || "")}</code>
+          </div>
+          <p class="code-card__hint">${escapeHtml(l("Show this QR or read the reference at the branch when you redeem your offer.", "اعرض هذا الرمز أو اقرأ الرقم المرجعي عند الفرع لاستلام عرضك."))}</p>
         </div>
         <footer class="code-card__footer">
           <button class="code-card__share" data-action="share-code-card" data-participant-id="${participant.id}">
@@ -2541,37 +2553,43 @@ function buildCodeCardShareSvg(participant, campaign, logoDataUrl) {
         .header { fill: #4a1f5d; }
         .kicker { fill: #7f6d78; font: 700 28px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 8px; }
         .title { fill: #1f1620; font: 700 58px Georgia, serif; }
-        .codebox { fill: #4a1f5d; }
-        .code { fill: #ffffff; font: 700 86px 'Courier New', monospace; letter-spacing: 10px; }
+        .reserved { fill: #4a1f5d; font: 700 62px Georgia, serif; }
+        .reserved-help { fill: #5d4f59; font: 400 28px 'Helvetica Neue', Arial, sans-serif; }
         .offer { fill: #5d4f59; font: 400 32px 'Helvetica Neue', Arial, sans-serif; }
         .meta-box { fill: rgba(31, 22, 32, 0.05); }
         .meta-label { fill: #7f6d78; font: 700 20px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 4px; }
         .meta-value { fill: #1f1620; font: 700 28px 'Helvetica Neue', Arial, sans-serif; }
         .hint { fill: #7f6d78; font: italic 400 26px Georgia, serif; }
+        .ref-box { fill: rgba(31, 22, 32, 0.05); }
+        .ref-label { fill: #7f6d78; font: 700 18px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 4px; }
+        .ref-value { fill: #1f1620; font: 700 40px 'Courier New', monospace; letter-spacing: 8px; }
         .wordmark { fill: #ffffff; font: 700 48px 'Helvetica Neue', Arial, sans-serif; letter-spacing: 3px; }
       </style>
       <rect class="page" width="1080" height="1800" rx="48" ry="48"></rect>
       <rect class="header" width="1080" height="236"></rect>
       ${logoBlock}
-      <text x="540" y="286" class="kicker" text-anchor="middle">${escapeHtml(l("YOUR CODE", "كودك"))}</text>
+      <text x="540" y="286" class="kicker" text-anchor="middle">${escapeHtml(l("YOUR RESERVATION", "حجزك"))}</text>
       ${titleBlock}
-      <rect class="codebox" x="120" y="456" width="840" height="170" rx="28" ry="28"></rect>
-      <text x="540" y="562" class="code" text-anchor="middle">${escapeHtml(participant.assignedCodeValue || "")}</text>
+      <text x="540" y="506" class="reserved" text-anchor="middle">${escapeHtml(l("Reserved", "محجوز"))}</text>
+      <text x="540" y="556" class="reserved-help" text-anchor="middle">${escapeHtml(l("Show this QR or read the reference to a PICK team member.", "اعرض هذا الرمز أو اقرأ الرقم المرجعي لعضو فريق PICK."))}</text>
       ${offerBlock}
-      <rect class="meta-box" x="120" y="840" width="840" height="220" rx="22" ry="22"></rect>
-      <text x="180" y="900" class="meta-label">${escapeHtml(l("VISIT BY", "آخر زيارة"))}</text>
-      <text x="900" y="900" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.visitDeadline))}</text>
-      <text x="180" y="970" class="meta-label">${escapeHtml(l("SUBMIT BY", "آخر تسليم"))}</text>
-      <text x="900" y="970" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.submissionDeadline))}</text>
-      <text x="180" y="1040" class="meta-label">${escapeHtml(l("BRANCH", "الفرع"))}</text>
-      <text x="900" y="1040" class="meta-value" text-anchor="end">${escapeHtml(l("Any PICK branch", "أي فرع PICK"))}</text>
-      <rect x="305" y="1120" width="470" height="470" rx="24" ry="24" fill="#ffffff"></rect>
+      <rect class="meta-box" x="120" y="760" width="840" height="220" rx="22" ry="22"></rect>
+      <text x="180" y="820" class="meta-label">${escapeHtml(l("VISIT BY", "آخر زيارة"))}</text>
+      <text x="900" y="820" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.visitDeadline))}</text>
+      <text x="180" y="890" class="meta-label">${escapeHtml(l("SUBMIT BY", "آخر تسليم"))}</text>
+      <text x="900" y="890" class="meta-value" text-anchor="end">${escapeHtml(formatDate(campaign.submissionDeadline))}</text>
+      <text x="180" y="960" class="meta-label">${escapeHtml(l("BRANCH", "الفرع"))}</text>
+      <text x="900" y="960" class="meta-value" text-anchor="end">${escapeHtml(l("Any PICK branch", "أي فرع PICK"))}</text>
+      <rect x="305" y="1040" width="470" height="470" rx="24" ry="24" fill="#ffffff"></rect>
       ${
         qrMatrix
-          ? `<g transform="translate(330 1145) scale(${420 / qrSize})"><rect width="${qrSize}" height="${qrSize}" fill="#ffffff"></rect><g fill="#1f1620">${qrRects}</g></g>`
-          : `<text x="540" y="1360" class="meta-value" text-anchor="middle">${escapeHtml(l("QR unavailable", "رمز QR غير متاح"))}</text>`
+          ? `<g transform="translate(330 1065) scale(${420 / qrSize})"><rect width="${qrSize}" height="${qrSize}" fill="#ffffff"></rect><g fill="#1f1620">${qrRects}</g></g>`
+          : `<text x="540" y="1280" class="meta-value" text-anchor="middle">${escapeHtml(l("QR unavailable", "رمز QR غير متاح"))}</text>`
       }
-      <text x="540" y="1660" class="hint" text-anchor="middle">${escapeHtml(l("Show this code at the branch when you redeem your offer.", "اعرض هذا الكود عند الفرع لاستلام عرضك."))}</text>
+      <rect class="ref-box" x="350" y="1548" width="380" height="110" rx="18" ry="18"></rect>
+      <text x="540" y="1592" class="ref-label" text-anchor="middle">${escapeHtml(l("REF", "رقم"))}</text>
+      <text x="540" y="1646" class="ref-value" text-anchor="middle">${escapeHtml(participant.verificationRef || "")}</text>
+      <text x="540" y="1730" class="hint" text-anchor="middle">${escapeHtml(l("Show this QR or read the reference at the branch when you redeem your offer.", "اعرض هذا الرمز أو اقرأ الرقم المرجعي عند الفرع لاستلام عرضك."))}</text>
     </svg>
   `;
 }
@@ -2595,7 +2613,7 @@ async function buildCodeCardShareFile(participant, campaign) {
         else reject(new Error("Could not export code card."));
       }, "image/png");
     });
-    const fileStem = String(participant.assignedCodeValue || participant.id)
+    const fileStem = String(participant.verificationRef || participant.id)
       .trim()
       .replace(/[^a-zA-Z0-9_-]+/g, "-")
       .replace(/-+/g, "-")
@@ -2760,6 +2778,20 @@ function renderCodeDetails(codeValue, usageCount, offerText, title = l("Assigned
         <span class="code-offer-label">${l("Included Offer", "العرض المتضمن")}</span>
         <p>${offerSummary}</p>
       </div>
+    </div>
+  `;
+}
+
+function renderReservationDetails(participant, campaign) {
+  if (!participantHasWallet(participant)) return "";
+  return `
+    <div class="campaign-reservation-card" style="margin-top: 12px;">
+      <div class="row">
+        <strong>${escapeHtml(l("Reserved", "محجوز"))}</strong>
+        <span class="code-offer-uses">${escapeHtml(l("Uses", "عدد الاستخدام"))}: ${escapeHtml(participant.assignedCodeUsageCount || campaign?.offerUsageCount || 1)}</span>
+      </div>
+      <p>${escapeHtml(l("Show your QR or read the reference to a PICK team member at the branch.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي لعضو فريق PICK عند الفرع."))}</p>
+      ${renderSaveCodeButton(participant, l("Open your QR", "افتح رمز QR"), "save-code-btn save-code-btn--ink")}
     </div>
   `;
 }
@@ -3449,6 +3481,24 @@ function renderCampaignForm(campaign) {
       </section>
       <section class="form-section">
         <div class="form-section-header">
+          <h4>${l("Cashier verification", "تحقق الكاشير")}</h4>
+          <p>${l("Branch staff type this password after scanning the QR or entering the member reference manually.", "يكتب فريق الفرع هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو يدوياً.")}</p>
+        </div>
+        <div class="form-grid">
+          <label class="field field-span-full">
+            <span>${l("Verification password", "كلمة مرور التحقق")}</span>
+            <div class="row-wrap" style="gap: 8px;">
+              <input name="verificationPassword" value="${escapeHtml(campaign?.verificationPassword || "")}" placeholder="PICK-XQ7A92" style="font-family: 'Courier New', monospace; flex: 1;" />
+              ${campaign
+                ? `<button type="button" class="secondary" data-action="regenerate-verification-password" data-campaign-id="${campaign.id}">${l("Regenerate", "إعادة توليد")}</button>`
+                : ""}
+            </div>
+            <small class="compact">${escapeHtml(l("Share this with the campaign team. Leave blank on create if you want PICK to generate one automatically.", "شاركها مع فريق الحملة. اتركها فارغة عند الإنشاء إذا أردت من PICK توليدها تلقائياً."))}</small>
+          </label>
+        </div>
+      </section>
+      <section class="form-section">
+        <div class="form-section-header">
           <h4>${l("Timing", "التوقيت")}</h4>
           <p>${l("Set the live window, visit expectation, and proof submission deadline in one place.", "حدد نافذة الحملة وتوقعات الزيارة وآخر موعد لتسليم الإثبات في مكان واحد.")}</p>
           <p>${l("Rule: Start date <= End date <= Visit deadline <= Submission deadline.", "القاعدة: تاريخ البداية <= تاريخ النهاية <= آخر موعد للزيارة <= آخر موعد للتسليم.")}</p>
@@ -3782,6 +3832,11 @@ function renderCampaignViewPage() {
           <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
           <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
         </div>
+        <article class="note-card" style="margin-bottom: 14px;">
+          <strong>${escapeHtml(l("Verification password", "كلمة مرور التحقق"))}</strong>
+          <p class="panel-subtitle">${escapeHtml(l("Cashiers type this after scanning the QR or entering the member reference.", "يكتب الكاشير هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو."))}</p>
+          <code style="font-family: 'Courier New', monospace; font-size: 16px;">${escapeHtml(campaign.verificationPassword || "")}</code>
+        </article>
         ${renderCampaignOffer(campaign)}
         <article class="note-card">
           <div class="row">
@@ -5395,10 +5450,10 @@ function renderMemberCardSummary(participant, campaign, options = {}) {
           <span class="badge ${statusTone(participant.status)}">${escapeHtml(participantStatusLabelShort(participant.status))}</span>
         </div>
         <div class="dashboard-card-meta">
-          ${participant.assignedCodeValue ? `
+          ${participantHasWallet(participant) ? `
             <span class="dashboard-card-code">
-              <span class="dashboard-card-code__label">${l("Code", "الكود")}</span>
-              <code>${escapeHtml(participant.assignedCodeValue)}</code>
+              <span class="dashboard-card-code__label">${escapeHtml(l("Reserved", "محجوز"))}</span>
+              <span class="dashboard-card-code__value">${escapeHtml(l("Open your QR below", "افتح رمز QR بالأسفل"))}</span>
             </span>
           ` : ""}
           <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
@@ -5502,8 +5557,9 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           const pendingForm = participantCanSubmit(participant) && !compactOnly ? renderSubmissionForm(participant, campaign) : "";
           const dashboardBodyBlock = `
             <p class="compact" style="margin-top: 10px;">
-              ${l("Show your code at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض كودك في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
+              ${l("Show your QR or read the reference at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
             </p>
+            ${renderReservationDetails(participant, campaign)}
             ${pendingForm}
             ${participant.status === "confirmed" && participant.source !== "offline" ? `
               <div class="row-wrap" style="margin-top: 12px;">
@@ -5523,7 +5579,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           const richMyCampaignsBody = `
             ${renderCampaignBanner(campaign, "wide")}
             <p>${escapeHtml(campaignDescription(campaign))}</p>
-            ${renderCodeDetails(participant.assignedCodeValue, participant.assignedCodeUsageCount, participant.assignedCodeOfferText)}
+            ${renderReservationDetails(participant, campaign)}
             ${participant.canceledReason ? `<p class="compact">${l("Canceled reason", "سبب الإلغاء")}: ${escapeHtml(participant.canceledReason)}</p>` : ""}
             <div class="row-wrap" style="margin-top: 12px;">
               <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
@@ -5624,20 +5680,18 @@ function renderInfluencerCampaignPreviewPage() {
   let statusBlock = "";
   if (participant && participant.status !== "canceled") {
     const blockPaper = isActive ? "block--brand" : "block--bone";
-    const codeChip = participant.assignedCodeValue
-      ? `
-        <div class="campaign-preview-status__code">
-          <span class="campaign-preview-status__code-label">${escapeHtml(l("YOUR CODE", "كودك"))}</span>
-          <code>${escapeHtml(participant.assignedCodeValue)}</code>
-        </div>
-      `
-      : "";
+    const reservationChip = `
+      <div class="campaign-preview-status__code">
+        <span class="campaign-preview-status__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
+        <span class="campaign-preview-status__code-value">${escapeHtml(l("Open your QR or read your reference at the branch.", "افتح رمز QR أو اقرأ الرقم المرجعي عند الفرع."))}</span>
+      </div>
+    `;
 
     let helper = "";
     if (isActive) {
       helper = l(
-        "Your code is reserved. Visit any PICK branch to redeem your offer, then submit your proof below.",
-        "كودك محجوز. زر أي فرع PICK لاستلام عرضك، ثم أرسل إثباتك أدناه."
+        "Your reservation is ready. Visit any PICK branch with your QR or reference, then submit your proof below.",
+        "حجزك جاهز. زر أي فرع PICK باستخدام رمز QR أو الرقم المرجعي، ثم أرسل إثباتك أدناه."
       );
     } else if (["submitted", "completed"].includes(participant.status)) {
       helper = l("Your proof has been submitted.", "تم إرسال إثباتك.");
@@ -5664,12 +5718,8 @@ function renderInfluencerCampaignPreviewPage() {
           </div>
         </header>
         <hr class="rule rule--hair">
-        ${codeChip}
-        ${
-          participant.assignedCodeValue && participant.verificationUrl
-            ? `<button class="save-code-btn" data-action="open-code-card" data-participant-id="${participant.id}">${escapeHtml(l("Save my code", "احفظ كودي"))}</button>`
-            : ""
-        }
+        ${reservationChip}
+        ${renderSaveCodeButton(participant)}
         ${helper ? `<p class="campaign-preview-status__helper">${escapeHtml(helper)}</p>` : ""}
         ${cancelBtn}
       </section>
@@ -6208,7 +6258,7 @@ async function handleClick(event) {
     const shareData = {
       title: `PICK Social Club — ${campaignTitle(campaign)}`,
       text: [
-        `My PICK code: ${participant.assignedCodeValue}`,
+        `PICK reservation ref: ${participant.verificationRef || ""}`,
         `Campaign: ${campaignTitle(campaign)}`,
         `Visit by: ${formatDate(campaign.visitDeadline)}`,
         participant.verificationUrl,
@@ -6427,6 +6477,25 @@ async function handleClick(event) {
         selectedCampaignId: campaignId,
         manualReserveCodeId: null,
       });
+    } catch (error) {
+      flash(error.message, "error");
+    }
+    return;
+  }
+
+  if (action === "regenerate-verification-password") {
+    const campaignId = Number(target.dataset.campaignId || state.selectedCampaignId);
+    if (!campaignId) return;
+    try {
+      const payload = await api(`/api/campaigns/${campaignId}/regenerate-verification-password`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadBootstrap();
+      render();
+      const input = document.querySelector('input[name="verificationPassword"]');
+      if (input && payload?.verificationPassword) input.value = payload.verificationPassword;
+      flash(l("New verification password generated.", "تم توليد كلمة تحقق جديدة."), "success");
     } catch (error) {
       flash(error.message, "error");
     }
@@ -7058,6 +7127,7 @@ function campaignFormPayload(form) {
     descriptionAr: formData.get("descriptionAr"),
     captionGuide: formData.get("captionGuide"),
     whatsappMessage: formData.get("whatsappMessage"),
+    verificationPassword: formData.get("verificationPassword"),
     branchMode: formData.get("branchMode"),
     branchIds: formData.getAll("branchIds"),
     targetCityIds: formData.getAll("targetCityIds"),

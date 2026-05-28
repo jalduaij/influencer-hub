@@ -34,8 +34,15 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 ]);
 const CASHIER_VISIT_FLOW_ENABLED = false;
 const rateLimitBuckets = new Map();
-const CSRF_EXEMPT_PATHS = new Set(["/api/visits/confirm"]);
+const CSRF_EXEMPT_PATHS = new Set([
+  "/api/visits/confirm",
+  "/api/branch/verify/lookup",
+  "/api/branch/verify/reveal",
+  "/api/branch/verify/redeem",
+]);
 const QR_HMAC_SECRET = process.env.QR_HMAC_SECRET || generatePersistentSecret("qr-hmac");
+const CAMPAIGN_PASSWORD_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const VERIFICATION_REF_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 const sessions = new Map();
 let storeWriteChain = Promise.resolve();
@@ -107,12 +114,67 @@ function getRequestBaseUrl(req) {
 function signedVerificationUrl(participant, baseUrl) {
   if (!participant?.id) return "";
   const payload = `p=${participant.id}`;
-  const sig = crypto
-    .createHmac("sha256", QR_HMAC_SECRET)
-    .update(payload)
-    .digest("hex")
-    .slice(0, 16);
+  const sig = verificationSignatureForParticipantId(participant.id);
   return `${normalizeBaseUrl(baseUrl || APP_BASE_URL)}/branch/verify?${payload}&sig=${sig}`;
+}
+
+function verificationSignatureForParticipantId(participantId) {
+  return crypto.createHmac("sha256", QR_HMAC_SECRET).update(`p=${participantId}`).digest("hex").slice(0, 16);
+}
+
+function generateCampaignPassword() {
+  let out = "";
+  for (let index = 0; index < 6; index += 1) {
+    out += CAMPAIGN_PASSWORD_CHARS[crypto.randomInt(0, CAMPAIGN_PASSWORD_CHARS.length)];
+  }
+  return `PICK-${out}`;
+}
+
+function ensureCampaignVerificationPassword(campaign) {
+  if (!text(campaign?.verificationPassword)) {
+    campaign.verificationPassword = generateCampaignPassword();
+    return true;
+  }
+  const normalized = text(campaign.verificationPassword).toUpperCase();
+  if (normalized !== campaign.verificationPassword) {
+    campaign.verificationPassword = normalized;
+    return true;
+  }
+  return false;
+}
+
+function generateVerificationRef(store, excludeParticipantId = null, length = 4) {
+  const existing = new Set(
+    store.participants
+      .filter((participant) => Number(participant.id) !== Number(excludeParticipantId))
+      .map((participant) => text(participant.verificationRef).toUpperCase())
+      .filter(Boolean)
+  );
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    let ref = "";
+    for (let index = 0; index < length; index += 1) {
+      ref += VERIFICATION_REF_CHARS[crypto.randomInt(0, VERIFICATION_REF_CHARS.length)];
+    }
+    if (!existing.has(ref)) return ref;
+  }
+  return generateVerificationRef(store, excludeParticipantId, length + 1);
+}
+
+function ensureParticipantVerificationRef(store, participant) {
+  const normalized = text(participant?.verificationRef).toUpperCase();
+  const valid = /^[A-Z0-9]{4,5}$/.test(normalized);
+  const duplicate = store.participants.some(
+    (item) => Number(item.id) !== Number(participant.id) && text(item.verificationRef).toUpperCase() === normalized
+  );
+  if (!valid || duplicate) {
+    participant.verificationRef = generateVerificationRef(store, participant.id);
+    return true;
+  }
+  if (participant.verificationRef !== normalized) {
+    participant.verificationRef = normalized;
+    return true;
+  }
+  return false;
 }
 
 function safeFileNameSegment(value) {
@@ -1061,6 +1123,9 @@ function normalizeStore(store) {
     campaign.updatedBy ||= campaign.createdBy;
     campaign.autoClosedAt ||= null;
     campaign.status ||= "draft";
+    if (ensureCampaignVerificationPassword(campaign)) {
+      changed.value = true;
+    }
     if (["active", "published"].includes(campaign.status)) {
       campaign.status = "live";
       changed.value = true;
@@ -1111,6 +1176,8 @@ function normalizeStore(store) {
     participant.visitedAt ||= null;
     participant.visitedBranchId ||= null;
     participant.visitedConfirmedByPin ||= false;
+    participant.visitedConfirmedByCashier ||= false;
+    participant.cashierVerifiedAt ||= null;
     participant.submittedAt ||= null;
     participant.completedAt ||= null;
     participant.selectedBranchId ||= null;
@@ -1131,6 +1198,9 @@ function normalizeStore(store) {
     participant.offlineName ||= "";
     participant.offlineMobile ||= "";
     participant.offlineNotes ||= "";
+    if (ensureParticipantVerificationRef(store, participant)) {
+      changed.value = true;
+    }
   }
 
   for (const code of store.campaignCodes) {
@@ -1272,6 +1342,7 @@ function serializeParticipant(store, participant, options = {}) {
   const influencer = userById(store, participant.influencerId);
   const assignedCode = assignedCodeForParticipant(store, participant);
   const verificationUrl = assignedCode ? signedVerificationUrl(participant, options.baseUrl) : "";
+  const includeAssignedCodeValue = options.includeAssignedCodeValue !== false;
   return {
     ...participant,
     campaignTitleEn: campaign?.titleEn || "",
@@ -1280,9 +1351,10 @@ function serializeParticipant(store, participant, options = {}) {
     influencerEmail: influencer?.email || "",
     influencerCityId: influencer?.cityId || null,
     influencerCategoryId: influencer?.categoryId || null,
-    assignedCodeValue: assignedCode?.codeValue || "",
+    assignedCodeValue: includeAssignedCodeValue ? assignedCode?.codeValue || "" : "",
     assignedCodeUsageCount: campaign?.offerUsageCount || assignedCode?.usageCount || 1,
     assignedCodeOfferText: campaign?.offerDescription || assignedCode?.offerText || "",
+    verificationRef: participant.verificationRef || "",
     verificationUrl,
   };
 }
@@ -1303,10 +1375,10 @@ function codeStatsForCampaign(store, campaignId) {
   return byStatus;
 }
 
-function serializeCampaign(store, campaign) {
+function serializeCampaign(store, campaign, options = {}) {
   const createdBy = userById(store, campaign.createdBy);
   const updatedBy = userById(store, campaign.updatedBy);
-  return {
+  const serialized = {
     ...campaign,
     codeStats: codeStatsForCampaign(store, campaign.id),
     createdByName: createdBy?.fullName || "",
@@ -1320,6 +1392,8 @@ function serializeCampaign(store, campaign) {
         ? ["جميع الأفرع"]
         : campaign.branchIds.map((branchId) => branchById(store, branchId)?.nameAr || "").filter(Boolean),
   };
+  if (!options.includeVerificationPassword) delete serialized.verificationPassword;
+  return serialized;
 }
 
 function serializePreviewCampaign(campaign) {
@@ -1833,8 +1907,15 @@ function generateNotifications(store, user) {
 }
 
 function buildBootstrap(store, user, options = {}) {
-  const serializeParticipantForRequest = (participant) => serializeParticipant(store, participant, { baseUrl: options.baseUrl });
-  const campaigns = store.campaigns.map((campaign) => serializeCampaign(store, campaign));
+  const includeVerificationPassword = ["admin", "campaign_manager"].includes(user.role);
+  const serializeParticipantForRequest = (participant) =>
+    serializeParticipant(store, participant, {
+      baseUrl: options.baseUrl,
+      includeAssignedCodeValue: user.role !== "influencer",
+    });
+  const campaigns = store.campaigns.map((campaign) =>
+    serializeCampaign(store, campaign, { includeVerificationPassword })
+  );
   const reports = reportBundleForCampaigns(store, store.campaigns);
   const includeBranchPin = ["admin", "campaign_manager"].includes(user.role);
   const journalEntries = visibleJournalEntriesFor(store, user).map((entry) => serializeJournalEntry(store, entry));
@@ -1884,7 +1965,8 @@ function buildBootstrap(store, user, options = {}) {
       submissions: myParticipants.filter((participant) => participant.socialLink || participant.feedback),
       codes: myParticipants.map((participant) => ({
         campaignTitleEn: campaignById(store, participant.campaignId)?.titleEn || "",
-        codeValue: participant.assignedCodeValue,
+        codeValue: "",
+        verificationRef: participant.verificationRef || "",
         usageCount: campaignById(store, participant.campaignId)?.offerUsageCount || participant.assignedCodeUsageCount,
         offerText: campaignById(store, participant.campaignId)?.offerDescription || participant.assignedCodeOfferText,
         status: participant.status,
@@ -1957,6 +2039,7 @@ function campaignPayload(body, existingCampaign = null) {
     minFollowers: Math.max(0, Number(body.minFollowers ?? existingCampaign?.minFollowers) || 0),
     targetPlatformIds: parseNumberList(body.targetPlatformIds ?? existingCampaign?.targetPlatformIds),
     participantCap: Math.max(0, Number(body.participantCap ?? existingCampaign?.participantCap) || 0),
+    verificationPassword: text(body.verificationPassword ?? existingCampaign?.verificationPassword).toUpperCase(),
   };
 }
 
@@ -2874,9 +2957,13 @@ async function handleCreateCampaign(req, res, store, actor) {
     bannerPath: "",
     ...payload,
   };
+  campaign.verificationPassword ||= generateCampaignPassword();
   store.campaigns.unshift(campaign);
   await writeStore(store);
-  return sendJson(res, 201, { ok: true, campaign: serializeCampaign(store, campaign) });
+  return sendJson(res, 201, {
+    ok: true,
+    campaign: serializeCampaign(store, campaign, { includeVerificationPassword: true }),
+  });
 }
 
 async function handleUpdateCampaign(req, res, store, actor, campaignId) {
@@ -2886,6 +2973,7 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
 
   const body = jsonOrForm(await readBody(req), req);
   const previousStatus = campaign.status;
+  const previousVerificationPassword = campaign.verificationPassword || "";
   const payload = campaignPayload(body, campaign);
   if (!payload.titleEn || !payload.descriptionEn || !payload.offerDescription || !payload.startDate || !payload.endDate || !payload.visitDeadline || !payload.submissionDeadline) {
     return sendJson(res, 422, { error: "Please complete all required campaign fields." });
@@ -2903,6 +2991,13 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
     updatedAt: new Date().toISOString(),
     updatedBy: actor.id,
   });
+  campaign.verificationPassword ||= previousVerificationPassword || generateCampaignPassword();
+
+  if (campaign.verificationPassword !== previousVerificationPassword) {
+    appendAuditEvent(store, actor, "campaign.verification_password_changed", "campaign", campaign.id, {
+      regenerated: false,
+    });
+  }
 
   if (previousStatus !== "deactivated" && campaign.status === "deactivated") {
     const participants = store.participants.filter(
@@ -2912,7 +3007,28 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
   }
 
   await writeStore(store);
-  return sendJson(res, 200, { ok: true, campaign: serializeCampaign(store, campaign) });
+  return sendJson(res, 200, {
+    ok: true,
+    campaign: serializeCampaign(store, campaign, { includeVerificationPassword: true }),
+  });
+}
+
+async function handleRegenerateVerificationPassword(req, res, store, actor, campaignId) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const campaign = campaignById(store, campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+  if (!canManageCampaign(actor, campaign)) return sendJson(res, 403, { error: "Forbidden" });
+  campaign.verificationPassword = generateCampaignPassword();
+  campaign.updatedAt = new Date().toISOString();
+  campaign.updatedBy = actor.id;
+  appendAuditEvent(store, actor, "campaign.verification_password_changed", "campaign", campaign.id, {
+    regenerated: true,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, {
+    ok: true,
+    verificationPassword: campaign.verificationPassword,
+  });
 }
 
 async function handleDuplicateCampaign(req, res, store, actor, campaignId) {
@@ -2932,6 +3048,7 @@ async function handleDuplicateCampaign(req, res, store, actor, campaignId) {
     submissionDeadline: "",
     bannerName: "",
     bannerPath: "",
+    verificationPassword: generateCampaignPassword(),
     autoClosedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -2943,7 +3060,10 @@ async function handleDuplicateCampaign(req, res, store, actor, campaignId) {
     sourceCampaignId: campaign.id,
   });
   await writeStore(store);
-  return sendJson(res, 201, { ok: true, campaign: serializeCampaign(store, duplicated) });
+  return sendJson(res, 201, {
+    ok: true,
+    campaign: serializeCampaign(store, duplicated, { includeVerificationPassword: true }),
+  });
 }
 
 async function handleUploadBanner(req, res, store, actor, campaignId) {
@@ -3081,12 +3201,16 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
     id: store.nextIds.participant++,
     campaignId: campaign.id,
     influencerId: actor.id,
+    verificationRef: generateVerificationRef(store),
     status: "confirmed",
     assignedCodeId: availableCode.id,
     selectedBranchId: null,
     selectedVisitDate: null,
     joinedAt: now,
     visitedAt: null,
+    visitedConfirmedByPin: false,
+    visitedConfirmedByCashier: false,
+    cashierVerifiedAt: null,
     submittedAt: null,
     completedAt: null,
     socialLink: "",
@@ -3171,6 +3295,7 @@ async function handleManualReserveCode(req, res, store, actor, codeId) {
     id: store.nextIds.participant++,
     campaignId: campaign.id,
     influencerId: null,
+    verificationRef: generateVerificationRef(store),
     source: "offline",
     offlineName,
     offlineMobile: text(body.offlineMobile),
@@ -3181,6 +3306,9 @@ async function handleManualReserveCode(req, res, store, actor, codeId) {
     selectedVisitDate: null,
     joinedAt: now,
     visitedAt: null,
+    visitedConfirmedByPin: false,
+    visitedConfirmedByCashier: false,
+    cashierVerifiedAt: null,
     submittedAt: null,
     completedAt: null,
     socialLink: "",
@@ -3203,6 +3331,136 @@ async function handleManualReserveCode(req, res, store, actor, codeId) {
   });
   await writeStore(store);
   return sendJson(res, 200, { ok: true, participant: serializeParticipant(store, participant) });
+}
+
+async function handleVerifyLookup(req, res, store) {
+  const ip = clientIp(req);
+  const ipLimit = checkRateLimit(`verify-lookup:${ip}`, 10, 60 * 1000);
+  if (!ipLimit.ok) return sendJson(res, 429, { error: "Too many attempts. Please wait." });
+
+  const body = jsonOrForm(await readBody(req), req);
+  const ref = text(body.ref).toUpperCase();
+  if (!ref || !/^[A-Z0-9]{4,5}$/.test(ref)) {
+    return sendJson(res, 422, { error: "Reference must be 4-5 letters/numbers." });
+  }
+
+  const participant = store.participants.find((item) => text(item.verificationRef).toUpperCase() === ref);
+  if (!participant) {
+    appendAuditEvent(store, null, "participant.verification_lookup_failed", "participant", null, { ref, ip });
+    await writeStore(store);
+    return sendJson(res, 404, { error: "No reservation found for that reference." });
+  }
+  if (participant.status === "canceled") {
+    return sendJson(res, 409, { error: "This reservation was canceled." });
+  }
+  if (!assignedCodeForParticipant(store, participant)) {
+    return sendJson(res, 404, { error: "Code not found." });
+  }
+
+  return sendJson(res, 200, {
+    p: String(participant.id),
+    sig: verificationSignatureForParticipantId(participant.id),
+  });
+}
+
+async function handleVerifyReveal(req, res, store) {
+  const body = jsonOrForm(await readBody(req), req);
+  const participantId = Number(body.p);
+  const sig = text(body.sig);
+  const password = text(body.password);
+  const ip = clientIp(req);
+
+  const limit = checkRateLimit(`verify-reveal:${ip}:${participantId}`, 5, 15 * 60 * 1000);
+  if (!limit.ok) {
+    return sendJson(res, 429, { error: "Too many wrong passwords. Try again in a few minutes." });
+  }
+  if (!participantId || !sig || !password) {
+    return sendJson(res, 422, { error: "Missing fields." });
+  }
+
+  const participant = participantById(store, participantId);
+  if (!participant) return sendJson(res, 404, { error: "Reservation not found." });
+
+  const expectedSig = verificationSignatureForParticipantId(participantId);
+  if (sig !== expectedSig) {
+    appendAuditEvent(store, null, "participant.verification_signature_invalid", "participant", participantId, { ip });
+    await writeStore(store);
+    return sendJson(res, 403, { error: "Invalid verification link." });
+  }
+
+  const campaign = campaignById(store, participant.campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+  if (text(password).toUpperCase() !== text(campaign.verificationPassword).toUpperCase()) {
+    appendAuditEvent(store, null, "participant.verification_password_wrong", "participant", participantId, { ip });
+    await writeStore(store);
+    return sendJson(res, 403, { error: "Wrong password." });
+  }
+  if (participant.status === "canceled") {
+    return sendJson(res, 409, { error: "This reservation was canceled." });
+  }
+
+  const code = assignedCodeForParticipant(store, participant);
+  if (!code) return sendJson(res, 404, { error: "Code not found." });
+  const member = userById(store, participant.influencerId);
+
+  appendAuditEvent(store, null, "participant.verification_revealed", "participant", participantId, { ip });
+  await writeStore(store);
+
+  return sendJson(res, 200, {
+    code: code.codeValue,
+    offer: campaign.offerDescription,
+    campaignTitle: campaign.titleEn,
+    memberName: member?.fullName || participant.offlineName || "(unknown)",
+    status: participant.status,
+    alreadyVisited: Boolean(participant.visitedAt),
+    visitedAt: participant.visitedAt,
+  });
+}
+
+async function handleVerifyRedeem(req, res, store) {
+  const body = jsonOrForm(await readBody(req), req);
+  const participantId = Number(body.p);
+  const sig = text(body.sig);
+  const password = text(body.password);
+  const branchId = body.branchId ? Number(body.branchId) : null;
+  const ip = clientIp(req);
+
+  const limit = checkRateLimit(`verify-redeem:${ip}:${participantId}`, 3, 60 * 1000);
+  if (!limit.ok) {
+    return sendJson(res, 429, { error: "Too many attempts. Please wait." });
+  }
+  if (!participantId || !sig || !password) {
+    return sendJson(res, 422, { error: "Missing fields." });
+  }
+
+  const participant = participantById(store, participantId);
+  if (!participant) return sendJson(res, 404, { error: "Reservation not found." });
+  if (sig !== verificationSignatureForParticipantId(participantId)) {
+    return sendJson(res, 403, { error: "Invalid verification link." });
+  }
+
+  const campaign = campaignById(store, participant.campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+  if (text(password).toUpperCase() !== text(campaign.verificationPassword).toUpperCase()) {
+    return sendJson(res, 403, { error: "Wrong password." });
+  }
+  if (participant.status === "canceled") {
+    return sendJson(res, 409, { error: "This reservation was canceled." });
+  }
+
+  const now = new Date().toISOString();
+  participant.visitedAt ||= now;
+  if (branchId) participant.visitedBranchId = branchId;
+  participant.visitedConfirmedByCashier = true;
+  participant.cashierVerifiedAt = now;
+
+  appendAuditEvent(store, null, "participant.visited_by_cashier", "participant", participantId, {
+    branchId,
+    ip,
+    campaignId: participant.campaignId,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { ok: true });
 }
 
 async function handleRemoveParticipant(req, res, store, actor, participantId) {
@@ -3408,8 +3666,15 @@ async function requestHandler(req, res) {
     });
   }
 
+  if (req.method === "GET" && pathname === "/branch/verify") {
+    return serveFile(res, path.join(ROOT, "verify.html"));
+  }
+
   if (req.method === "GET" && pathname === "/api/session") return handleSession(req, res, store);
   if (req.method === "GET" && pathname === "/api/public-metadata") return sendJson(res, 200, publicMetadata(store));
+  if (req.method === "POST" && pathname === "/api/branch/verify/lookup") return handleVerifyLookup(req, res, store);
+  if (req.method === "POST" && pathname === "/api/branch/verify/reveal") return handleVerifyReveal(req, res, store);
+  if (req.method === "POST" && pathname === "/api/branch/verify/redeem") return handleVerifyRedeem(req, res, store);
   if (req.method === "POST" && pathname === "/api/login") return handleLogin(req, res, store);
   if (req.method === "POST" && pathname === "/api/logout") return handleLogout(req, res);
   if (req.method === "POST" && pathname === "/api/signup") return handleSignup(req, res, store);
@@ -3567,6 +3832,11 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && campaignUpdateMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateCampaign(req, res, store, actor, campaignUpdateMatch[0]);
+  }
+  const campaignVerificationPasswordMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/regenerate-verification-password$/);
+  if (req.method === "POST" && campaignVerificationPasswordMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleRegenerateVerificationPassword(req, res, store, actor, campaignVerificationPasswordMatch[0]);
   }
   const campaignDuplicateMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/duplicate$/);
   if (req.method === "POST" && campaignDuplicateMatch) {

@@ -8016,6 +8016,32 @@ body.member-scope.rtl .code-card__title {
   font-family: var(--font-display-ar);
 }
 
+body.member-scope .code-card__reserved {
+  text-align: center;
+  padding: 18px 14px 8px;
+}
+
+body.member-scope .code-card__reserved-label {
+  font-family: var(--font-display-en);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--accent-deep);
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+body.member-scope.rtl .code-card__reserved-label {
+  font-family: var(--font-display-ar);
+}
+
+body.member-scope .code-card__reserved-help {
+  margin: 0 auto;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: 30ch;
+}
+
 body.member-scope .code-card__code-box {
   background: var(--accent-deep);
   color: #fff;
@@ -8100,6 +8126,39 @@ body.member-scope .code-card__qr svg {
   height: 180px !important;
 }
 
+body.member-scope .code-card__ref {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 12px auto 0;
+  padding: 10px 18px;
+  background: rgba(31, 22, 32, 0.06);
+  border-radius: 6px;
+}
+
+body.member-scope .code-card__ref-label {
+  font-family: var(--font-body-en);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+body.member-scope.rtl .code-card__ref-label {
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--font-body-ar);
+}
+
+body.member-scope .code-card__ref code {
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: 0.12em;
+}
+
 body.member-scope .code-card__hint {
   font-family: var(--font-body-en);
   font-size: 12px;
@@ -8162,6 +8221,15 @@ body.member-scope.rtl .save-code-btn {
   font-family: var(--font-body-ar);
 }
 
+body.member-scope .save-code-btn--ink {
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+body.member-scope .save-code-btn--ink:hover {
+  background: rgba(31, 22, 32, 0.05);
+}
+
 body.member-scope .block--bone .save-code-btn {
   color: var(--ink);
   border-color: var(--rule);
@@ -8198,6 +8266,54 @@ body.member-scope .desk-tile__save:hover {
 body.member-scope.rtl .desk-tile__save {
   font-family: var(--font-body-ar);
   letter-spacing: 0;
+}
+
+body.member-scope .desk-tile__code-value,
+body.member-scope .dashboard-card-code__value,
+body.member-scope .campaign-preview-status__code-value {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+body.member-scope .desk-tile__code-value {
+  color: var(--ink);
+}
+
+body.member-scope .dashboard-card-code {
+  display: grid;
+  gap: 2px;
+}
+
+body.member-scope .dashboard-card-code__value {
+  color: var(--ink-soft);
+}
+
+body.member-scope .campaign-preview-status__code {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+  max-width: 34ch;
+}
+
+body.member-scope .campaign-preview-status__code-value {
+  color: var(--paper-brand-text);
+}
+
+body.member-scope .block--bone .campaign-preview-status__code-value {
+  color: var(--ink);
+}
+
+body.member-scope .campaign-reservation-card {
+  padding: 14px 16px;
+  background: rgba(31, 22, 32, 0.04);
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+}
+
+body.member-scope .campaign-reservation-card p {
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
 }
 
 @media print {

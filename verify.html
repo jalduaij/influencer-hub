@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>PICK Verify — Cashier</title>
+  <style>
+    :root {
+      --accent-deep: #4a1f5d;
+      --accent: #702f8a;
+      --ink: #1f1620;
+      --paper: #faf6ee;
+      --danger: #d04a4a;
+      --success: #3a9b48;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .verify-card {
+      max-width: 420px;
+      width: 100%;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 12px 32px -8px rgba(31, 22, 32, 0.18);
+      overflow: hidden;
+    }
+
+    .verify-card__header {
+      background: var(--accent-deep);
+      color: #fff;
+      padding: 20px 24px;
+      text-align: center;
+    }
+
+    .verify-card__header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .verify-card__body {
+      padding: 24px;
+    }
+
+    .field {
+      display: block;
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--ink);
+      opacity: 0.7;
+      margin-bottom: 6px;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid rgba(31, 22, 32, 0.18);
+      border-radius: 6px;
+      font-size: 18px;
+      font-family: "Courier New", monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .field input:focus {
+      outline: 2px solid var(--accent);
+      border-color: var(--accent);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px 22px;
+      border: 0;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+      transition: opacity 120ms;
+    }
+
+    .btn--primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn--primary:hover {
+      background: var(--accent-deep);
+    }
+
+    .btn--success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .btn--success:hover {
+      background: #2e7d3a;
+    }
+
+    .btn--secondary {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid rgba(31, 22, 32, 0.3);
+      margin-top: 8px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .success {
+      color: var(--success);
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .reveal {
+      text-align: center;
+      padding: 24px;
+      background: rgba(112, 47, 138, 0.06);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .reveal__label {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(31, 22, 32, 0.6);
+      font-weight: 700;
+    }
+
+    .reveal__code {
+      font-family: "Courier New", monospace;
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--accent-deep);
+      letter-spacing: 0.08em;
+      margin: 8px 0 4px;
+    }
+
+    .reveal__meta {
+      text-align: left;
+      margin-top: 14px;
+    }
+
+    .reveal__meta dt {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(31, 22, 32, 0.6);
+      margin-top: 8px;
+    }
+
+    .reveal__meta dd {
+      margin: 2px 0 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .step {
+      display: none;
+    }
+
+    .step.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <main class="verify-card">
+    <header class="verify-card__header">
+      <h1>PICK Cashier Verify</h1>
+    </header>
+    <div class="verify-card__body">
+      <section class="step" id="step-lookup">
+        <div class="field">
+          <label for="refInput">Member Reference</label>
+          <input id="refInput" type="text" maxlength="5" placeholder="A8K9" autocomplete="off" />
+        </div>
+        <button class="btn btn--primary" id="lookupBtn">Look Up</button>
+        <p class="error" id="lookupError" hidden></p>
+      </section>
+
+      <section class="step" id="step-password">
+        <div class="field">
+          <label for="passwordInput">Campaign Password</label>
+          <input id="passwordInput" type="text" maxlength="20" placeholder="PICK-XXXXXX" autocomplete="off" />
+        </div>
+        <button class="btn btn--primary" id="revealBtn">Reveal Code</button>
+        <p class="error" id="revealError" hidden></p>
+      </section>
+
+      <section class="step" id="step-reveal">
+        <div class="reveal">
+          <p class="reveal__label">Code</p>
+          <p class="reveal__code" id="codeOut"></p>
+          <p class="reveal__label" id="codeMember"></p>
+          <dl class="reveal__meta">
+            <dt>Campaign</dt><dd id="codeCampaign"></dd>
+            <dt>Offer</dt><dd id="codeOffer"></dd>
+          </dl>
+          <p class="error" id="alreadyVisited" hidden>⚠️ Already redeemed</p>
+        </div>
+        <button class="btn btn--success" id="redeemBtn">Mark Redeemed</button>
+        <p class="success" id="redeemSuccess" hidden></p>
+      </section>
+
+      <section class="step" id="step-done">
+        <p class="success" style="text-align:center; font-size:18px; padding:24px 0;">✓ Visit recorded</p>
+        <button class="btn btn--secondary" id="verifyAnotherBtn">Verify another</button>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const state = {
+      p: params.get("p") || "",
+      sig: params.get("sig") || "",
+      password: "",
+    };
+
+    function show(stepId) {
+      document.querySelectorAll(".step").forEach((step) => step.classList.remove("active"));
+      document.getElementById(stepId).classList.add("active");
+    }
+
+    function setMessage(id, message) {
+      const node = document.getElementById(id);
+      if (!node) return;
+      node.textContent = message || "";
+      node.hidden = !message;
+    }
+
+    if (state.p && state.sig) {
+      show("step-password");
+    } else {
+      show("step-lookup");
+    }
+
+    document.getElementById("lookupBtn").addEventListener("click", async () => {
+      const ref = document.getElementById("refInput").value.trim().toUpperCase();
+      setMessage("lookupError", "");
+      try {
+        const response = await fetch("/api/branch/verify/lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ref }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Lookup failed");
+        state.p = data.p;
+        state.sig = data.sig;
+        show("step-password");
+      } catch (error) {
+        setMessage("lookupError", error.message || "Lookup failed");
+      }
+    });
+
+    document.getElementById("revealBtn").addEventListener("click", async () => {
+      state.password = document.getElementById("passwordInput").value.trim();
+      setMessage("revealError", "");
+      try {
+        const response = await fetch("/api/branch/verify/reveal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ p: state.p, sig: state.sig, password: state.password }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Reveal failed");
+        document.getElementById("codeOut").textContent = data.code;
+        document.getElementById("codeMember").textContent = data.memberName;
+        document.getElementById("codeCampaign").textContent = data.campaignTitle;
+        document.getElementById("codeOffer").textContent = data.offer || "—";
+        document.getElementById("alreadyVisited").hidden = !data.alreadyVisited;
+        show("step-reveal");
+      } catch (error) {
+        setMessage("revealError", error.message || "Reveal failed");
+      }
+    });
+
+    document.getElementById("redeemBtn").addEventListener("click", async () => {
+      try {
+        const response = await fetch("/api/branch/verify/redeem", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ p: state.p, sig: state.sig, password: state.password }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Redeem failed");
+        if (data.ok) show("step-done");
+      } catch (error) {
+        alert(error.message || "Redeem failed");
+      }
+    });
+
+    document.getElementById("verifyAnotherBtn").addEventListener("click", () => {
+      location.href = "/branch/verify";
+    });
+  </script>
+</body>
+</html>
