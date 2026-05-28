@@ -1281,8 +1281,20 @@ function applyLifecycleSweep(store) {
   return changed;
 }
 
+function buildInitialStore() {
+  return normalizeStore({}).store;
+}
+
 async function readStore() {
-  const raw = JSON.parse(await fs.readFile(STORE_PATH, "utf8"));
+  let raw;
+  try {
+    raw = JSON.parse(await fs.readFile(STORE_PATH, "utf8"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    const emptyStore = buildInitialStore();
+    await writeStore(emptyStore, { skipBackup: true });
+    return emptyStore;
+  }
   const normalized = normalizeStore(raw);
   const swept = applyLifecycleSweep(normalized.store);
   if (normalized.changed || swept) {
@@ -3935,6 +3947,22 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`PICK Social Club running on ${APP_BASE_URL}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`PICK Social Club running on ${APP_BASE_URL}`);
+  });
+}
+
+module.exports = {
+  APP_BASE_URL,
+  DATA_DIR,
+  ROOT,
+  STORE_PATH,
+  buildInitialStore,
+  ensureRuntimeFiles,
+  hashPassword,
+  passwordStrengthError,
+  readStore,
+  seedRuntimeFilesIfMissing,
+  writeStore,
+};
