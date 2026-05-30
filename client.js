@@ -235,7 +235,7 @@ const SIGNUP_FORM_FIELDS = Object.freeze([
   "residentialCountry",
   "residentialTier2Id",
   "residentialTier3Id",
-  "categoryId",
+  "categoryIds",
   "instagram",
   "instagramFollowers",
   "tiktok",
@@ -435,7 +435,7 @@ function emptySignupDraft() {
     residentialCountry: "",
     residentialTier2Id: "",
     residentialTier3Id: "",
-    categoryId: "",
+    categoryIds: [],
     instagram: "",
     instagramFollowers: "0",
     tiktok: "",
@@ -562,6 +562,11 @@ function isResidentialFieldName(name) {
   return ["residentialCountry", "residentialTier2Id", "residentialTier3Id"].includes(name);
 }
 
+function syncSignupCategoryDraftFromForm(form) {
+  if (!form) return;
+  updateSignupDraft("categoryIds", selectedCategoryIdsFromForm(form));
+}
+
 function syncSignupResidentialDraftFromForm(form) {
   if (!form) return;
   updateSignupDraft("residentialCountry", form.residentialCountry?.value || "");
@@ -571,9 +576,13 @@ function syncSignupResidentialDraftFromForm(form) {
 
 function updateSignupDraft(name, rawValue) {
   if (!isSignupFieldName(name)) return;
-  const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
   const next = signupDraftValue();
-  next[name] = value;
+  if (name === "categoryIds") {
+    next[name] = normalizeCategoryIds(rawValue);
+  } else {
+    const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
+    next[name] = value;
+  }
   if (name === "residentialCountry") {
     next.residentialTier2Id = "";
     next.residentialTier3Id = "";
@@ -1035,6 +1044,8 @@ function applyApiErrorToForm(form, message) {
     { match: "city_required", fields: ["residentialTier3Id"] },
     { match: "area_governorate_mismatch", fields: ["residentialTier2Id", "residentialTier3Id"] },
     { match: "city_region_mismatch", fields: ["residentialTier2Id", "residentialTier3Id"] },
+    { match: "category_required", fields: ["categoryIds"] },
+    { match: "invalid_category", fields: ["categoryIds"] },
     { match: "Instagram is required.", fields: ["instagram"] },
     { match: "Password is required.", fields: ["password"] },
     { match: "New password is required.", fields: ["password"] },
@@ -1227,6 +1238,39 @@ function categoryName(categoryId) {
   return category ? (state.locale === "ar" ? category.nameAr : category.nameEn) : "-";
 }
 
+function normalizeCategoryIds(value) {
+  const source = Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
+  return [...new Set(
+    source
+      .map((item) => Number(item))
+      .filter((item) => item > 0)
+  )];
+}
+
+function categoryNames(categoryIds) {
+  return normalizeCategoryIds(categoryIds)
+    .map((categoryId) => categoryName(categoryId))
+    .filter((label) => label && label !== "-");
+}
+
+function categorySummary(categoryIds, options = {}) {
+  const { compact = false } = options;
+  const labels = categoryNames(categoryIds);
+  if (!labels.length) return l("Not set", "غير محدد");
+  if (!compact || labels.length <= 2) return labels.join(", ");
+  return `${labels[0]} + ${labels.length - 1} ${l("more", "أخرى")}`;
+}
+
+function includesCategory(categoryIds, categoryId) {
+  const wanted = Number(categoryId);
+  if (!wanted) return false;
+  return normalizeCategoryIds(categoryIds).includes(wanted);
+}
+
+function selectedCategoryIdsFromForm(form) {
+  return normalizeCategoryIds(new FormData(form).getAll("categoryIds"));
+}
+
 function branchName(branchId) {
   const branch = state.data?.branches?.find((item) => item.id === Number(branchId));
   return branch ? (state.locale === "ar" ? branch.nameAr : branch.nameEn) : "-";
@@ -1410,7 +1454,10 @@ function campaignMatchesInfluencer(campaign, influencer) {
   if ((campaign.targetCountries || []).length && !(campaign.targetCountries || []).includes(residentialCountryValue(residential))) return false;
   if ((campaign.targetGovernorateIds || []).length && !(campaign.targetGovernorateIds || []).includes(residentialTier2Id(residential))) return false;
   if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(residentialTier3Id(residential))) return false;
-  if ((campaign.targetCategoryIds || []).length && !(campaign.targetCategoryIds || []).includes(influencer.categoryId)) return false;
+  if ((campaign.targetCategoryIds || []).length) {
+    const hasOverlap = normalizeCategoryIds(influencer.categoryIds).some((id) => (campaign.targetCategoryIds || []).includes(id));
+    if (!hasOverlap) return false;
+  }
   if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
   const totalFollowers =
     (Number(influencer.followers?.instagram) || 0) +
@@ -1549,6 +1596,7 @@ function auditActionLabel(action) {
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
     residential_updated: l("Updated residential location", "حدّث مكان السكن"),
+    categories_updated: l("Updated interested categories", "حدّث الفئات المهتمة"),
     campaign_targeting_reset: l("Reset campaign targeting", "أعاد ضبط استهداف الحملة"),
     address_updated: l("Updated shipping address", "حدّث عنوان الشحن"),
     address_rejected: l("Rejected shipping address at signup", "رفض عنوان الشحن أثناء التسجيل"),
@@ -1757,7 +1805,7 @@ function buildReportsDashboardData() {
         influencer,
         influencerName: influencer?.fullName || participant.offlineName || "",
         residential: influencer?.residential || null,
-        categoryId: influencer?.categoryId || null,
+        categoryIds: influencer?.categoryIds || [],
         tags: influencer?.tags || [],
       };
     });
@@ -1818,7 +1866,7 @@ function buildReportsDashboardData() {
         influencerId: influencer.id,
         fullName: influencer.fullName,
         residential: influencer.residential || null,
-        categoryId: influencer.categoryId,
+        categoryIds: influencer.categoryIds || [],
         status: influencer.status,
         tags: influencer.tags || [],
         preferredPlatform: influencer.preferredPlatform || "",
@@ -2562,7 +2610,14 @@ function renderSignupForm() {
           })}
         </div>
       </div>
-      <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", draft.categoryId || "")}</label>
+      ${renderCategoryChecklist({
+        selectedValues: draft.categoryIds || [],
+        required: true,
+        hint: l(
+          "Pick at least one. Used to match you to campaigns.",
+          "اختر فئة واحدة على الأقل. تُستخدم لمطابقتك بالحملات."
+        ),
+      })}
       <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required value="${escapeHtml(draft.instagram || "")}" /></label>
       <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="${escapeHtml(draft.instagramFollowers || "0")}" /></label>
       <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(draft.tiktok || "")}" /></label>
@@ -3629,7 +3684,7 @@ function filteredInfluencers() {
   const query = state.influencerFilters.query.toLowerCase();
   return allInfluencers().filter((user) => {
     if (!residentialMatchesFilters(user.residential, state.influencerFilters)) return false;
-    if (state.influencerFilters.categoryId && Number(state.influencerFilters.categoryId) !== user.categoryId) return false;
+    if (state.influencerFilters.categoryId && !includesCategory(user.categoryIds, state.influencerFilters.categoryId)) return false;
     if (state.influencerFilters.status && state.influencerFilters.status !== user.status) return false;
     if (state.influencerFilters.tag && !(user.tags || []).includes(state.influencerFilters.tag)) return false;
     if (!query) return true;
@@ -3722,7 +3777,7 @@ function renderInfluencersPage() {
                     <div class="row">
                       <div>
                         <strong>${renderInfluencerProfileTrigger(user.id, user.fullName)}</strong>
-                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categorySummary(user.categoryIds, { compact: true }))}</p>
                       </div>
                       <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
                     </div>
@@ -3755,7 +3810,7 @@ function renderInfluencersPage() {
                     <div class="row">
                       <div>
                         <strong>${renderInfluencerProfileTrigger(user.id, user.fullName)}</strong>
-                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categorySummary(user.categoryIds, { compact: true }))}</p>
                       </div>
                       <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
                     </div>
@@ -3845,7 +3900,7 @@ function renderInfluencerTable(influencers, includeActions = true) {
                 <strong>${user.role === "influencer" ? renderInfluencerProfileTrigger(user.id, user.fullName) : escapeHtml(user.fullName)}</strong>
                 <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
               </div>
-              <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+              <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categorySummary(user.categoryIds, { compact: true }))}</p>
               ${includeActions ? `<p class="compact">${escapeHtml(user.email)}</p>` : ""}
             </article>
           `
@@ -4631,7 +4686,7 @@ function renderCampaignViewPage() {
                         <p>${
                           participant.source === "offline"
                             ? escapeHtml(l("Offline reservation", "حجز خارجي"))
-                            : `${escapeHtml(residentialSummary(participant.influencerResidential, { includeCountry: false }))} · ${escapeHtml(categoryName(participant.influencerCategoryId))}`
+                            : `${escapeHtml(residentialSummary(participant.influencerResidential, { includeCountry: false }))} · ${escapeHtml(categorySummary(participant.influencerCategoryIds, { compact: true }))}`
                         }</p>
                       </div>
                       <span class="badge ${participantDisplayTone(participant)}">${escapeHtml(participantDisplayStatus(participant))}</span>
@@ -5447,7 +5502,7 @@ function renderInfluencerReports(dashboard) {
       if (!haystack.includes(query)) return false;
     }
     if (!residentialMatchesFilters(row.residential, filters)) return false;
-    if (filters.categoryId && Number(filters.categoryId) !== row.categoryId) return false;
+    if (filters.categoryId && !includesCategory(row.categoryIds, filters.categoryId)) return false;
     if (filters.status && filters.status !== row.status) return false;
     if (filters.tag) {
       const wanted = String(filters.tag).toLowerCase().trim();
@@ -5462,7 +5517,7 @@ function renderInfluencerReports(dashboard) {
     if (key === "fullName") return row.fullName;
     if (key === "status") return row.status;
     if (key === "city") return residentialTier3Name(row.residential);
-    if (key === "category") return categoryName(row.categoryId);
+    if (key === "category") return categorySummary(row.categoryIds);
     if (key === "platform") return row.preferredPlatform || "";
     if (key === "signupDate") return dateValue(row.signupDate) || 0;
     if (key === "joined") return row.joined;
@@ -5507,7 +5562,7 @@ function renderInfluencerReports(dashboard) {
               sortKey: "status",
             },
             { label: l("City", "المدينة"), render: (row) => residentialTier3Name(row.residential), sortKey: "city" },
-            { label: l("Category", "الفئة"), render: (row) => categoryName(row.categoryId), sortKey: "category" },
+            { label: l("Categories", "الفئات"), render: (row) => categorySummary(row.categoryIds, { compact: true }), sortKey: "category" },
             { label: l("Tags", "العلامات"), render: (row) => (row.tags || []).join(", ") || "-" },
             { label: l("Platform", "المنصة"), render: (row) => row.preferredPlatform || "-", sortKey: "platform" },
             { label: l("Signup", "التسجيل"), render: (row) => formatDate(row.signupDate), sortKey: "signupDate" },
@@ -6932,7 +6987,7 @@ function renderProfilePage() {
     <section class="${wrapperClass}">
       <h3>${l("Profile Details", "تفاصيل الملف")}</h3>
       <p class="panel-subtitle">${isInfluencer
-        ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, residential location, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس ومكان السكن وإنستغرام مطلوبة.")
+        ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, residential location, interested categories, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس ومكان السكن والفئات المهتمة وإنستغرام مطلوبة.")
         : l("Required fields are marked with *. Everything else on this page is optional.", "الحقول المطلوبة مميزة بعلامة *. وكل ما عدا ذلك في هذه الصفحة اختياري.")}</p>
       <form id="profileForm" class="form-grid two-col" enctype="multipart/form-data">
         <div class="profile-image-panel" style="grid-column: 1 / -1;">
@@ -6958,7 +7013,14 @@ function renderProfilePage() {
             })}
           </div>
         </div>
-        <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", user.categoryId)}</label>
+        ${renderCategoryChecklist({
+          selectedValues: user.categoryIds || [],
+          required: true,
+          hint: l(
+            "Pick at least one. Used to match you to campaigns.",
+            "اختر فئة واحدة على الأقل. تُستخدم لمطابقتك بالحملات."
+          ),
+        })}
         <label class="field"><span>Instagram${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span><input name="instagram" ${isInfluencer ? "required" : ""} value="${escapeHtml(user.instagram || "")}" /></label>
         <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" value="${escapeHtml(user.followers?.instagram || 0)}" /></label>
         <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(user.tiktok || "")}" /></label>
@@ -7002,7 +7064,7 @@ function renderInfluencerProfilePage() {
         heroStats: [
           { label: l("Account status", "حالة الحساب"), value: `<span class="hero-status-badge badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>`, allowHtml: true },
           { label: l("Residential city", "مدينة السكن"), value: residentialTier3Name(user.residential) || l("Not set", "غير محدد") },
-          { label: l("Category", "الفئة"), value: categoryName(user.categoryId) || l("Not set", "غير محدد") },
+          { label: l("Categories", "الفئات"), value: categorySummary(user.categoryIds) || l("Not set", "غير محدد") },
         ],
         compactHeroStats: true,
       }
@@ -7032,6 +7094,7 @@ function renderInfluencerProfilePage() {
           <div class="field"><span>${l("Gender", "الجنس")}</span><strong>${escapeHtml(genderLabel(user.gender))}</strong></div>
           <div class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><strong>${escapeHtml(formatDate(user.dateOfBirth))}</strong></div>
           <div class="field" style="grid-column: 1 / -1;"><span>${l("Residential location", "مكان السكن")}</span><strong>${escapeHtml(residentialSummary(user.residential))}</strong></div>
+          <div class="field" style="grid-column: 1 / -1;"><span>${l("Interested categories", "الفئات المهتمة")}</span><strong>${escapeHtml(categorySummary(user.categoryIds))}</strong></div>
           <div class="field"><span>Instagram</span><strong>${escapeHtml(user.instagram || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.instagram || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
           <div class="field"><span>TikTok</span><strong>${escapeHtml(user.tiktok || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.tiktok || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
           <div class="field"><span>Snapchat</span><strong>${escapeHtml(user.snapchat || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.snapchat || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
@@ -7231,6 +7294,32 @@ function renderCategorySelect(name, selectedValue, includeAll = false) {
         )
         .join("")}
     </select>
+  `;
+}
+
+function renderCategoryChecklist(options = {}) {
+  const {
+    name = "categoryIds",
+    selectedValues = [],
+    required = false,
+    hint = "",
+    fieldClass = "field checkbox-field field-span-full",
+  } = options;
+  const selectedIds = new Set(normalizeCategoryIds(selectedValues).map(String));
+  const categories = (state.data?.categories || state.publicData?.categories || []).filter((category) => category.status === "active");
+  return `
+    <div class="${fieldClass}">
+      <span>${l("Interested categories", "الفئات المهتمة")}${required ? ' <em class="required-mark">*</em>' : ""}</span>
+      ${hint ? `<p class="compact">${escapeHtml(hint)}</p>` : ""}
+      <div class="option-grid">
+        ${categories.map((category) => `
+          <label class="option-pill">
+            <input type="checkbox" name="${name}" value="${category.id}" ${selectedIds.has(String(category.id)) ? "checked" : ""} />
+            <span>${escapeHtml(state.locale === "ar" ? category.nameAr : category.nameEn)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -8070,6 +8159,13 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(message);
       }
+      const categoryIds = selectedCategoryIdsFromForm(form);
+      if (!categoryIds.length) {
+        const message = l("Please select at least one category.", "يُرجى اختيار فئة واحدة على الأقل.");
+        setFieldError(form, "categoryIds", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
       const signupAddress = pickSignupAddressPayload();
       const payload = {
         fullName: values.fullName,
@@ -8077,7 +8173,7 @@ async function handleSubmit(event) {
         password: values.password,
         mobile: values.mobile,
         gender: values.gender,
-        categoryId: values.categoryId,
+        categoryIds,
         instagram: values.instagram,
         instagramFollowers: values.instagramFollowers,
         tiktok: values.tiktok,
@@ -8324,6 +8420,13 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(message);
       }
+      const categoryIds = selectedCategoryIdsFromForm(form);
+      if (!categoryIds.length) {
+        const message = l("Please select at least one category.", "يُرجى اختيار فئة واحدة على الأقل.");
+        setFieldError(form, "categoryIds", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
       if (state.currentUser.role === "influencer") {
         if (!formData.get("mobile")) {
           const message = l("Mobile number is required.", "رقم الهاتف مطلوب.");
@@ -8457,7 +8560,9 @@ function handleChange(event) {
       syncSignupResidentialDraftFromForm(event.target.form);
     }
   }
-  if (event.target.closest("#signupForm") && event.target.name) {
+  if (event.target.closest("#signupForm") && event.target.name === "categoryIds") {
+    syncSignupCategoryDraftFromForm(event.target.form);
+  } else if (event.target.closest("#signupForm") && event.target.name) {
     updateSignupDraft(event.target.name, event.target.value);
   }
   if (event.target.matches("input[type='file'][accept*='image']")) {
@@ -8534,7 +8639,11 @@ function handleInput(event) {
   }
 
   if (event.target.closest("#signupForm") && event.target.name) {
-    updateSignupDraft(event.target.name, event.target.value);
+    if (event.target.name === "categoryIds") {
+      syncSignupCategoryDraftFromForm(event.target.form);
+    } else {
+      updateSignupDraft(event.target.name, event.target.value);
+    }
   }
 
   if (isResidentialFieldName(event.target.name || "")) {

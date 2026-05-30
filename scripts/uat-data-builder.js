@@ -180,8 +180,11 @@ function memberRecord(definition, helpers) {
     gender: definition.gender,
     dateOfBirth: definition.dateOfBirth || "",
     residential: residentialFromLegacyCityId(definition.cityId),
-    categoryId: definition.categoryId,
-    category: helpers.categoryName(definition.categoryId),
+    categoryIds: definition.categoryIds?.length
+      ? definition.categoryIds.map((value) => Number(value)).filter((value) => value > 0)
+      : definition.categoryId
+        ? [Number(definition.categoryId)].filter((value) => value > 0)
+        : [],
     preferredLanguage: definition.preferredLanguage || "en",
     instagram: definition.instagram === "" ? "" : normalizeSocialHandle(definition.instagram || handle),
     tiktok: normalizeSocialHandle(definition.tiktok || ""),
@@ -1769,9 +1772,6 @@ function buildUatStore(baseStore, options = {}) {
   const helpers = {
     cityName(cityId) {
       return collections.cities.find((city) => city.id === cityId)?.nameEn || "";
-    },
-    categoryName(categoryId) {
-      return collections.categories.find((category) => category.id === categoryId)?.nameEn || "";
     },
   };
 

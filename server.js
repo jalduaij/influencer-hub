@@ -422,7 +422,7 @@ function resolveUploadRequestPath(pathname) {
 }
 
 function sanitizeUser(user, options = {}) {
-  const { password, address, city, cityId, ...safeUser } = user;
+  const { password, address, city, cityId, categoryId, category, ...safeUser } = user;
   if (options.includeAddress && address) {
     safeUser.address = address;
   }
@@ -1071,7 +1071,14 @@ function parseMultipart(buffer, contentType) {
         content: Buffer.from(bodyBlock, "binary"),
       };
     } else {
-      fields[name] = bodyBlock.toString();
+      const value = bodyBlock.toString();
+      if (fields[name] === undefined) {
+        fields[name] = value;
+      } else if (Array.isArray(fields[name])) {
+        fields[name].push(value);
+      } else {
+        fields[name] = [fields[name], value];
+      }
     }
   }
 
@@ -1096,6 +1103,48 @@ function cityById(store, cityId) {
 
 function categoryById(store, categoryId) {
   return store.categories.find((category) => category.id === Number(categoryId)) || null;
+}
+
+function categoryNamesForIds(store, categoryIds) {
+  return parseNumberList(categoryIds)
+    .map((categoryId) => categoryById(store, categoryId)?.nameEn || "")
+    .filter(Boolean);
+}
+
+function normalizeUserCategoryIds(user, store) {
+  const rawIds = Array.isArray(user?.categoryIds)
+    ? user.categoryIds
+    : user?.categoryId
+      ? [user.categoryId]
+      : [];
+  const knownIds = new Set((store.categories || []).map((category) => Number(category.id)));
+  return [...new Set(
+    rawIds
+      .map((value) => Number(value))
+      .filter((value) => value > 0 && knownIds.has(value))
+  )];
+}
+
+function validateCategoryIds(input, store) {
+  const requestedIds = parseNumberList(input);
+  if (!requestedIds.length) {
+    return { ok: false, error: "category_required" };
+  }
+  const validIds = new Set(
+    (store.categories || [])
+      .filter((category) => category.status === "active")
+      .map((category) => Number(category.id))
+  );
+  const normalized = [];
+  for (const id of requestedIds) {
+    if (!validIds.has(id)) return { ok: false, error: "invalid_category" };
+    if (!normalized.includes(id)) normalized.push(id);
+  }
+  return { ok: true, value: normalized };
+}
+
+function categoryIdsFromBody(body) {
+  return parseList(body?.categoryIds);
 }
 
 function branchById(store, branchId) {
@@ -1291,7 +1340,22 @@ function normalizeStore(store) {
     user.mobile = normalizeKuwaitMobile(user.mobile) || "";
     user.gender = normalizeGender(user.gender) || "";
     user.dateOfBirth ||= "";
-    user.categoryId ||= ensureChoiceByName(store.categories, user.category || "");
+    const normalizedCategoryIds = normalizeUserCategoryIds(user, store);
+    if (JSON.stringify(user.categoryIds || []) !== JSON.stringify(normalizedCategoryIds)) {
+      user.categoryIds = normalizedCategoryIds;
+      changed.value = true;
+    } else if (!Array.isArray(user.categoryIds)) {
+      user.categoryIds = normalizedCategoryIds;
+      changed.value = true;
+    }
+    if ("categoryId" in user) {
+      delete user.categoryId;
+      changed.value = true;
+    }
+    if ("category" in user) {
+      delete user.category;
+      changed.value = true;
+    }
     const normalizedResidential = user.residential ? validateResidential(user.residential) : { ok: true, value: null };
     if (normalizedResidential.ok) {
       if (JSON.stringify(user.residential || null) !== JSON.stringify(normalizedResidential.value || null)) {
@@ -1631,7 +1695,7 @@ function serializeParticipant(store, participant, options = {}) {
     influencerName: influencer?.fullName || participant.offlineName || "",
     influencerEmail: influencer?.email || "",
     influencerResidential: influencer?.residential || null,
-    influencerCategoryId: influencer?.categoryId || null,
+    influencerCategoryIds: influencer?.categoryIds || [],
     assignedCodeValue: includeAssignedCodeValue ? assignedCode?.codeValue || "" : "",
     assignedCodeUsageCount: campaign?.offerUsageCount || assignedCode?.usageCount || 1,
     assignedCodeOfferText: campaign?.offerDescription || assignedCode?.offerText || "",
@@ -1743,9 +1807,9 @@ function influencerSummary(store, influencer) {
     influencerId: influencer.id,
     fullName: influencer.fullName,
     residential: influencer.residential || null,
-    categoryId: influencer.categoryId,
+    categoryIds: influencer.categoryIds || [],
     residentialNameEn: residentialLeafNameEn(influencer.residential),
-    categoryNameEn: categoryById(store, influencer.categoryId)?.nameEn || "",
+    categoryNamesEn: categoryNamesForIds(store, influencer.categoryIds).join(", "),
     tags: influencer.tags || [],
     joined,
     visited,
@@ -1947,7 +2011,7 @@ function exportRowsForTab(store, tab, options = {}) {
           user?.mobile || "",
           user?.status || "",
           row.residentialNameEn,
-          row.categoryNameEn,
+          row.categoryNamesEn,
           (row.tags || []).join(", "),
           row.joined,
           row.visited,
@@ -2052,7 +2116,11 @@ function campaignMatchesInfluencer(store, campaign, influencer) {
     const memberTier3 = residentialTier3Id(residential);
     if (!campaign.targetCityIds.includes(memberTier3)) return false;
   }
-  if (campaign.targetCategoryIds.length && !campaign.targetCategoryIds.includes(influencer.categoryId)) return false;
+  if (campaign.targetCategoryIds?.length) {
+    const memberCategoryIds = influencer.categoryIds || [];
+    const hasOverlap = memberCategoryIds.some((id) => campaign.targetCategoryIds.includes(Number(id)));
+    if (!hasOverlap) return false;
+  }
   if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
   if (campaign.minFollowers > 0 && totalFollowers(influencer) < campaign.minFollowers) return false;
   if (!influencerMatchesTargetPlatforms(store, influencer, campaign.targetPlatformIds || [])) return false;
@@ -2527,6 +2595,8 @@ async function handleSignup(req, res, store) {
   const email = text(body.email).toLowerCase();
   const residentialResult = validateResidential(residentialFromBody(body));
   if (!residentialResult.ok) return sendJson(res, 422, { error: residentialResult.error });
+  const categoryResult = validateCategoryIds(categoryIdsFromBody(body), store);
+  if (!categoryResult.ok) return sendJson(res, 422, { error: categoryResult.error });
   if (!email || !text(body.password) || !text(body.fullName)) {
     return sendJson(res, 422, { error: "Full name, email, and password are required." });
   }
@@ -2568,8 +2638,7 @@ async function handleSignup(req, res, store) {
     gender: signupGender,
     dateOfBirth: text(body.dateOfBirth),
     residential: residentialResult.value,
-    categoryId: Number(body.categoryId) || null,
-    category: categoryById(store, body.categoryId)?.nameEn || "",
+    categoryIds: categoryResult.value,
     preferredLanguage: text(body.preferredLanguage || "en"),
     instagram: normalizeSocialHandle(body.instagram),
     tiktok: normalizeSocialHandle(body.tiktok),
@@ -2592,6 +2661,10 @@ async function handleSignup(req, res, store) {
   store.users.push(user);
   appendAuditEvent(store, user, "residential_updated", "user", user.id, {
     country: user.residential?.country || "",
+    source: "signup",
+  });
+  appendAuditEvent(store, user, "categories_updated", "user", user.id, {
+    categoryIds: user.categoryIds,
     source: "signup",
   });
   let signupAddressWarning = null;
@@ -2774,9 +2847,17 @@ async function handleProfileUpdate(req, res, store, actor) {
     }
     user.mobile = normalizeKuwaitMobile(body.mobile);
   }
-  if (body.categoryId !== undefined) {
-    user.categoryId = Number(body.categoryId) || null;
-    user.category = categoryById(store, user.categoryId)?.nameEn || "";
+  const categoryInput = categoryIdsFromBody(body);
+  if (body.categoryIds !== undefined) {
+    const categoryResult = validateCategoryIds(categoryInput, store);
+    if (!categoryResult.ok) return sendJson(res, 422, { error: categoryResult.error });
+    user.categoryIds = categoryResult.value;
+    appendAuditEvent(store, user, "categories_updated", "user", user.id, {
+      categoryIds: user.categoryIds,
+      source: "profile",
+    });
+  } else if (!(user.categoryIds || []).length) {
+    return sendJson(res, 422, { error: "category_required" });
   }
   const residentialInput = residentialFromBody(body);
   if (residentialInput) {
@@ -2793,6 +2874,7 @@ async function handleProfileUpdate(req, res, store, actor) {
 
   if (actor.role === "influencer") {
     if (!text(user.mobile)) return sendJson(res, 422, { error: "Mobile number is required." });
+    if (!(user.categoryIds || []).length) return sendJson(res, 422, { error: "category_required" });
     if (!user.residential) return sendJson(res, 422, { error: "residential_required" });
     if (!text(user.instagram)) return sendJson(res, 422, { error: "Instagram is required." });
   }
@@ -2895,8 +2977,7 @@ async function handleCreateManager(req, res, store, actor) {
     password: await hashPassword(text(body.password)),
     status: "active",
     residential: null,
-    categoryId: null,
-    category: "",
+    categoryIds: [],
     preferredLanguage: text(body.preferredLanguage || "en"),
     mobile: normalizeKuwaitMobile(body.mobile),
     gender: "",

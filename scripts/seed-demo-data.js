@@ -19,13 +19,6 @@ const RESIDENTIAL_BY_LEGACY_CITY_ID = {
   5: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-zahraa", cityId: "" },
 };
 
-const categoryNameById = {
-  1: "Leadership",
-  2: "Food & Beverage",
-  3: "Foodie",
-  4: "Lifestyle",
-};
-
 const platformCycle = ["Instagram", "TikTok", "Snapchat", "YouTube", "X"];
 
 const feedbackSamples = [
@@ -155,8 +148,7 @@ function makeInfluencer(id, fullName, handleBase, legacyCityId, categoryId, tags
     gender: "",
     dateOfBirth: "",
     residential: residentialFromLegacyCityId(legacyCityId),
-    categoryId,
-    category: categoryNameById[categoryId] || "",
+    categoryIds: categoryId ? [Number(categoryId)].filter((value) => value > 0) : [],
     preferredLanguage: index % 2 === 0 ? "en" : "ar",
     instagram,
     tiktok,
@@ -288,20 +280,21 @@ function main() {
   const activeInfluencers = influencers.filter((user) => user.status === "active");
   const areaIdsForLegacyCities = (ids) => ids.map((id) => residentialFromLegacyCityId(id).areaId).filter(Boolean);
   const governorateIdsForLegacyCities = (ids) => ids.map((id) => residentialFromLegacyCityId(id).governorateId).filter(Boolean);
+  const hasCategory = (user, categoryId) => (user.categoryIds || []).includes(Number(categoryId));
   const foodieHawallyFarwaniya = activeInfluencers.filter(
     (user) =>
-      user.categoryId === 3 &&
+      hasCategory(user, 3) &&
       areaIdsForLegacyCities([2, 4]).includes(String(user.residential?.areaId || ""))
   );
   const foodieKuwaitHawally = activeInfluencers.filter(
     (user) =>
-      user.categoryId === 3 &&
+      hasCategory(user, 3) &&
       areaIdsForLegacyCities([1, 2]).includes(String(user.residential?.areaId || ""))
   );
   const vipInfluencers = activeInfluencers.filter((user) => user.tags.includes("vip"));
   const lifestyleCity = activeInfluencers.filter(
     (user) =>
-      user.categoryId === 4 &&
+      hasCategory(user, 4) &&
       governorateIdsForLegacyCities([1, 3]).includes(String(user.residential?.governorateId || ""))
   );
   const feweInfluencers = activeInfluencers.filter((user) => user.tags.includes("fewe"));
