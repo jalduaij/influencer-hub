@@ -8536,6 +8536,73 @@ body.member-scope .campaign-reservation-card p {
   line-height: 1.5;
 }
 
+body.member-scope .signup-residential-block,
+body.member-scope .profile-residential-block,
+body.member-scope .influencer-filter-residential {
+  padding: 18px;
+  border: 1px solid rgba(112, 47, 138, 0.14);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(250, 246, 238, 0.96), rgba(255, 255, 255, 0.98)),
+    rgba(255, 255, 255, 0.94);
+}
+
+body.member-scope .signup-residential-block > span,
+body.member-scope .profile-residential-block > span,
+body.member-scope .influencer-filter-residential > span {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+body.member-scope .signup-residential-block__grid,
+body.member-scope .profile-residential-block__grid,
+body.member-scope .influencer-filter-residential .form-grid {
+  margin-top: 12px;
+}
+
+body.member-scope .residential-cascade {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+body.member-scope .residential-cascade .field {
+  min-width: 0;
+}
+
+body.member-scope .residential-cascade select:disabled {
+  background: rgba(31, 22, 32, 0.05);
+  color: var(--ink-soft);
+}
+
+body.member-scope .option-pill--country span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.member-scope .campaign-targeting-preview {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(112, 47, 138, 0.06);
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+body.member-scope .influencer-filter-residential {
+  margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+  body.member-scope .residential-cascade {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media print {
   body.member-scope .code-card-overlay {
     position: static;

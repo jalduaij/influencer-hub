@@ -11,6 +11,14 @@ const cityNameById = {
   5: "Zahra",
 };
 
+const RESIDENTIAL_BY_LEGACY_CITY_ID = {
+  1: { country: "KW", governorateId: "kw-asimah", regionId: "", areaId: "kw-asimah-kuwait-city", cityId: "" },
+  2: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-hawalli", cityId: "" },
+  3: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-salmiya", cityId: "" },
+  4: { country: "KW", governorateId: "kw-farwaniya", regionId: "", areaId: "kw-farwaniya-farwaniya", cityId: "" },
+  5: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-zahraa", cityId: "" },
+};
+
 const categoryNameById = {
   1: "Leadership",
   2: "Food & Beverage",
@@ -120,7 +128,18 @@ function socialLink(platform, handle, index) {
   return `https://www.instagram.com/p/PICKDEMO${index}/`;
 }
 
-function makeInfluencer(id, fullName, handleBase, cityId, categoryId, tags, index, status = "active", overrides = {}) {
+function residentialFromLegacyCityId(cityId) {
+  return {
+    country: "",
+    governorateId: "",
+    regionId: "",
+    areaId: "",
+    cityId: "",
+    ...(RESIDENTIAL_BY_LEGACY_CITY_ID[Number(cityId)] || {}),
+  };
+}
+
+function makeInfluencer(id, fullName, handleBase, legacyCityId, categoryId, tags, index, status = "active", overrides = {}) {
   const platform = pickPlatform(index);
   const instagram = `@${handleBase}`;
   const tiktok = `@${handleBase}${index}`;
@@ -135,9 +154,8 @@ function makeInfluencer(id, fullName, handleBase, cityId, categoryId, tags, inde
     mobile: `9000${String(id).padStart(4, "0")}`,
     gender: "",
     dateOfBirth: "",
-    cityId,
+    residential: residentialFromLegacyCityId(legacyCityId),
     categoryId,
-    city: cityNameById[cityId] || "",
     category: categoryNameById[categoryId] || "",
     preferredLanguage: index % 2 === 0 ? "en" : "ar",
     instagram,
@@ -220,8 +238,16 @@ function createOfflineParticipant({ participantId, campaign, codeId, joinDate, c
 
 function main() {
   const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
-  const campaigns = store.campaigns.map((campaign) => ({ ...campaign }));
-  const nonInfluencers = store.users.filter((user) => user.role !== "influencer");
+  const campaigns = store.campaigns.map((campaign) => ({
+    ...campaign,
+    targetCountries: [],
+    targetGovernorateIds: [],
+    targetCityIds: [],
+    targetingNeedsReset: false,
+  }));
+  const nonInfluencers = store.users
+    .filter((user) => user.role !== "influencer")
+    .map((user) => ({ ...user, residential: user.residential || null }));
   const existing = new Map(store.users.filter((user) => user.role === "influencer").map((user) => [user.id, user]));
 
   const influencers = [];
@@ -260,10 +286,24 @@ function main() {
   });
 
   const activeInfluencers = influencers.filter((user) => user.status === "active");
-  const foodieHawallyFarwaniya = activeInfluencers.filter((user) => user.categoryId === 3 && [2, 4].includes(user.cityId));
-  const foodieKuwaitHawally = activeInfluencers.filter((user) => user.categoryId === 3 && [1, 2].includes(user.cityId));
+  const areaIdsForLegacyCities = (ids) => ids.map((id) => residentialFromLegacyCityId(id).areaId).filter(Boolean);
+  const governorateIdsForLegacyCities = (ids) => ids.map((id) => residentialFromLegacyCityId(id).governorateId).filter(Boolean);
+  const foodieHawallyFarwaniya = activeInfluencers.filter(
+    (user) =>
+      user.categoryId === 3 &&
+      areaIdsForLegacyCities([2, 4]).includes(String(user.residential?.areaId || ""))
+  );
+  const foodieKuwaitHawally = activeInfluencers.filter(
+    (user) =>
+      user.categoryId === 3 &&
+      areaIdsForLegacyCities([1, 2]).includes(String(user.residential?.areaId || ""))
+  );
   const vipInfluencers = activeInfluencers.filter((user) => user.tags.includes("vip"));
-  const lifestyleCity = activeInfluencers.filter((user) => user.categoryId === 4 && [1, 3].includes(user.cityId));
+  const lifestyleCity = activeInfluencers.filter(
+    (user) =>
+      user.categoryId === 4 &&
+      governorateIdsForLegacyCities([1, 3]).includes(String(user.residential?.governorateId || ""))
+  );
   const feweInfluencers = activeInfluencers.filter((user) => user.tags.includes("fewe"));
 
   const campaignPools = {
@@ -383,7 +423,13 @@ function main() {
   });
   for (let i = 0; i < 4; i += 1) addOfflineParticipant(campaign205, "2026-04-25", i + 30);
 
-  store.users = [...nonInfluencers, ...influencers];
+  store.users = [...nonInfluencers, ...influencers].map((user) => {
+    const clean = { ...user };
+    delete clean.cityId;
+    delete clean.city;
+    if (!("residential" in clean)) clean.residential = null;
+    return clean;
+  });
   store.campaignCodes = campaignCodes;
   store.participants = participants;
   store.passwordResets = [];

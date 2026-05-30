@@ -422,7 +422,7 @@ function resolveUploadRequestPath(pathname) {
 }
 
 function sanitizeUser(user, options = {}) {
-  const { password, address, ...safeUser } = user;
+  const { password, address, city, cityId, ...safeUser } = user;
   if (options.includeAddress && address) {
     safeUser.address = address;
   }
@@ -537,6 +537,88 @@ function validateAddress(input) {
   return { ok: true, value: out };
 }
 
+function validateResidential(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ok: false, error: "residential_required" };
+  }
+  const country = String(input.country || "").toUpperCase();
+  if (!ADDRESS_LOOKUPS.countries.has(country)) return { ok: false, error: "invalid_country" };
+
+  const out = {
+    country,
+    governorateId: "",
+    regionId: "",
+    areaId: "",
+    cityId: "",
+  };
+
+  if (country === "KW") {
+    if (!input.governorateId || !ADDRESS_LOOKUPS.governorates[input.governorateId]) {
+      return { ok: false, error: "invalid_governorate" };
+    }
+    out.governorateId = String(input.governorateId);
+    if (!input.areaId) return { ok: false, error: "area_required" };
+    const area = ADDRESS_LOOKUPS.areas[input.areaId];
+    if (!area) return { ok: false, error: "invalid_area" };
+    if (area.governorateId !== out.governorateId) {
+      return { ok: false, error: "area_governorate_mismatch" };
+    }
+    out.areaId = String(input.areaId);
+    return { ok: true, value: out };
+  }
+
+  if (!input.regionId || !ADDRESS_LOOKUPS.regions[input.regionId]) {
+    return { ok: false, error: "invalid_region" };
+  }
+  out.regionId = String(input.regionId);
+  if (!input.cityId) return { ok: false, error: "city_required" };
+  const city = ADDRESS_LOOKUPS.cities[input.cityId];
+  if (!city) return { ok: false, error: "invalid_city" };
+  if (city.regionId !== out.regionId) {
+    return { ok: false, error: "city_region_mismatch" };
+  }
+  out.cityId = String(input.cityId);
+  return { ok: true, value: out };
+}
+
+function residentialFromBody(body) {
+  if (body?.residential && typeof body.residential === "object") {
+    return body.residential;
+  }
+  const country = text(body?.residentialCountry).toUpperCase();
+  const tier2Id = text(body?.residentialTier2Id);
+  const tier3Id = text(body?.residentialTier3Id);
+  if (!country && !tier2Id && !tier3Id) return null;
+  if (country === "KW") {
+    return {
+      country,
+      governorateId: tier2Id,
+      areaId: tier3Id,
+    };
+  }
+  return {
+    country,
+    regionId: tier2Id,
+    cityId: tier3Id,
+  };
+}
+
+function residentialTier2Id(residential) {
+  return String(residential?.governorateId || residential?.regionId || "");
+}
+
+function residentialTier3Id(residential) {
+  return String(residential?.areaId || residential?.cityId || "");
+}
+
+function residentialLeafNameEn(residential) {
+  if (!residential?.country) return "";
+  if (residential.country === "KW") {
+    return ADDRESS_LOOKUPS.areas[residential.areaId]?.nameEn || "";
+  }
+  return ADDRESS_LOOKUPS.cities[residential.cityId]?.nameEn || "";
+}
+
 function localizedText(en, ar) {
   return { en: text(en), ar: text(ar) };
 }
@@ -632,6 +714,10 @@ function parseNumberList(value) {
   return parseList(value)
     .map((item) => Number(item))
     .filter(Boolean);
+}
+
+function parseStringList(value) {
+  return [...new Set(parseList(value).map((item) => text(item)).filter(Boolean))];
 }
 
 function randomToken() {
@@ -1094,7 +1180,6 @@ function normalizeStore(store) {
   store.tags ||= [];
 
   for (const user of store.users) {
-    if (user.city) ensureChoiceByName(store.cities, user.city);
     if (user.category) ensureChoiceByName(store.categories, user.category);
   }
   for (const branch of store.branches) {
@@ -1206,8 +1291,28 @@ function normalizeStore(store) {
     user.mobile = normalizeKuwaitMobile(user.mobile) || "";
     user.gender = normalizeGender(user.gender) || "";
     user.dateOfBirth ||= "";
-    user.cityId ||= ensureChoiceByName(store.cities, user.city || "");
     user.categoryId ||= ensureChoiceByName(store.categories, user.category || "");
+    const normalizedResidential = user.residential ? validateResidential(user.residential) : { ok: true, value: null };
+    if (normalizedResidential.ok) {
+      if (JSON.stringify(user.residential || null) !== JSON.stringify(normalizedResidential.value || null)) {
+        user.residential = normalizedResidential.value || null;
+        changed.value = true;
+      }
+    } else if (user.residential) {
+      user.residential = null;
+      changed.value = true;
+    } else if (user.residential === undefined) {
+      user.residential = null;
+      changed.value = true;
+    }
+    if ("cityId" in user) {
+      delete user.cityId;
+      changed.value = true;
+    }
+    if ("city" in user) {
+      delete user.city;
+      changed.value = true;
+    }
     user.instagram ||= "";
     user.tiktok ||= "";
     user.snapchat ||= "";
@@ -1228,7 +1333,9 @@ function normalizeStore(store) {
   for (const campaign of store.campaigns) {
     campaign.branchIds ||= store.branches.map((branch) => branch.id);
     campaign.branchMode ||= campaign.branchIds.length ? "selected" : "all";
-    campaign.targetCityIds ||= [];
+    campaign.targetCountries = parseStringList(campaign.targetCountries);
+    campaign.targetGovernorateIds = parseStringList(campaign.targetGovernorateIds);
+    campaign.targetCityIds = parseStringList(campaign.targetCityIds);
     campaign.targetCategoryIds ||= [];
     const normalizedTargetTags = parseTags(campaign.targetTags);
     if (JSON.stringify(normalizedTargetTags) !== JSON.stringify(campaign.targetTags || [])) changed.value = true;
@@ -1242,6 +1349,30 @@ function normalizeStore(store) {
     campaign.minFollowers = Math.max(0, Number(campaign.minFollowers) || 0);
     campaign.targetPlatformIds = parseNumberList(campaign.targetPlatformIds);
     campaign.participantCap = Math.max(0, Number(campaign.participantCap) || 0);
+    const hasLegacyResidentialTargeting =
+      !Array.isArray(campaign.targetCountries) ||
+      !Array.isArray(campaign.targetGovernorateIds) ||
+      campaign.targetCountries.some((code) => !ADDRESS_LOOKUPS.countries.has(code)) ||
+      campaign.targetGovernorateIds.some((id) => !ADDRESS_LOOKUPS.governorates[id] && !ADDRESS_LOOKUPS.regions[id]) ||
+      campaign.targetCityIds.some((id) => !ADDRESS_LOOKUPS.areas[id] && !ADDRESS_LOOKUPS.cities[id]);
+    if (hasLegacyResidentialTargeting) {
+      const previousTargeting = {
+        targetCountries: [...(campaign.targetCountries || [])],
+        targetGovernorateIds: [...(campaign.targetGovernorateIds || [])],
+        targetCityIds: [...(campaign.targetCityIds || [])],
+      };
+      campaign.targetCountries = [];
+      campaign.targetGovernorateIds = [];
+      campaign.targetCityIds = [];
+      if (!campaign.targetingNeedsReset) {
+        appendAuditEvent(store, null, "campaign_targeting_reset", "campaign", campaign.id, previousTargeting);
+      }
+      campaign.targetingNeedsReset = true;
+      changed.value = true;
+    } else if (campaign.targetingNeedsReset == null) {
+      campaign.targetingNeedsReset = false;
+      changed.value = true;
+    }
     if ((!campaign.targetCategoryIds.length || !campaign.targetCityIds.length) && Array.isArray(campaign.targeting)) {
       for (const token of campaign.targeting) {
         const categoryId = store.categories.find(
@@ -1419,13 +1550,17 @@ function buildInitialStore() {
   return normalizeStore({}).store;
 }
 
+function buildEmptyProductionStore() {
+  return buildInitialStore();
+}
+
 async function readStore() {
   let raw;
   try {
     raw = JSON.parse(await fs.readFile(STORE_PATH, "utf8"));
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
-    const emptyStore = buildInitialStore();
+    const emptyStore = buildEmptyProductionStore();
     await writeStore(emptyStore, { skipBackup: true });
     return emptyStore;
   }
@@ -1495,7 +1630,7 @@ function serializeParticipant(store, participant, options = {}) {
     campaignTitleAr: campaign?.titleAr || "",
     influencerName: influencer?.fullName || participant.offlineName || "",
     influencerEmail: influencer?.email || "",
-    influencerCityId: influencer?.cityId || null,
+    influencerResidential: influencer?.residential || null,
     influencerCategoryId: influencer?.categoryId || null,
     assignedCodeValue: includeAssignedCodeValue ? assignedCode?.codeValue || "" : "",
     assignedCodeUsageCount: campaign?.offerUsageCount || assignedCode?.usageCount || 1,
@@ -1607,9 +1742,9 @@ function influencerSummary(store, influencer) {
   return {
     influencerId: influencer.id,
     fullName: influencer.fullName,
-    cityId: influencer.cityId,
+    residential: influencer.residential || null,
     categoryId: influencer.categoryId,
-    cityNameEn: cityById(store, influencer.cityId)?.nameEn || "",
+    residentialNameEn: residentialLeafNameEn(influencer.residential),
     categoryNameEn: categoryById(store, influencer.categoryId)?.nameEn || "",
     tags: influencer.tags || [],
     joined,
@@ -1811,7 +1946,7 @@ function exportRowsForTab(store, tab, options = {}) {
           user?.email || "",
           user?.mobile || "",
           user?.status || "",
-          row.cityNameEn,
+          row.residentialNameEn,
           row.categoryNameEn,
           (row.tags || []).join(", "),
           row.joined,
@@ -1907,7 +2042,16 @@ function campaignMatchesInfluencer(store, campaign, influencer) {
     const today = todayDateString();
     if (toDateString(campaign.visitDeadline) < today) return false;
   }
-  if (campaign.targetCityIds.length && !campaign.targetCityIds.includes(influencer.cityId)) return false;
+  const residential = influencer.residential || {};
+  if (campaign.targetCountries?.length && !campaign.targetCountries.includes(residential.country)) return false;
+  if (campaign.targetGovernorateIds?.length) {
+    const memberTier2 = residentialTier2Id(residential);
+    if (!campaign.targetGovernorateIds.includes(memberTier2)) return false;
+  }
+  if (campaign.targetCityIds?.length) {
+    const memberTier3 = residentialTier3Id(residential);
+    if (!campaign.targetCityIds.includes(memberTier3)) return false;
+  }
   if (campaign.targetCategoryIds.length && !campaign.targetCategoryIds.includes(influencer.categoryId)) return false;
   if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
   if (campaign.minFollowers > 0 && totalFollowers(influencer) < campaign.minFollowers) return false;
@@ -2180,7 +2324,9 @@ function campaignPayload(body, existingCampaign = null) {
     submissionDeadline: text(body.submissionDeadline ?? existingCampaign?.submissionDeadline),
     branchMode: body.branchMode === "selected" ? "selected" : "all",
     branchIds: body.branchMode === "selected" ? parseNumberList(body.branchIds) : [],
-    targetCityIds: parseNumberList(body.targetCityIds),
+    targetCountries: parseStringList(body.targetCountries),
+    targetGovernorateIds: parseStringList(body.targetGovernorateIds),
+    targetCityIds: parseStringList(body.targetCityIds),
     targetCategoryIds: parseNumberList(body.targetCategoryIds),
     targetTags,
     targetGender: text(body.targetGender ?? existingCampaign?.targetGender),
@@ -2188,6 +2334,7 @@ function campaignPayload(body, existingCampaign = null) {
     targetPlatformIds: parseNumberList(body.targetPlatformIds ?? existingCampaign?.targetPlatformIds),
     participantCap: Math.max(0, Number(body.participantCap ?? existingCampaign?.participantCap) || 0),
     verificationPassword: text(body.verificationPassword ?? existingCampaign?.verificationPassword).toUpperCase(),
+    targetingNeedsReset: false,
   };
 }
 
@@ -2378,6 +2525,8 @@ async function handleLogout(req, res) {
 async function handleSignup(req, res, store) {
   const body = jsonOrForm(await readBody(req), req);
   const email = text(body.email).toLowerCase();
+  const residentialResult = validateResidential(residentialFromBody(body));
+  if (!residentialResult.ok) return sendJson(res, 422, { error: residentialResult.error });
   if (!email || !text(body.password) || !text(body.fullName)) {
     return sendJson(res, 422, { error: "Full name, email, and password are required." });
   }
@@ -2401,9 +2550,6 @@ async function handleSignup(req, res, store) {
   if (!validKuwaitMobile(body.mobile)) {
     return sendJson(res, 422, { error: "Mobile number must be 8 digits in Kuwait format." });
   }
-  if (!Number(body.cityId)) {
-    return sendJson(res, 422, { error: "City is required." });
-  }
   if (!text(body.instagram)) {
     return sendJson(res, 422, { error: "Instagram is required." });
   }
@@ -2421,9 +2567,8 @@ async function handleSignup(req, res, store) {
     mobile: normalizeKuwaitMobile(body.mobile),
     gender: signupGender,
     dateOfBirth: text(body.dateOfBirth),
-    cityId: Number(body.cityId) || null,
+    residential: residentialResult.value,
     categoryId: Number(body.categoryId) || null,
-    city: cityById(store, body.cityId)?.nameEn || "",
     category: categoryById(store, body.categoryId)?.nameEn || "",
     preferredLanguage: text(body.preferredLanguage || "en"),
     instagram: normalizeSocialHandle(body.instagram),
@@ -2445,6 +2590,10 @@ async function handleSignup(req, res, store) {
   };
 
   store.users.push(user);
+  appendAuditEvent(store, user, "residential_updated", "user", user.id, {
+    country: user.residential?.country || "",
+    source: "signup",
+  });
   let signupAddressWarning = null;
   if (body.address !== undefined && body.address !== null) {
     const result = validateAddress(body.address);
@@ -2625,19 +2774,26 @@ async function handleProfileUpdate(req, res, store, actor) {
     }
     user.mobile = normalizeKuwaitMobile(body.mobile);
   }
-
-  if (body.cityId !== undefined) {
-    user.cityId = Number(body.cityId) || null;
-    user.city = cityById(store, user.cityId)?.nameEn || "";
-  }
   if (body.categoryId !== undefined) {
     user.categoryId = Number(body.categoryId) || null;
     user.category = categoryById(store, user.categoryId)?.nameEn || "";
   }
+  const residentialInput = residentialFromBody(body);
+  if (residentialInput) {
+    const residentialResult = validateResidential(residentialInput);
+    if (!residentialResult.ok) return sendJson(res, 422, { error: residentialResult.error });
+    user.residential = residentialResult.value;
+    appendAuditEvent(store, user, "residential_updated", "user", user.id, {
+      country: user.residential?.country || "",
+      source: "profile",
+    });
+  } else if (!user.residential) {
+    return sendJson(res, 422, { error: "residential_required" });
+  }
 
   if (actor.role === "influencer") {
     if (!text(user.mobile)) return sendJson(res, 422, { error: "Mobile number is required." });
-    if (!user.cityId) return sendJson(res, 422, { error: "City is required." });
+    if (!user.residential) return sendJson(res, 422, { error: "residential_required" });
     if (!text(user.instagram)) return sendJson(res, 422, { error: "Instagram is required." });
   }
 
@@ -2738,8 +2894,7 @@ async function handleCreateManager(req, res, store, actor) {
     email,
     password: await hashPassword(text(body.password)),
     status: "active",
-    cityId: Number(body.cityId) || null,
-    city: cityById(store, body.cityId)?.nameEn || "",
+    residential: null,
     categoryId: null,
     category: "",
     preferredLanguage: text(body.preferredLanguage || "en"),
@@ -2783,8 +2938,6 @@ async function handleUpdateManager(req, res, store, actor, userId) {
   user.fullName = text(body.fullName || user.fullName);
   user.email = email;
   user.mobile = normalizeKuwaitMobile(body.mobile ?? user.mobile);
-  user.cityId = Number(body.cityId) || null;
-  user.city = cityById(store, user.cityId)?.nameEn || "";
   user.preferredLanguage = text(body.preferredLanguage || user.preferredLanguage || "en");
   user.status = body.status === "suspended" ? "suspended" : "active";
   await writeStore(store);
@@ -4181,6 +4334,7 @@ module.exports = {
   DATA_DIR,
   ROOT,
   STORE_PATH,
+  buildEmptyProductionStore,
   buildInitialStore,
   ensureRuntimeFiles,
   hashPassword,

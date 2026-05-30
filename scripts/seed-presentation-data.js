@@ -3,12 +3,30 @@ const path = require("node:path");
 
 const STORE_PATH = path.join(__dirname, "..", "data", "store.json");
 
+const RESIDENTIAL_BY_LEGACY_CITY_ID = {
+  1: { country: "KW", governorateId: "kw-asimah", regionId: "", areaId: "kw-asimah-kuwait-city", cityId: "" },
+  2: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-hawalli", cityId: "" },
+  3: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-salmiya", cityId: "" },
+  4: { country: "KW", governorateId: "kw-farwaniya", regionId: "", areaId: "kw-farwaniya-farwaniya", cityId: "" },
+};
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
 function iso(value) {
   return `${value}.000Z`;
+}
+
+function residentialFromLegacyCityId(cityId) {
+  return {
+    country: "",
+    governorateId: "",
+    regionId: "",
+    areaId: "",
+    cityId: "",
+    ...(RESIDENTIAL_BY_LEGACY_CITY_ID[Number(cityId)] || {}),
+  };
 }
 
 function code(id, campaignId, codeValue, status, participantId = null, uploadedByUserId = 2, reservedAt = null, blockedAt = null) {
@@ -82,8 +100,7 @@ function influencer({
   email,
   mobile,
   gender,
-  cityId,
-  city,
+  legacyCityId,
   categoryId,
   category,
   preferredLanguage,
@@ -106,9 +123,8 @@ function influencer({
     mobile,
     gender,
     dateOfBirth: "",
-    cityId,
+    residential: residentialFromLegacyCityId(legacyCityId),
     categoryId,
-    city,
     category,
     preferredLanguage,
     instagram,
@@ -133,8 +149,18 @@ function main() {
   const keepUserIds = new Set([1, 2, 7, 3, 4, 5, 42]);
   const keepCampaignIds = new Set([201, 202, 203, 204, 205]);
 
-  const users = current.users.filter((user) => keepUserIds.has(user.id)).map((user) => clone(user));
-  const campaigns = current.campaigns.filter((campaign) => keepCampaignIds.has(campaign.id)).map((campaign) => clone(campaign));
+  const users = current.users
+    .filter((user) => keepUserIds.has(user.id))
+    .map((user) => ({ ...clone(user), residential: user.residential || null }));
+  const campaigns = current.campaigns
+    .filter((campaign) => keepCampaignIds.has(campaign.id))
+    .map((campaign) => ({
+      ...clone(campaign),
+      targetCountries: [],
+      targetGovernorateIds: [],
+      targetCityIds: [],
+      targetingNeedsReset: false,
+    }));
 
   const userById = new Map(users.map((user) => [user.id, user]));
   const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
@@ -154,8 +180,7 @@ function main() {
   Object.assign(userById.get(3), {
     mobile: "+96590000003",
     gender: "female",
-    cityId: 2,
-    city: "Hawally",
+    residential: residentialFromLegacyCityId(2),
     categoryId: 3,
     category: "Foodie",
     instagram: "@pick",
@@ -166,8 +191,7 @@ function main() {
   Object.assign(userById.get(4), {
     mobile: "+96590000004",
     gender: "female",
-    cityId: 3,
-    city: "Salmiya",
+    residential: residentialFromLegacyCityId(3),
     categoryId: 4,
     category: "Lifestyle",
     instagram: "@mahalifestyle",
@@ -178,8 +202,7 @@ function main() {
   Object.assign(userById.get(5), {
     mobile: "+96590000005",
     gender: "male",
-    cityId: 4,
-    city: "Farwaniya",
+    residential: residentialFromLegacyCityId(4),
     categoryId: 3,
     category: "Foodie",
     instagram: "@abdullahreviewz",
@@ -190,8 +213,7 @@ function main() {
   Object.assign(userById.get(42), {
     mobile: "+96590000042",
     gender: "female",
-    cityId: 3,
-    city: "Salmiya",
+    residential: residentialFromLegacyCityId(3),
     categoryId: 4,
     category: "Lifestyle",
     instagram: "@latifa.brand",
@@ -207,8 +229,7 @@ function main() {
       email: "nouf@example.com",
       mobile: "+96590000043",
       gender: "female",
-      cityId: 2,
-      city: "Hawally",
+      legacyCityId: 2,
       categoryId: 3,
       category: "Foodie",
       preferredLanguage: "ar",
@@ -227,8 +248,7 @@ function main() {
       email: "faisal@example.com",
       mobile: "+96590000044",
       gender: "male",
-      cityId: 4,
-      city: "Farwaniya",
+      legacyCityId: 4,
       categoryId: 3,
       category: "Foodie",
       preferredLanguage: "en",
@@ -247,8 +267,7 @@ function main() {
       email: "dana@example.com",
       mobile: "+96590000045",
       gender: "female",
-      cityId: 3,
-      city: "Salmiya",
+      legacyCityId: 3,
       categoryId: 4,
       category: "Lifestyle",
       preferredLanguage: "en",
@@ -423,7 +442,13 @@ function main() {
 
   const cleanStore = {
     nextIds,
-    users,
+    users: users.map((user) => {
+      const clean = { ...user };
+      delete clean.cityId;
+      delete clean.city;
+      if (!("residential" in clean)) clean.residential = null;
+      return clean;
+    }),
     campaigns,
     branches: clone(current.branches),
     campaignCodes: codes,

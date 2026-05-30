@@ -9,7 +9,9 @@ function defaultReportFilters() {
     },
     influencers: {
       query: "",
-      cityId: "",
+      residentialCountry: "",
+      residentialTier2Id: "",
+      residentialTier3Id: "",
       categoryId: "",
       status: "",
       tag: "",
@@ -89,7 +91,9 @@ const state = {
   reportSorts: defaultReportSorts(),
   influencerFilters: {
     query: "",
-    cityId: "",
+    residentialCountry: "",
+    residentialTier2Id: "",
+    residentialTier3Id: "",
     categoryId: "",
     status: "",
     tag: "",
@@ -228,7 +232,9 @@ const SIGNUP_FORM_FIELDS = Object.freeze([
   "password",
   "mobile",
   "gender",
-  "cityId",
+  "residentialCountry",
+  "residentialTier2Id",
+  "residentialTier3Id",
   "categoryId",
   "instagram",
   "instagramFollowers",
@@ -267,6 +273,135 @@ function addressCountryFlag(code) {
   return "📦";
 }
 
+function emptyResidential() {
+  return {
+    country: "",
+    governorateId: "",
+    regionId: "",
+    areaId: "",
+    cityId: "",
+  };
+}
+
+function residentialTier2Label(country) {
+  if (country === "KW") return l("Governorate", "المحافظة");
+  if (country === "SA") return l("Region", "المنطقة");
+  return l("Governorate / Region", "المحافظة / المنطقة");
+}
+
+function residentialTier3Label(country) {
+  if (country === "KW") return l("City", "المدينة");
+  if (country === "SA") return l("City", "المدينة");
+  return l("City", "المدينة");
+}
+
+function normalizeResidential(value) {
+  return {
+    ...emptyResidential(),
+    ...(value || {}),
+  };
+}
+
+function residentialSelectionFromValue(value) {
+  const residential = normalizeResidential(value);
+  return {
+    residentialCountry: residential.country || "",
+    residentialTier2Id: residential.governorateId || residential.regionId || "",
+    residentialTier3Id: residential.areaId || residential.cityId || "",
+  };
+}
+
+function residentialFromSelection(selection) {
+  const country = String(selection?.residentialCountry || "").toUpperCase();
+  const tier2Id = String(selection?.residentialTier2Id || "");
+  const tier3Id = String(selection?.residentialTier3Id || "");
+  if (!country) return emptyResidential();
+  if (country === "KW") {
+    return {
+      country,
+      governorateId: tier2Id,
+      regionId: "",
+      areaId: tier3Id,
+      cityId: "",
+    };
+  }
+  return {
+    country,
+    governorateId: "",
+    regionId: tier2Id,
+    areaId: "",
+    cityId: tier3Id,
+  };
+}
+
+function residentialCountryValue(residential) {
+  return String(residential?.country || "").toUpperCase();
+}
+
+function residentialTier2Id(residential) {
+  return String(residential?.governorateId || residential?.regionId || "");
+}
+
+function residentialTier3Id(residential) {
+  return String(residential?.areaId || residential?.cityId || "");
+}
+
+function residentialTier2Row(residential) {
+  const country = residentialCountryValue(residential);
+  if (country === "KW") return addressRowById(kuwaitGovernorates(), residential?.governorateId);
+  if (country === "SA") return addressRowById(saudiRegions(), residential?.regionId);
+  return null;
+}
+
+function residentialTier3Row(residential) {
+  const country = residentialCountryValue(residential);
+  if (country === "KW") return addressRowById(addressReference().kuwait?.areas || [], residential?.areaId);
+  if (country === "SA") return addressRowById(addressReference().saudiArabia?.cities || [], residential?.cityId);
+  return null;
+}
+
+function residentialTier2Name(residential) {
+  return addressLocalizedName(residentialTier2Row(residential)) || l("Not set", "غير محدد");
+}
+
+function residentialTier3Name(residential) {
+  return addressLocalizedName(residentialTier3Row(residential)) || l("Not set", "غير محدد");
+}
+
+function residentialSummary(residential, options = {}) {
+  const value = normalizeResidential(residential);
+  if (!value.country) return options.fallback || l("Not set", "غير محدد");
+  const parts = [
+    options.includeCountry === false ? "" : `${addressCountryFlag(value.country)} ${addressCountryName(value.country)}`,
+    residentialTier2Name(value),
+    residentialTier3Name(value),
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function residentialMatchesFilters(residential, filters) {
+  const country = residentialCountryValue(residential);
+  const tier2 = residentialTier2Id(residential);
+  const tier3 = residentialTier3Id(residential);
+  if (filters.residentialCountry && filters.residentialCountry !== country) return false;
+  if (filters.residentialTier2Id && filters.residentialTier2Id !== tier2) return false;
+  if (filters.residentialTier3Id && filters.residentialTier3Id !== tier3) return false;
+  return true;
+}
+
+function residentialTier2Options(country) {
+  if (country === "KW") return kuwaitGovernorates();
+  if (country === "SA") return saudiRegions();
+  return [];
+}
+
+function residentialTier3Options(country, tier2Id) {
+  if (!tier2Id) return [];
+  if (country === "KW") return kuwaitAreas(tier2Id);
+  if (country === "SA") return saudiCities(tier2Id);
+  return [];
+}
+
 function emptyShippingAddressDraft() {
   return {
     country: "",
@@ -297,7 +432,9 @@ function emptySignupDraft() {
     password: "",
     mobile: "",
     gender: "",
-    cityId: "",
+    residentialCountry: "",
+    residentialTier2Id: "",
+    residentialTier3Id: "",
     categoryId: "",
     instagram: "",
     instagramFollowers: "0",
@@ -316,9 +453,26 @@ function signupDraftValue() {
   };
 }
 
-function shippingAddressDraftFrom(address) {
+function signupResidentialValue() {
+  return residentialFromSelection(signupDraftValue());
+}
+
+function shippingAddressSeedFromResidential(residential) {
+  const value = normalizeResidential(residential);
+  if (!value.country) return null;
+  return {
+    country: value.country,
+    governorateId: value.governorateId || "",
+    regionId: value.regionId || "",
+    cityId: value.cityId || "",
+    areaId: value.areaId || "",
+  };
+}
+
+function shippingAddressDraftFrom(address, seed = null) {
   const draft = {
     ...emptyShippingAddressDraft(),
+    ...(shippingAddressSeedFromResidential(seed) || {}),
     ...(address || {}),
   };
   if (draft.country === "SA" && !draft.cityId && draft.cityOther) draft.cityId = ADDRESS_OTHER_VALUE;
@@ -338,7 +492,7 @@ function clearShippingAddressComposer() {
 
 function openShippingAddressEditor(address = currentShippingAddress()) {
   state.shippingAddressEditorOpen = true;
-  state.shippingAddressDraft = shippingAddressDraftFrom(address);
+  state.shippingAddressDraft = shippingAddressDraftFrom(address, state.currentUser?.residential || null);
   state.shippingAddressPickerOpen = "";
   state.shippingAddressPickerQueries = {};
 }
@@ -350,7 +504,7 @@ function closeShippingAddressEditor() {
 
 function openSignupAddressSection() {
   state.signupAddressExpanded = true;
-  state.shippingAddressDraft = shippingAddressDraftFrom(null);
+  state.shippingAddressDraft = shippingAddressDraftFrom(null, signupResidentialValue());
   state.shippingAddressPickerOpen = "";
   state.shippingAddressPickerQueries = {};
 }
@@ -404,11 +558,29 @@ function isSignupFieldName(name) {
   return SIGNUP_FORM_FIELDS.includes(name);
 }
 
+function isResidentialFieldName(name) {
+  return ["residentialCountry", "residentialTier2Id", "residentialTier3Id"].includes(name);
+}
+
+function syncSignupResidentialDraftFromForm(form) {
+  if (!form) return;
+  updateSignupDraft("residentialCountry", form.residentialCountry?.value || "");
+  updateSignupDraft("residentialTier2Id", form.residentialTier2Id?.value || "");
+  updateSignupDraft("residentialTier3Id", form.residentialTier3Id?.value || "");
+}
+
 function updateSignupDraft(name, rawValue) {
   if (!isSignupFieldName(name)) return;
   const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
   const next = signupDraftValue();
   next[name] = value;
+  if (name === "residentialCountry") {
+    next.residentialTier2Id = "";
+    next.residentialTier3Id = "";
+  }
+  if (name === "residentialTier2Id") {
+    next.residentialTier3Id = "";
+  }
   state.signupDraft = next;
 }
 
@@ -853,7 +1025,16 @@ function applyApiErrorToForm(form, message) {
     { match: "Gender is required", fields: ["gender"] },
     { match: "Mobile number is required.", fields: ["mobile"] },
     { match: "Mobile number must be 8 digits", fields: ["mobile"] },
-    { match: "City is required.", fields: ["cityId"] },
+    { match: "residential_required", fields: ["residentialCountry", "residentialTier2Id", "residentialTier3Id"] },
+    { match: "invalid_country", fields: ["residentialCountry"] },
+    { match: "invalid_governorate", fields: ["residentialTier2Id"] },
+    { match: "invalid_region", fields: ["residentialTier2Id"] },
+    { match: "invalid_area", fields: ["residentialTier3Id"] },
+    { match: "area_required", fields: ["residentialTier3Id"] },
+    { match: "invalid_city", fields: ["residentialTier3Id"] },
+    { match: "city_required", fields: ["residentialTier3Id"] },
+    { match: "area_governorate_mismatch", fields: ["residentialTier2Id", "residentialTier3Id"] },
+    { match: "city_region_mismatch", fields: ["residentialTier2Id", "residentialTier3Id"] },
     { match: "Instagram is required.", fields: ["instagram"] },
     { match: "Password is required.", fields: ["password"] },
     { match: "New password is required.", fields: ["password"] },
@@ -1225,7 +1406,10 @@ function campaignMatchesInfluencer(campaign, influencer) {
   if (campaign.status !== "live") return false;
   if (campaign.visitDeadline && localDateString(campaign.visitDeadline) < localDateString()) return false;
   if (influencer.status !== "active") return false;
-  if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(influencer.cityId)) return false;
+  const residential = influencer.residential || {};
+  if ((campaign.targetCountries || []).length && !(campaign.targetCountries || []).includes(residentialCountryValue(residential))) return false;
+  if ((campaign.targetGovernorateIds || []).length && !(campaign.targetGovernorateIds || []).includes(residentialTier2Id(residential))) return false;
+  if ((campaign.targetCityIds || []).length && !(campaign.targetCityIds || []).includes(residentialTier3Id(residential))) return false;
   if ((campaign.targetCategoryIds || []).length && !(campaign.targetCategoryIds || []).includes(influencer.categoryId)) return false;
   if (campaign.targetGender && campaign.targetGender !== "any" && influencer.gender !== campaign.targetGender) return false;
   const totalFollowers =
@@ -1364,6 +1548,8 @@ function auditActionLabel(action) {
     "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+    residential_updated: l("Updated residential location", "حدّث مكان السكن"),
+    campaign_targeting_reset: l("Reset campaign targeting", "أعاد ضبط استهداف الحملة"),
     address_updated: l("Updated shipping address", "حدّث عنوان الشحن"),
     address_rejected: l("Rejected shipping address at signup", "رفض عنوان الشحن أثناء التسجيل"),
     address_cleared: l("Cleared shipping address", "حذف عنوان الشحن"),
@@ -1570,7 +1756,7 @@ function buildReportsDashboardData() {
         campaign,
         influencer,
         influencerName: influencer?.fullName || participant.offlineName || "",
-        cityId: influencer?.cityId || null,
+        residential: influencer?.residential || null,
         categoryId: influencer?.categoryId || null,
         tags: influencer?.tags || [],
       };
@@ -1631,7 +1817,7 @@ function buildReportsDashboardData() {
       return {
         influencerId: influencer.id,
         fullName: influencer.fullName,
-        cityId: influencer.cityId,
+        residential: influencer.residential || null,
         categoryId: influencer.categoryId,
         status: influencer.status,
         tags: influencer.tags || [],
@@ -1902,7 +2088,9 @@ function reportFilterEntries(tab, filters) {
   }
   if (tab === "influencers") {
     if (filters.query) entries.push({ label: l("Member", "العضو"), value: filters.query });
-    if (filters.cityId) entries.push({ label: l("City", "المدينة"), value: cityName(filters.cityId) });
+    if (filters.residentialCountry) entries.push({ label: l("Country", "الدولة"), value: addressCountryName(filters.residentialCountry) });
+    if (filters.residentialTier2Id) entries.push({ label: residentialTier2Label(filters.residentialCountry), value: residentialTier2Name(residentialFromSelection(filters)) });
+    if (filters.residentialTier3Id) entries.push({ label: residentialTier3Label(filters.residentialCountry), value: residentialTier3Name(residentialFromSelection(filters)) });
     if (filters.categoryId) entries.push({ label: l("Category", "الفئة"), value: categoryName(filters.categoryId) });
     if (filters.status) entries.push({ label: l("Status", "الحالة"), value: filters.status });
     if (filters.tag) entries.push({ label: l("Tag", "العلامة"), value: filters.tag });
@@ -2223,6 +2411,10 @@ function render(options = {}) {
   }
   syncFlashLayer();
   setTimeout(renderPendingQrCodes, 20);
+  setTimeout(() => {
+    document.querySelectorAll("[data-residential-form]").forEach((container) => syncResidentialCascadeForm(container));
+    document.querySelectorAll("[data-campaign-targeting-form]").forEach((form) => syncCampaignTargetingForm(form));
+  }, 20);
   if (!deferHistorySync) syncCurrentHistoryEntry();
   if (focusSnapshot) requestAnimationFrame(() => restoreFocusedField(focusSnapshot));
 }
@@ -2359,7 +2551,17 @@ function renderSignupForm() {
       ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), value: draft.password || "", minLength: 8 })}
       <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", draft.mobile || "", true)}</label>
       <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", draft.gender || "", true)}</label>
-      <label class="field"><span>${l("City", "المدينة")} <em class="required-mark">*</em></span>${renderCitySelect("cityId", draft.cityId || "", false, true)}</label>
+      <div class="field field-span-full signup-residential-block">
+        <span>${l("Where do you live?", "أين تسكن؟")} <em class="required-mark">*</em></span>
+        <p class="compact">${escapeHtml(l("Choose your country, governorate or region, and city so PICK can match you to nearby campaigns.", "اختر دولتك ومحافظتك أو منطقتك ومدينتك حتى يتمكن PICK من مطابقتك مع الحملات القريبة."))}</p>
+        <div class="form-grid two-col signup-residential-block__grid">
+          ${renderResidentialCascadeFields({
+            prefix: "residential",
+            value: signupResidentialValue(),
+            required: true,
+          })}
+        </div>
+      </div>
       <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", draft.categoryId || "")}</label>
       <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required value="${escapeHtml(draft.instagram || "")}" /></label>
       <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="${escapeHtml(draft.instagramFollowers || "0")}" /></label>
@@ -3426,7 +3628,7 @@ function renderOperationsDashboard() {
 function filteredInfluencers() {
   const query = state.influencerFilters.query.toLowerCase();
   return allInfluencers().filter((user) => {
-    if (state.influencerFilters.cityId && Number(state.influencerFilters.cityId) !== user.cityId) return false;
+    if (!residentialMatchesFilters(user.residential, state.influencerFilters)) return false;
     if (state.influencerFilters.categoryId && Number(state.influencerFilters.categoryId) !== user.categoryId) return false;
     if (state.influencerFilters.status && state.influencerFilters.status !== user.status) return false;
     if (state.influencerFilters.tag && !(user.tags || []).includes(state.influencerFilters.tag)) return false;
@@ -3481,7 +3683,16 @@ function renderInfluencersPage() {
             <option value="rejected" ${state.influencerFilters.status === "rejected" ? "selected" : ""}>rejected</option>
           </select>
         </label>
-        <label class="field"><span>${l("City", "المدينة")}</span>${renderCitySelect("cityId", state.influencerFilters.cityId, true)}</label>
+        <div class="field field-span-full influencer-filter-residential">
+          <span>${l("Residential location", "مكان السكن")}</span>
+          <div class="form-grid two-col">
+            ${renderResidentialCascadeFields({
+              prefix: "residential",
+              value: residentialFromSelection(state.influencerFilters),
+              includeAll: true,
+            })}
+          </div>
+        </div>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", state.influencerFilters.categoryId, true)}</label>
         <label class="field"><span>${l("Tag", "العلامة")}</span>
           <select name="tag">
@@ -3511,7 +3722,7 @@ function renderInfluencersPage() {
                     <div class="row">
                       <div>
                         <strong>${renderInfluencerProfileTrigger(user.id, user.fullName)}</strong>
-                        <p>${escapeHtml(cityName(user.cityId))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
                       </div>
                       <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
                     </div>
@@ -3544,7 +3755,7 @@ function renderInfluencersPage() {
                     <div class="row">
                       <div>
                         <strong>${renderInfluencerProfileTrigger(user.id, user.fullName)}</strong>
-                        <p>${escapeHtml(cityName(user.cityId))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+                        <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
                       </div>
                       <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
                     </div>
@@ -3634,7 +3845,7 @@ function renderInfluencerTable(influencers, includeActions = true) {
                 <strong>${user.role === "influencer" ? renderInfluencerProfileTrigger(user.id, user.fullName) : escapeHtml(user.fullName)}</strong>
                 <span class="badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>
               </div>
-              <p>${escapeHtml(cityName(user.cityId))} · ${escapeHtml(categoryName(user.categoryId))}</p>
+              <p>${escapeHtml(residentialSummary(user.residential, { includeCountry: false }))} · ${escapeHtml(categoryName(user.categoryId))}</p>
               ${includeActions ? `<p class="compact">${escapeHtml(user.email)}</p>` : ""}
             </article>
           `
@@ -3760,8 +3971,33 @@ function renderCampaignsPage() {
   `;
 }
 
+function campaignTargetTier2Rows() {
+  return [
+    ...kuwaitGovernorates().map((row) => ({ ...row, countryCode: "KW", parentId: "" })),
+    ...saudiRegions().map((row) => ({ ...row, countryCode: "SA", parentId: "" })),
+  ];
+}
+
+function campaignTargetTier3Rows() {
+  return [
+    ...(addressReference().kuwait?.areas || []).map((row) => ({ ...row, countryCode: "KW", parentId: row.governorateId })),
+    ...(addressReference().saudiArabia?.cities || []).map((row) => ({ ...row, countryCode: "SA", parentId: row.regionId })),
+  ];
+}
+
+function campaignTargetPreviewCount(payload) {
+  const previewCampaign = {
+    ...payload,
+    status: "live",
+    visitDeadline: payload.visitDeadline || localDateString(),
+  };
+  return allInfluencers().filter((influencer) => campaignMatchesInfluencer(previewCampaign, influencer)).length;
+}
+
 function renderCampaignForm(campaign) {
   const selectedBranchIds = new Set(campaign?.branchIds || []);
+  const targetCountries = new Set(campaign?.targetCountries || []);
+  const targetGovernorateIds = new Set(campaign?.targetGovernorateIds || []);
   const targetCityIds = new Set(campaign?.targetCityIds || []);
   const targetCategoryIds = new Set(campaign?.targetCategoryIds || []);
   const targetTags = new Set(campaign?.targetTags || []);
@@ -3771,8 +4007,25 @@ function renderCampaignForm(campaign) {
     .sort((left, right) => compareValues(left.value, right.value));
   const branchMode = campaign?.branchMode || "all";
   const isCreate = !campaign;
+  const targetPreview = {
+    status: campaign?.status || "draft",
+    visitDeadline: campaign?.visitDeadline || "",
+    targetCountries: [...targetCountries],
+    targetGovernorateIds: [...targetGovernorateIds],
+    targetCityIds: [...targetCityIds],
+    targetCategoryIds: [...targetCategoryIds],
+    targetGender: campaign?.targetGender || "",
+    minFollowers: Number(campaign?.minFollowers) || 0,
+    targetPlatformIds: [...targetPlatformIds],
+    targetTags: [...targetTags],
+  };
+  const initialMatchCount = campaignTargetPreviewCount(targetPreview);
+  const tier2Rows = campaignTargetTier2Rows();
+  const tier3Rows = campaignTargetTier3Rows();
+  const showTier2 = targetCountries.size > 0;
+  const showTier3 = targetGovernorateIds.size > 0;
   return `
-    <form class="campaign-form-stack" id="${campaign ? "editCampaignForm" : "createCampaignForm"}">
+    <form class="campaign-form-stack" id="${campaign ? "editCampaignForm" : "createCampaignForm"}" data-campaign-targeting-form>
       ${campaign ? `<input type="hidden" name="campaignId" value="${campaign.id}" />` : ""}
       <section class="form-section">
         <div class="form-section-header">
@@ -3867,29 +4120,52 @@ function renderCampaignForm(campaign) {
       <section class="form-section">
         <div class="form-section-header">
           <h4>${l("Targeting", "الاستهداف")}</h4>
-          <p>${l("Use cities, categories, and internal tags to decide who should see this campaign.", "استخدم المدن والفئات والعلامات الداخلية لتحديد من يجب أن يشاهد هذه الحملة.")}</p>
+          <p>${l("Use residential location, categories, and internal tags to decide who should see this campaign.", "استخدم مكان السكن والفئات والعلامات الداخلية لتحديد من يجب أن يشاهد هذه الحملة.")}</p>
         </div>
         <div class="form-grid">
+          ${campaign?.targetingNeedsReset ? `<div class="status-strip-warning field-span-full">${escapeHtml(l("Targeting was reset due to a system update. Please re-pick countries, governorates, and cities.", "تمت إعادة ضبط الاستهداف بسبب تحديث في النظام. يرجى إعادة اختيار الدول والمحافظات والمدن."))}</div>` : ""}
           <div class="field checkbox-field field-span-full">
-            <span>${l("Target cities (leave empty for all)", "المدن المستهدفة واتركها فارغة للجميع")}</span>
+            <span>${l("Target countries (leave empty for all)", "الدول المستهدفة واتركها فارغة للجميع")}</span>
+            <div class="option-grid option-grid--compact">
+              ${(addressReference().countries || []).map((country) => `
+                <label class="option-pill option-pill--country">
+                  <input type="checkbox" name="targetCountries" value="${country.code}" ${targetCountries.has(country.code) ? "checked" : ""} />
+                  <span>${escapeHtml(`${addressCountryFlag(country.code)} ${addressLocalizedName(country)}`)}</span>
+                </label>
+              `).join("")}
+            </div>
+          </div>
+          <div class="field checkbox-field field-span-full" data-target-tier2-section ${showTier2 ? "" : "hidden"}>
+            <span>${l("Target governorates / regions (leave empty for all within chosen countries)", "المحافظات / المناطق المستهدفة واتركها فارغة للجميع داخل الدول المختارة")}</span>
             <div class="row-wrap" style="margin-bottom: 10px;">
-              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCityIds" data-checkbox-mode="all">${l("Select all", "تحديد الكل")}</button>
+              <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetGovernorateIds" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
+            </div>
+            <div class="option-grid">
+              ${tier2Rows.map((row) => `
+                <label class="option-pill" data-target-country="${row.countryCode}">
+                  <input type="checkbox" name="targetGovernorateIds" value="${row.id}" ${targetGovernorateIds.has(row.id) ? "checked" : ""} />
+                  <span>${escapeHtml(addressLocalizedName(row))}</span>
+                </label>
+              `).join("")}
+            </div>
+          </div>
+          <div class="field checkbox-field field-span-full" data-target-tier3-section ${showTier3 ? "" : "hidden"}>
+            <span>${l("Target cities (leave empty for all within chosen governorates / regions)", "المدن المستهدفة واتركها فارغة للجميع داخل المحافظات / المناطق المختارة")}</span>
+            <div class="row-wrap" style="margin-bottom: 10px;">
               <button type="button" class="secondary button-small" data-action="set-checkbox-group" data-checkbox-name="targetCityIds" data-checkbox-mode="clear">${l("Clear", "مسح")}</button>
             </div>
             <div class="option-grid">
-              ${state.data.cities
-                .filter((city) => city.status === "active")
-                .map(
-                  (city) => `
-                    <label class="option-pill">
-                      <input type="checkbox" name="targetCityIds" value="${city.id}" ${targetCityIds.has(city.id) ? "checked" : ""} />
-                      <span>${escapeHtml(state.locale === "ar" ? city.nameAr : city.nameEn)}</span>
-                    </label>
-                  `
-                )
-                .join("")}
+              ${tier3Rows.map((row) => `
+                <label class="option-pill" data-target-country="${row.countryCode}" data-target-parent-id="${row.parentId}">
+                  <input type="checkbox" name="targetCityIds" value="${row.id}" ${targetCityIds.has(row.id) ? "checked" : ""} />
+                  <span>${escapeHtml(addressLocalizedName(row))}</span>
+                </label>
+              `).join("")}
             </div>
           </div>
+          <p class="compact field-span-full campaign-targeting-preview" data-targeting-preview>
+            ${escapeHtml(l("Matches", "يطابق"))} ${initialMatchCount} ${escapeHtml(initialMatchCount === 1 ? l("member.", "عضواً.") : l("members.", "أعضاء."))}
+          </p>
           <div class="field checkbox-field field-span-full">
             <span>${l("Target categories (leave empty for all)", "الفئات المستهدفة واتركها فارغة للجميع")}</span>
             <div class="row-wrap" style="margin-bottom: 10px;">
@@ -4355,7 +4631,7 @@ function renderCampaignViewPage() {
                         <p>${
                           participant.source === "offline"
                             ? escapeHtml(l("Offline reservation", "حجز خارجي"))
-                            : `${escapeHtml(cityName(participant.influencerCityId))} · ${escapeHtml(categoryName(participant.influencerCategoryId))}`
+                            : `${escapeHtml(residentialSummary(participant.influencerResidential, { includeCountry: false }))} · ${escapeHtml(categoryName(participant.influencerCategoryId))}`
                         }</p>
                       </div>
                       <span class="badge ${participantDisplayTone(participant)}">${escapeHtml(participantDisplayStatus(participant))}</span>
@@ -4392,6 +4668,58 @@ function renderEmptyCampaignPage(message) {
     ${pageHeader(l("Campaigns", "الحملات"), message)}
     <section class="panel"><div class="empty-state">${message}</div></section>
   `;
+}
+
+function syncCampaignTargetingForm(form) {
+  if (!form) return;
+  const selectedCountries = new Set(
+    Array.from(form.querySelectorAll('input[name="targetCountries"]:checked')).map((input) => String(input.value || ""))
+  );
+  const selectedTier2 = new Set(
+    Array.from(form.querySelectorAll('input[name="targetGovernorateIds"]:checked')).map((input) => String(input.value || ""))
+  );
+  const tier2Section = form.querySelector("[data-target-tier2-section]");
+  const tier3Section = form.querySelector("[data-target-tier3-section]");
+
+  if (tier2Section) tier2Section.hidden = selectedCountries.size === 0;
+  form.querySelectorAll("[data-target-tier2-section] .option-pill").forEach((pill) => {
+    const country = pill.dataset.targetCountry || "";
+    const input = pill.querySelector('input[name="targetGovernorateIds"]');
+    const visible = !selectedCountries.size || selectedCountries.has(country);
+    pill.hidden = !visible;
+    if (!visible && input) input.checked = false;
+  });
+
+  const activeTier2 = new Set(
+    Array.from(form.querySelectorAll('input[name="targetGovernorateIds"]:checked')).map((input) => String(input.value || ""))
+  );
+  if (tier3Section) tier3Section.hidden = activeTier2.size === 0;
+  form.querySelectorAll("[data-target-tier3-section] .option-pill").forEach((pill) => {
+    const country = pill.dataset.targetCountry || "";
+    const parentId = pill.dataset.targetParentId || "";
+    const input = pill.querySelector('input[name="targetCityIds"]');
+    const visible = (!selectedCountries.size || selectedCountries.has(country)) && activeTier2.has(parentId);
+    pill.hidden = !visible;
+    if (!visible && input) input.checked = false;
+  });
+
+  const preview = form.querySelector("[data-targeting-preview]");
+  if (preview) {
+    const payload = campaignFormPayload(form);
+    const count = campaignTargetPreviewCount({
+      status: payload.status,
+      visitDeadline: payload.visitDeadline,
+      targetCountries: payload.targetCountries,
+      targetGovernorateIds: payload.targetGovernorateIds,
+      targetCityIds: payload.targetCityIds,
+      targetCategoryIds: payload.targetCategoryIds,
+      targetGender: payload.targetGender,
+      minFollowers: payload.minFollowers,
+      targetPlatformIds: payload.targetPlatformIds,
+      targetTags: payload.targetTags,
+    });
+    preview.textContent = `${l("Matches", "يطابق")} ${count} ${count === 1 ? l("member.", "عضواً.") : l("members.", "أعضاء.")}`;
+  }
 }
 
 function renderBranchForm(branch) {
@@ -4514,12 +4842,12 @@ function renderMasterDataPage() {
   const visiblePlatforms = state.masterDataShowInactive.platform ? platforms : platforms.filter((row) => row.status === "active");
   const visibleTags = state.masterDataShowInactive.tag ? tags : tags.filter((row) => row.status === "active");
   return `
-    ${pageHeader(l("Master Data", "البيانات الأساسية"), l("Manage cities, categories, platforms, and controlled tags used across campaigns, profiles, and reporting.", "إدارة المدن والفئات والمنصات والعلامات المعتمدة المستخدمة عبر الحملات والملفات والتقارير."), { hideHeroStats: true })}
+    ${pageHeader(l("Master Data", "البيانات الأساسية"), l("Manage branch cities, categories, platforms, and controlled tags used across the system.", "إدارة مدن الأفرع والفئات والمنصات والعلامات المعتمدة المستخدمة عبر النظام."), { hideHeroStats: true })}
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
           <h3>${l("Cities", "المدن")}</h3>
-          <p class="panel-subtitle">${l("Keep the city list compact and click a city row to open inline editing.", "حافظ على قائمة المدن بشكل مدمج واضغط على صف المدينة لفتح التعديل الداخلي.")}</p>
+          <p class="panel-subtitle">${l("This list applies only to branch locations. Member residential cities are managed through the address reference data.", "تنطبق هذه القائمة على مواقع الأفرع فقط. مدن سكن الأعضاء تُدار عبر بيانات مرجع العناوين.")}</p>
         </div>
         <div class="row-wrap">
           <span class="badge">${visibleCities.length} ${escapeHtml(l("visible", "ظاهر"))}</span>
@@ -4929,7 +5257,16 @@ function renderInfluencerFilters(filters) {
       </div>
       <form class="form-grid reports-filter-grid" id="reportFilterForm">
         <label class="field"><span>${l("Member", "العضو")}</span><input name="query" value="${escapeHtml(filters.query || "")}" placeholder="${l("Search by name or email", "ابحث بالاسم أو البريد")}" /></label>
-        <label class="field"><span>${l("City", "المدينة")}</span>${renderCitySelect("cityId", filters.cityId, true)}</label>
+        <div class="field field-span-full">
+          <span>${l("Residential location", "مكان السكن")}</span>
+          <div class="form-grid two-col">
+            ${renderResidentialCascadeFields({
+              prefix: "residential",
+              value: residentialFromSelection(filters),
+              includeAll: true,
+            })}
+          </div>
+        </div>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", filters.categoryId, true)}</label>
         <label class="field"><span>${l("Tag", "العلامة")}</span><input name="tag" value="${escapeHtml(filters.tag || "")}" placeholder="${l("Example: vip", "مثال: vip")}" /></label>
         <label class="field"><span>${l("Platform", "المنصة")}</span>${renderPlatformSelect("platform", filters.platform, true)}</label>
@@ -5109,7 +5446,7 @@ function renderInfluencerReports(dashboard) {
       const haystack = `${row.fullName} ${(row.tags || []).join(" ")}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-    if (filters.cityId && Number(filters.cityId) !== row.cityId) return false;
+    if (!residentialMatchesFilters(row.residential, filters)) return false;
     if (filters.categoryId && Number(filters.categoryId) !== row.categoryId) return false;
     if (filters.status && filters.status !== row.status) return false;
     if (filters.tag) {
@@ -5124,7 +5461,7 @@ function renderInfluencerReports(dashboard) {
   const sortValueFor = (row, key) => {
     if (key === "fullName") return row.fullName;
     if (key === "status") return row.status;
-    if (key === "city") return cityName(row.cityId);
+    if (key === "city") return residentialTier3Name(row.residential);
     if (key === "category") return categoryName(row.categoryId);
     if (key === "platform") return row.preferredPlatform || "";
     if (key === "signupDate") return dateValue(row.signupDate) || 0;
@@ -5169,7 +5506,7 @@ function renderInfluencerReports(dashboard) {
               html: true,
               sortKey: "status",
             },
-            { label: l("City", "المدينة"), render: (row) => cityName(row.cityId), sortKey: "city" },
+            { label: l("City", "المدينة"), render: (row) => residentialTier3Name(row.residential), sortKey: "city" },
             { label: l("Category", "الفئة"), render: (row) => categoryName(row.categoryId), sortKey: "category" },
             { label: l("Tags", "العلامات"), render: (row) => (row.tags || []).join(", ") || "-" },
             { label: l("Platform", "المنصة"), render: (row) => row.preferredPlatform || "-", sortKey: "platform" },
@@ -6591,10 +6928,11 @@ function renderProfilePage() {
   const wrapperClass = isInfluencer ? "block block--ivory profile-block" : "panel";
   return `
     ${pageHeader(l("My Profile", "ملفي الشخصي"), l("Update your profile details, optional image, and social information. Changes apply immediately.", "حدّث تفاصيل ملفك وصورتك الاختيارية ومعلومات السوشيال. التعديلات تطبق فوراً."))}
+    ${!user.residential?.country ? `<article class="status-strip-warning" style="margin-bottom: 18px;">${escapeHtml(l("Please complete your residential location before you continue using the club.", "يرجى إكمال مكان السكن قبل متابعة استخدام النادي."))}</article>` : ""}
     <section class="${wrapperClass}">
       <h3>${l("Profile Details", "تفاصيل الملف")}</h3>
       <p class="panel-subtitle">${isInfluencer
-        ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, city, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس والمدينة وإنستغرام مطلوبة.")
+        ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, residential location, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس ومكان السكن وإنستغرام مطلوبة.")
         : l("Required fields are marked with *. Everything else on this page is optional.", "الحقول المطلوبة مميزة بعلامة *. وكل ما عدا ذلك في هذه الصفحة اختياري.")}</p>
       <form id="profileForm" class="form-grid two-col" enctype="multipart/form-data">
         <div class="profile-image-panel" style="grid-column: 1 / -1;">
@@ -6609,7 +6947,17 @@ function renderProfilePage() {
         <label class="field"><span>${l("Mobile", "الهاتف")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderKuwaitMobileField("mobile", user.mobile || "", isInfluencer)}</label>
         <label class="field"><span>${l("Gender", "الجنس")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderGenderSelect("gender", user.gender || "", isInfluencer)}</label>
         <label class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><input name="dateOfBirth" type="date" value="${escapeHtml(user.dateOfBirth || "")}" /></label>
-        <label class="field"><span>${l("City", "المدينة")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderCitySelect("cityId", user.cityId, false, isInfluencer)}</label>
+        <div class="field field-span-full profile-residential-block">
+          <span>${l("Residential location", "مكان السكن")} <em class="required-mark">*</em></span>
+          <p class="compact">${escapeHtml(l("This is used for campaign targeting and member filters.", "يُستخدم هذا لاستهداف الحملات وفلاتر الأعضاء."))}</p>
+          <div class="form-grid two-col profile-residential-block__grid">
+            ${renderResidentialCascadeFields({
+              prefix: "residential",
+              value: user.residential || emptyResidential(),
+              required: true,
+            })}
+          </div>
+        </div>
         <label class="field"><span>${l("Category", "الفئة")}</span>${renderCategorySelect("categoryId", user.categoryId)}</label>
         <label class="field"><span>Instagram${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span><input name="instagram" ${isInfluencer ? "required" : ""} value="${escapeHtml(user.instagram || "")}" /></label>
         <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" value="${escapeHtml(user.followers?.instagram || 0)}" /></label>
@@ -6653,7 +7001,7 @@ function renderInfluencerProfilePage() {
       {
         heroStats: [
           { label: l("Account status", "حالة الحساب"), value: `<span class="hero-status-badge badge ${statusTone(user.status)}">${escapeHtml(user.status)}</span>`, allowHtml: true },
-          { label: l("City", "المدينة"), value: cityName(user.cityId) || l("Not set", "غير محدد") },
+          { label: l("Residential city", "مدينة السكن"), value: residentialTier3Name(user.residential) || l("Not set", "غير محدد") },
           { label: l("Category", "الفئة"), value: categoryName(user.categoryId) || l("Not set", "غير محدد") },
         ],
         compactHeroStats: true,
@@ -6683,6 +7031,7 @@ function renderInfluencerProfilePage() {
           <div class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span><strong>${escapeHtml(user.preferredPlatform || l("Not set", "غير محدد"))}</strong></div>
           <div class="field"><span>${l("Gender", "الجنس")}</span><strong>${escapeHtml(genderLabel(user.gender))}</strong></div>
           <div class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><strong>${escapeHtml(formatDate(user.dateOfBirth))}</strong></div>
+          <div class="field" style="grid-column: 1 / -1;"><span>${l("Residential location", "مكان السكن")}</span><strong>${escapeHtml(residentialSummary(user.residential))}</strong></div>
           <div class="field"><span>Instagram</span><strong>${escapeHtml(user.instagram || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.instagram || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
           <div class="field"><span>TikTok</span><strong>${escapeHtml(user.tiktok || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.tiktok || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
           <div class="field"><span>Snapchat</span><strong>${escapeHtml(user.snapchat || "-")}</strong><p class="compact">${escapeHtml(String(user.followers?.snapchat || 0))} ${escapeHtml(l("followers", "متابع"))}</p></div>
@@ -6758,6 +7107,95 @@ function renderInfluencerProfilePage() {
       )}
     </section>
   `;
+}
+
+function renderResidentialCascadeFields(options = {}) {
+  const {
+    prefix = "residential",
+    value = emptyResidential(),
+    required = false,
+    includeAll = false,
+  } = options;
+  const selection = residentialSelectionFromValue(value);
+  const country = selection.residentialCountry;
+  const tier2Options = residentialTier2Options(country);
+  const tier3Options = residentialTier3Options(country, selection.residentialTier2Id);
+  const countryLabel = l("Country", "الدولة");
+  const selectLabel = includeAll ? l("All", "الكل") : l("Select", "اختر");
+
+  return `
+    <div class="residential-cascade" data-residential-form data-residential-prefix="${prefix}" data-residential-include-all="${includeAll ? "1" : "0"}">
+      <label class="field">
+        <span>${countryLabel}${required ? ' <em class="required-mark">*</em>' : ""}</span>
+        <select name="${prefix}Country" ${required ? "required" : ""}>
+          <option value="">${escapeHtml(selectLabel)}</option>
+          ${(addressReference().countries || []).map((countryRow) => `
+            <option value="${countryRow.code}" ${selection.residentialCountry === countryRow.code ? "selected" : ""}>${escapeHtml(addressLocalizedName(countryRow))}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>${escapeHtml(residentialTier2Label(country))}${required ? ' <em class="required-mark">*</em>' : ""}</span>
+        <select name="${prefix}Tier2Id" ${required ? "required" : ""} ${!country ? "disabled" : ""}>
+          <option value="">${escapeHtml(includeAll ? l("All", "الكل") : !country ? l("Choose country first", "اختر الدولة أولاً") : l("Select", "اختر"))}</option>
+          ${tier2Options.map((row) => `
+            <option value="${row.id}" ${selection.residentialTier2Id === row.id ? "selected" : ""}>${escapeHtml(addressLocalizedName(row))}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>${escapeHtml(residentialTier3Label(country))}${required ? ' <em class="required-mark">*</em>' : ""}</span>
+        <select name="${prefix}Tier3Id" ${required ? "required" : ""} ${!selection.residentialTier2Id ? "disabled" : ""}>
+          <option value="">${escapeHtml(includeAll ? l("All", "الكل") : !selection.residentialTier2Id ? l("Choose previous level first", "اختر المستوى السابق أولاً") : l("Select", "اختر"))}</option>
+          ${tier3Options.map((row) => `
+            <option value="${row.id}" ${selection.residentialTier3Id === row.id ? "selected" : ""}>${escapeHtml(addressLocalizedName(row))}</option>
+          `).join("")}
+        </select>
+      </label>
+    </div>
+  `;
+}
+
+function syncResidentialCascadeForm(container) {
+  if (!container) return;
+  const prefix = container.dataset.residentialPrefix || "residential";
+  const includeAll = container.dataset.residentialIncludeAll === "1";
+  const countrySelect = container.querySelector(`[name="${CSS.escape(prefix)}Country"]`);
+  const tier2Select = container.querySelector(`[name="${CSS.escape(prefix)}Tier2Id"]`);
+  const tier3Select = container.querySelector(`[name="${CSS.escape(prefix)}Tier3Id"]`);
+  const tier2Label = tier2Select?.closest(".field")?.querySelector("span");
+  const tier3Label = tier3Select?.closest(".field")?.querySelector("span");
+  if (!countrySelect || !tier2Select || !tier3Select) return;
+
+  const country = String(countrySelect.value || "").toUpperCase();
+  const currentTier2 = String(tier2Select.value || "");
+  const currentTier3 = String(tier3Select.value || "");
+  const tier2Options = residentialTier2Options(country);
+  const nextTier2Value = tier2Options.some((row) => row.id === currentTier2) ? currentTier2 : "";
+  const tier3Options = residentialTier3Options(country, nextTier2Value);
+  const nextTier3Value = tier3Options.some((row) => row.id === currentTier3) ? currentTier3 : "";
+
+  if (tier2Label) {
+    tier2Label.innerHTML = `${escapeHtml(residentialTier2Label(country))}${countrySelect.required ? ' <em class="required-mark">*</em>' : ""}`;
+  }
+  if (tier3Label) {
+    tier3Label.innerHTML = `${escapeHtml(residentialTier3Label(country))}${countrySelect.required ? ' <em class="required-mark">*</em>' : ""}`;
+  }
+
+  tier2Select.disabled = !country;
+  tier2Select.innerHTML = [
+    `<option value="">${escapeHtml(includeAll ? l("All", "الكل") : !country ? l("Choose country first", "اختر الدولة أولاً") : l("Select", "اختر"))}</option>`,
+    ...tier2Options.map((row) => `<option value="${row.id}" ${row.id === nextTier2Value ? "selected" : ""}>${escapeHtml(addressLocalizedName(row))}</option>`),
+  ].join("");
+
+  tier3Select.disabled = !nextTier2Value;
+  tier3Select.innerHTML = [
+    `<option value="">${escapeHtml(includeAll ? l("All", "الكل") : !nextTier2Value ? l("Choose previous level first", "اختر المستوى السابق أولاً") : l("Select", "اختر"))}</option>`,
+    ...tier3Options.map((row) => `<option value="${row.id}" ${row.id === nextTier3Value ? "selected" : ""}>${escapeHtml(addressLocalizedName(row))}</option>`),
+  ].join("");
+
+  tier2Select.value = nextTier2Value;
+  tier3Select.value = nextTier3Value;
 }
 
 function renderCitySelect(name, selectedValue, includeAll = false, required = false) {
@@ -7461,8 +7899,11 @@ async function handleClick(event) {
     const mode = target.dataset.checkboxMode;
     if (!field || !name) return;
     field.querySelectorAll(`input[name="${CSS.escape(name)}"]`).forEach((input) => {
+      if (input.closest("[hidden]")) return;
       input.checked = mode === "all";
     });
+    const campaignForm = target.closest("[data-campaign-targeting-form]");
+    if (campaignForm) syncCampaignTargetingForm(campaignForm);
     return;
   }
 
@@ -7610,9 +8051,41 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(mobileError);
       }
+      const residential = residentialFromSelection(values);
+      if (!residential.country) {
+        const message = l("Please choose your country.", "يرجى اختيار دولتك.");
+        setFieldError(form, "residentialCountry", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
+      if (!residentialTier2Id(residential)) {
+        const message = l("Please choose your governorate or region.", "يرجى اختيار المحافظة أو المنطقة.");
+        setFieldError(form, "residentialTier2Id", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
+      if (!residentialTier3Id(residential)) {
+        const message = l("Please choose your city.", "يرجى اختيار مدينتك.");
+        setFieldError(form, "residentialTier3Id", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
       const signupAddress = pickSignupAddressPayload();
       const payload = {
-        ...values,
+        fullName: values.fullName,
+        email: values.email,
+        password: values.password,
+        mobile: values.mobile,
+        gender: values.gender,
+        categoryId: values.categoryId,
+        instagram: values.instagram,
+        instagramFollowers: values.instagramFollowers,
+        tiktok: values.tiktok,
+        tiktokFollowers: values.tiktokFollowers,
+        snapchat: values.snapchat,
+        snapchatFollowers: values.snapchatFollowers,
+        preferredPlatform: values.preferredPlatform,
+        residential,
         ...(signupAddress ? { address: signupAddress } : {}),
       };
       const response = await api("/api/signup", { method: "POST", body: JSON.stringify(payload) });
@@ -7828,16 +8301,33 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(mobileError);
       }
+      const residential = residentialFromSelection({
+        residentialCountry: formData.get("residentialCountry"),
+        residentialTier2Id: formData.get("residentialTier2Id"),
+        residentialTier3Id: formData.get("residentialTier3Id"),
+      });
+      if (!residential.country) {
+        const message = l("Please choose your country.", "يرجى اختيار دولتك.");
+        setFieldError(form, "residentialCountry", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
+      if (!residentialTier2Id(residential)) {
+        const message = l("Please choose your governorate or region.", "يرجى اختيار المحافظة أو المنطقة.");
+        setFieldError(form, "residentialTier2Id", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
+      if (!residentialTier3Id(residential)) {
+        const message = l("Please choose your city.", "يرجى اختيار مدينتك.");
+        setFieldError(form, "residentialTier3Id", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
       if (state.currentUser.role === "influencer") {
         if (!formData.get("mobile")) {
           const message = l("Mobile number is required.", "رقم الهاتف مطلوب.");
           setFieldError(form, "mobile", message);
-          reportFormValidity(form);
-          throw new Error(message);
-        }
-        if (!formData.get("cityId")) {
-          const message = l("City is required.", "المدينة مطلوبة.");
-          setFieldError(form, "cityId", message);
           reportFormValidity(form);
           throw new Error(message);
         }
@@ -7960,6 +8450,13 @@ function handleChange(event) {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
     clearFieldError(event.target);
   }
+  if (isResidentialFieldName(event.target.name || "")) {
+    const residentialContainer = event.target.closest("[data-residential-form]");
+    if (residentialContainer) syncResidentialCascadeForm(residentialContainer);
+    if (event.target.closest("#signupForm")) {
+      syncSignupResidentialDraftFromForm(event.target.form);
+    }
+  }
   if (event.target.closest("#signupForm") && event.target.name) {
     updateSignupDraft(event.target.name, event.target.value);
   }
@@ -7997,11 +8494,17 @@ function handleChange(event) {
     }
   }
 
+  if (event.target.closest("[data-campaign-targeting-form]")) {
+    syncCampaignTargetingForm(event.target.form || event.target.closest("form"));
+  }
+
   if (event.target.closest("#influencerFilterForm")) {
     const form = event.target.form;
     state.influencerFilters = {
       query: form.query.value,
-      cityId: form.cityId.value,
+      residentialCountry: form.residentialCountry.value,
+      residentialTier2Id: form.residentialTier2Id.value,
+      residentialTier3Id: form.residentialTier3Id.value,
       categoryId: form.categoryId.value,
       status: form.status.value,
       tag: form.tag.value,
@@ -8034,10 +8537,22 @@ function handleInput(event) {
     updateSignupDraft(event.target.name, event.target.value);
   }
 
+  if (isResidentialFieldName(event.target.name || "")) {
+    const residentialContainer = event.target.closest("[data-residential-form]");
+    if (residentialContainer) syncResidentialCascadeForm(residentialContainer);
+    if (event.target.closest("#signupForm")) {
+      syncSignupResidentialDraftFromForm(event.target.form);
+    }
+  }
+
   if (event.target.matches("[name='campaignSearch']")) {
     state.campaignSearch = event.target.value;
     render({ preserveFocus: true });
     return;
+  }
+
+  if (event.target.closest("[data-campaign-targeting-form]")) {
+    syncCampaignTargetingForm(event.target.form || event.target.closest("form"));
   }
 
   if (event.target.matches("[data-shipping-address-query]")) {
@@ -8060,7 +8575,9 @@ function handleInput(event) {
     const form = event.target.form;
     state.influencerFilters = {
       query: form.query.value,
-      cityId: form.cityId.value,
+      residentialCountry: form.residentialCountry.value,
+      residentialTier2Id: form.residentialTier2Id.value,
+      residentialTier3Id: form.residentialTier3Id.value,
       categoryId: form.categoryId.value,
       status: form.status.value,
       tag: form.tag.value,
@@ -8139,6 +8656,8 @@ function campaignFormPayload(form) {
     verificationPassword: formData.get("verificationPassword"),
     branchMode: formData.get("branchMode"),
     branchIds: formData.getAll("branchIds"),
+    targetCountries: formData.getAll("targetCountries"),
+    targetGovernorateIds: formData.getAll("targetGovernorateIds"),
     targetCityIds: formData.getAll("targetCityIds"),
     targetCategoryIds: formData.getAll("targetCategoryIds"),
     targetTags: normalizedTargetTags,

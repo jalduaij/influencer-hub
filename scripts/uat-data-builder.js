@@ -12,6 +12,15 @@ const CITY_DEFS = [
   { id: 6, nameEn: "Farwaniya", nameAr: "الفروانية" },
 ];
 
+const RESIDENTIAL_BY_LEGACY_CITY_ID = {
+  1: { country: "KW", governorateId: "kw-asimah", regionId: "", areaId: "kw-asimah-kuwait-city", cityId: "" },
+  2: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-hawalli", cityId: "" },
+  3: { country: "KW", governorateId: "kw-hawalli", regionId: "", areaId: "kw-hawalli-salmiya", cityId: "" },
+  4: { country: "KW", governorateId: "kw-jahra", regionId: "", areaId: "kw-jahra-jahra", cityId: "" },
+  5: { country: "KW", governorateId: "kw-mubarak", regionId: "", areaId: "kw-mubarak-mubarak", cityId: "" },
+  6: { country: "KW", governorateId: "kw-farwaniya", regionId: "", areaId: "kw-farwaniya-farwaniya", cityId: "" },
+};
+
 const CATEGORY_DEFS = [
   { id: 1, nameEn: "Food", nameAr: "المأكولات" },
   { id: 2, nameEn: "Lifestyle", nameAr: "أسلوب الحياة" },
@@ -105,6 +114,16 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function residentialFromLegacyCityId(cityId) {
+  return clone(RESIDENTIAL_BY_LEGACY_CITY_ID[Number(cityId)] || {
+    country: "KW",
+    governorateId: "kw-asimah",
+    regionId: "",
+    areaId: "kw-asimah-kuwait-city",
+    cityId: "",
+  });
+}
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -160,9 +179,8 @@ function memberRecord(definition, helpers) {
     mobile: definition.mobile,
     gender: definition.gender,
     dateOfBirth: definition.dateOfBirth || "",
-    cityId: definition.cityId,
+    residential: residentialFromLegacyCityId(definition.cityId),
     categoryId: definition.categoryId,
-    city: helpers.cityName(definition.cityId),
     category: helpers.categoryName(definition.categoryId),
     preferredLanguage: definition.preferredLanguage || "en",
     instagram: definition.instagram === "" ? "" : normalizeSocialHandle(definition.instagram || handle),
@@ -1739,6 +1757,11 @@ function buildUatStore(baseStore, options = {}) {
     if (String(preserved.email || "").toLowerCase() === "jalduaij@kdigtc.com") {
       preserved.password = "pick123";
     }
+    if (!preserved.residential && preserved.cityId) {
+      preserved.residential = residentialFromLegacyCityId(preserved.cityId);
+    }
+    delete preserved.cityId;
+    delete preserved.city;
     return preserved;
   }).sort((left, right) => left.id - right.id);
 
@@ -1753,7 +1776,15 @@ function buildUatStore(baseStore, options = {}) {
   };
 
   const seedMembers = buildSeedMembers(clock, helpers);
-  const campaigns = [...buildCampaigns(clock), ...buildPreviewCampaigns(clock)].map(applyCampaignSeedCover);
+  const campaigns = [...buildCampaigns(clock), ...buildPreviewCampaigns(clock)]
+    .map((campaign) => ({
+      targetCountries: [],
+      targetGovernorateIds: [],
+      targetCityIds: [],
+      targetingNeedsReset: false,
+      ...campaign,
+    }))
+    .map(applyCampaignSeedCover);
   const participants = buildParticipations(clock);
   const campaignCodes = buildCampaignCodes(clock, campaigns, participants);
   const users = [...protectedUsers, ...seedMembers].sort((left, right) => left.id - right.id);
