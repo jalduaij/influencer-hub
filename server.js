@@ -32,7 +32,7 @@ const SHOW_UAT_PANEL = (() => {
   return false;
 })();
 const SECRET_DIR = path.join(DATA_DIR, ".secrets");
-const ADDRESS_REFERENCE_PATH = path.join(ROOT, "data", "seeds", "address-reference.json");
+const ADDRESS_REFERENCE_PATH = path.join(ROOT, "seeds", "address-reference.json");
 let ADDRESS_REFERENCE = {
   countries: [],
   kuwait: { governorates: [], areas: [] },
@@ -40,8 +40,13 @@ let ADDRESS_REFERENCE = {
 };
 try {
   ADDRESS_REFERENCE = JSON.parse(fsSync.readFileSync(ADDRESS_REFERENCE_PATH, "utf8"));
+  console.log(
+    `[address] loaded ${ADDRESS_REFERENCE_PATH}: ${ADDRESS_REFERENCE.countries?.length || 0} countries, ${ADDRESS_REFERENCE.kuwait?.areas?.length || 0} KW areas, ${ADDRESS_REFERENCE.saudiArabia?.cities?.length || 0} SA cities`
+  );
 } catch (error) {
-  console.warn(`[address] could not load ${ADDRESS_REFERENCE_PATH}: ${error.message}`);
+  console.error(
+    `[address] FAILED to load ${ADDRESS_REFERENCE_PATH}: ${error.message}. Country dropdowns will be empty. This is a deployment misconfiguration.`
+  );
 }
 const ADDRESS_LOOKUPS = (() => {
   const map = (rows) => Object.fromEntries((rows || []).map((row) => [row.id, row]));
