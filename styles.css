@@ -8741,10 +8741,21 @@ body.rtl .signup-section__title {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px 18px;
+  align-items: start;
 }
 
 .signup-section__fields > .field-span-full {
   grid-column: 1 / -1;
+}
+
+.signup-section__fields > .field {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.signup-section__fields > .field > .field-help {
+  margin-top: auto;
 }
 
 .signup-section__chips {

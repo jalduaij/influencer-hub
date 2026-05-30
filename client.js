@@ -2671,7 +2671,7 @@ function renderSignupForm() {
           ${renderPasswordField("passwordConfirm", {
             required: true,
             autocomplete: "new-password",
-            hint: "",
+            hint: l("Re-type your password to confirm.", "أعد كتابة كلمة المرور للتأكيد."),
             label: l("Confirm password", "تأكيد كلمة المرور"),
             value: draft.passwordConfirm || "",
             minLength: 8,
