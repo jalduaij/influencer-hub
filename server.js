@@ -434,8 +434,12 @@ function sanitizeUser(user, options = {}) {
   return safeUser;
 }
 
+function maxIdOrZero(items) {
+  return (items || []).reduce((max, item) => Math.max(max, Number(item?.id) || 0), 0);
+}
+
 function nextId(items) {
-  return items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+  return maxIdOrZero(items) + 1;
 }
 
 function normalizeCode(value) {
@@ -1241,19 +1245,30 @@ function normalizeStore(store) {
   }
 
   store.nextIds ||= {};
-  store.nextIds.user ||= nextId(store.users);
-  store.nextIds.campaign ||= nextId(store.campaigns);
-  store.nextIds.code ||= nextId(store.campaignCodes);
-  store.nextIds.participant ||= nextId(store.participants);
-  store.nextIds.campaignDecline ||= nextId(store.campaignDeclines);
-  store.nextIds.branch ||= nextId(store.branches);
-  store.nextIds.city ||= nextId(store.cities);
-  store.nextIds.category ||= nextId(store.categories);
-  store.nextIds.platform ||= nextId(store.platforms);
-  store.nextIds.tag ||= nextId(store.tags);
-  store.nextIds.passwordReset ||= nextId(store.passwordResets);
-  store.nextIds.auditEvent ||= nextId(store.auditEvents);
-  store.nextIds.journalEntry ||= nextId(store.journalEntries);
+  const idTables = [
+    ["user", store.users],
+    ["campaign", store.campaigns],
+    ["code", store.campaignCodes],
+    ["participant", store.participants],
+    ["campaignDecline", store.campaignDeclines],
+    ["branch", store.branches],
+    ["city", store.cities],
+    ["category", store.categories],
+    ["platform", store.platforms],
+    ["tag", store.tags],
+    ["passwordReset", store.passwordResets],
+    ["auditEvent", store.auditEvents],
+    ["journalEntry", store.journalEntries],
+  ];
+  let nextIdsChanged = false;
+  for (const [key, rows] of idTables) {
+    const expected = maxIdOrZero(rows) + 1;
+    if (Number(store.nextIds[key] || 0) < expected) {
+      store.nextIds[key] = expected;
+      nextIdsChanged = true;
+    }
+  }
+  if (nextIdsChanged) changed.value = true;
 
   for (const city of store.cities) {
     if (!city.nameEn) {
@@ -2813,17 +2828,21 @@ async function handleGenerateResetLink(req, res, store, actor, userId) {
   return sendJson(res, 200, { ok: true, resetLink: reset.resetLink });
 }
 
-async function handleProfileUpdate(req, res, store, actor) {
-  const rawBody = await readBody(req);
-  const contentType = req.headers["content-type"] || "";
-  const parsed = contentType.includes("multipart/form-data")
-    ? parseMultipart(rawBody, contentType)
-    : { fields: jsonOrForm(rawBody, req), files: {} };
-  const body = parsed.fields;
-  const user = userById(store, actor.id);
-  if (!user) return sendJson(res, 404, { error: "User not found." });
+function profileBodyHasResidential(body) {
+  return body?.residential !== undefined || body?.residentialCountry !== undefined || body?.residentialTier2Id !== undefined || body?.residentialTier3Id !== undefined;
+}
+
+function profileResidentialInput(body) {
+  if (body?.residential && typeof body.residential === "object") return body.residential;
+  return residentialFromBody(body);
+}
+
+async function applyUserProfileUpdates(store, user, body, files, options = {}) {
+  const actor = options.actor || user;
+  const auditSource = options.auditSource || "profile";
+  const shouldAuditFieldChanges = options.auditFieldChanges !== false;
   if (body.fullName !== undefined && !text(body.fullName)) {
-    return sendJson(res, 422, { error: "Full name is required." });
+    return { ok: false, status: 422, error: "Full name is required." };
   }
 
   const editable = [
@@ -2841,49 +2860,54 @@ async function handleProfileUpdate(req, res, store, actor) {
   }
   if (body.gender !== undefined) {
     const normalizedGender = normalizeGender(body.gender);
-    if (!normalizedGender && (actor.role === "influencer" || text(body.gender))) {
-      return sendJson(res, 422, { error: "Gender is required and must be male or female." });
+    if (!normalizedGender && (user.role === "influencer" || text(body.gender))) {
+      return { ok: false, status: 422, error: "Gender is required and must be male or female." };
     }
     user.gender = normalizedGender;
   }
   if (body.mobile !== undefined) {
     if (text(body.mobile) && !validKuwaitMobile(body.mobile)) {
-      return sendJson(res, 422, { error: "Mobile number must be 8 digits in Kuwait format." });
+      return { ok: false, status: 422, error: "Mobile number must be 8 digits in Kuwait format." };
     }
     user.mobile = normalizeKuwaitMobile(body.mobile);
   }
-  const categoryInput = categoryIdsFromBody(body);
+
   if (body.categoryIds !== undefined) {
-    const categoryResult = validateCategoryIds(categoryInput, store);
-    if (!categoryResult.ok) return sendJson(res, 422, { error: categoryResult.error });
+    const categoryResult = validateCategoryIds(categoryIdsFromBody(body), store);
+    if (!categoryResult.ok) return { ok: false, status: 422, error: categoryResult.error };
     user.categoryIds = categoryResult.value;
-    appendAuditEvent(store, user, "categories_updated", "user", user.id, {
-      categoryIds: user.categoryIds,
-      source: "profile",
-    });
+    if (shouldAuditFieldChanges) {
+      appendAuditEvent(store, actor, "categories_updated", "user", user.id, {
+        categoryIds: user.categoryIds,
+        source: auditSource,
+      });
+    }
   } else if (!(user.categoryIds || []).length) {
-    return sendJson(res, 422, { error: "category_required" });
+    return { ok: false, status: 422, error: "category_required" };
   }
-  const residentialInput = residentialFromBody(body);
-  if (residentialInput) {
-    const residentialResult = validateResidential(residentialInput);
-    if (!residentialResult.ok) return sendJson(res, 422, { error: residentialResult.error });
+
+  if (profileBodyHasResidential(body)) {
+    const residentialResult = validateResidential(profileResidentialInput(body));
+    if (!residentialResult.ok) return { ok: false, status: 422, error: residentialResult.error };
     user.residential = residentialResult.value;
-    appendAuditEvent(store, user, "residential_updated", "user", user.id, {
-      country: user.residential?.country || "",
-      source: "profile",
-    });
+    if (shouldAuditFieldChanges) {
+      appendAuditEvent(store, actor, "residential_updated", "user", user.id, {
+        country: user.residential?.country || "",
+        source: auditSource,
+      });
+    }
   } else if (!user.residential) {
-    return sendJson(res, 422, { error: "residential_required" });
+    return { ok: false, status: 422, error: "residential_required" };
   }
 
-  if (actor.role === "influencer") {
-    if (!text(user.mobile)) return sendJson(res, 422, { error: "Mobile number is required." });
-    if (!(user.categoryIds || []).length) return sendJson(res, 422, { error: "category_required" });
-    if (!user.residential) return sendJson(res, 422, { error: "residential_required" });
-    if (!text(user.instagram)) return sendJson(res, 422, { error: "Instagram is required." });
+  if (user.role === "influencer") {
+    if (!text(user.mobile)) return { ok: false, status: 422, error: "Mobile number is required." };
+    if (!(user.categoryIds || []).length) return { ok: false, status: 422, error: "category_required" };
+    if (!user.residential) return { ok: false, status: 422, error: "residential_required" };
+    if (!text(user.instagram)) return { ok: false, status: 422, error: "Instagram is required." };
   }
 
+  user.followers ||= { instagram: 0, tiktok: 0, snapchat: 0 };
   if (body.instagramFollowers !== undefined) user.followers.instagram = Number(body.instagramFollowers) || 0;
   if (body.tiktokFollowers !== undefined) user.followers.tiktok = Number(body.tiktokFollowers) || 0;
   if (body.snapchatFollowers !== undefined) user.followers.snapchat = Number(body.snapchatFollowers) || 0;
@@ -2891,13 +2915,26 @@ async function handleProfileUpdate(req, res, store, actor) {
   if (body.tiktok !== undefined) user.tiktok = normalizeSocialHandle(body.tiktok);
   if (body.snapchat !== undefined) user.snapchat = normalizeSocialHandle(body.snapchat);
 
-  const avatar = parsed.files.avatar;
+  const avatar = files?.avatar;
   if (avatar && avatar.filename) {
     const persisted = await persistUploadedImage(avatar);
     user.avatarName = persisted.displayName;
     user.avatarPath = `/uploads/${persisted.storedName}`;
   }
 
+  return { ok: true };
+}
+
+async function handleProfileUpdate(req, res, store, actor) {
+  const parsed = await parseMultipartOrForm(req);
+  const body = parsed.fields;
+  const user = userById(store, actor.id);
+  if (!user) return sendJson(res, 404, { error: "User not found." });
+  const updated = await applyUserProfileUpdates(store, user, body, parsed.files, {
+    actor: user,
+    auditSource: "profile",
+  });
+  if (!updated.ok) return sendJson(res, updated.status || 422, { error: updated.error });
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
 }
@@ -2945,14 +2982,83 @@ async function handleClearMyAddress(req, res, store, actor) {
 
 async function handleAdminGetUserAddress(req, res, store, actor, userIdParam) {
   if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
-  if (!requireRole(actor, ["admin", "campaign_manager"])) {
-    return sendJson(res, 403, { error: "Forbidden" });
-  }
   const target = userById(store, Number(userIdParam));
-  if (!target) return sendJson(res, 404, { error: "User not found." });
+  const access = ensureAdminCanEditMember(actor, target);
+  if (!access.ok) return sendJson(res, access.status, { error: access.error });
   appendAuditEvent(store, actor, "address_viewed", "user", target.id, { viewerRole: actor.role });
   await writeStore(store);
   return sendJson(res, 200, { address: target.address || null });
+}
+
+function ensureAdminCanEditMember(actor, target) {
+  if (!actor || !requireRole(actor, ["admin", "campaign_manager"])) {
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+  if (!target) return { ok: false, status: 404, error: "not_found" };
+  if (actor.role === "campaign_manager" && target.role === "admin") {
+    return { ok: false, status: 403, error: "cannot_edit_admin" };
+  }
+  if (target.role !== "influencer") {
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+  return { ok: true };
+}
+
+async function handleAdminUpdateUserProfile(req, res, store, actor, userIdParam) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const target = userById(store, Number(userIdParam));
+  const access = ensureAdminCanEditMember(actor, target);
+  if (!access.ok) return sendJson(res, access.status, { error: access.error });
+
+  const parsed = await parseMultipartOrForm(req);
+  const body = parsed.fields;
+  const updated = await applyUserProfileUpdates(store, target, body, parsed.files, {
+    actor,
+    auditSource: "admin",
+  });
+  if (!updated.ok) return sendJson(res, updated.status || 422, { error: updated.error });
+
+  const fieldsChanged = [...new Set([
+    ...Object.keys(body || {}).filter((key) => key !== "avatar"),
+    ...(parsed.files?.avatar?.filename ? ["avatar"] : []),
+  ])];
+  appendAuditEvent(store, actor, "profile_updated_by_admin", "user", target.id, {
+    fieldsChanged,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { user: sanitizeUser(target, { includeAddress: true }) });
+}
+
+async function handleAdminUpdateUserAddress(req, res, store, actor, userIdParam) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const target = userById(store, Number(userIdParam));
+  const access = ensureAdminCanEditMember(actor, target);
+  if (!access.ok) return sendJson(res, access.status, { error: access.error });
+
+  const result = validateAddress(jsonOrForm(await readBody(req), req));
+  if (!result.ok) return sendJson(res, 422, { error: result.error });
+  target.address = result.value;
+  appendAuditEvent(store, actor, "address_updated", "user", target.id, {
+    country: result.value?.country || "",
+    editedByRole: actor.role,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, { address: target.address || null });
+}
+
+async function handleAdminClearUserAddress(req, res, store, actor, userIdParam) {
+  if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+  const target = userById(store, Number(userIdParam));
+  const access = ensureAdminCanEditMember(actor, target);
+  if (!access.ok) return sendJson(res, access.status, { error: access.error });
+  if (target.address) {
+    delete target.address;
+    appendAuditEvent(store, actor, "address_cleared", "user", target.id, {
+      editedByRole: actor.role,
+    });
+    await writeStore(store);
+  }
+  return sendJson(res, 200, { ok: true });
 }
 
 async function handleCreateManager(req, res, store, actor) {
@@ -4146,6 +4252,7 @@ async function requestHandler(req, res) {
   }
 
   const actor = getSessionUser(req, store);
+  const adminUserProfileMatch = routeMatch(pathname, /^\/api\/admin\/users\/(\d+)\/profile$/);
   const adminUserAddressMatch = routeMatch(pathname, /^\/api\/admin\/users\/(\d+)\/address$/);
   if (req.method === "GET" && pathname === "/api/bootstrap") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
@@ -4160,8 +4267,13 @@ async function requestHandler(req, res) {
   if (req.method === "DELETE" && pathname === "/api/me/address") {
     return handleClearMyAddress(req, res, store, actor);
   }
-  if (req.method === "GET" && adminUserAddressMatch) {
-    return handleAdminGetUserAddress(req, res, store, actor, adminUserAddressMatch[0]);
+  if (req.method === "PUT" && adminUserProfileMatch) {
+    return handleAdminUpdateUserProfile(req, res, store, actor, adminUserProfileMatch[0]);
+  }
+  if (adminUserAddressMatch) {
+    if (req.method === "GET") return handleAdminGetUserAddress(req, res, store, actor, adminUserAddressMatch[0]);
+    if (req.method === "PUT") return handleAdminUpdateUserAddress(req, res, store, actor, adminUserAddressMatch[0]);
+    if (req.method === "DELETE") return handleAdminClearUserAddress(req, res, store, actor, adminUserAddressMatch[0]);
   }
   if (req.method === "GET" && pathname === "/api/reports/export.csv") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });

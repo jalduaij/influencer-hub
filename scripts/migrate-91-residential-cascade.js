@@ -9,6 +9,10 @@ const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
 const STORE_PATH = path.resolve(process.env.STORE_PATH || path.join(DATA_DIR, "store.json"));
 
+function maxIdOrZero(rows) {
+  return (rows || []).reduce((max, row) => Math.max(max, Number(row?.id) || 0), 0);
+}
+
 function parseArgs(argv) {
   const parsed = {
     keepAdminEmail: "jalduaij@kdigtc.com",
@@ -53,7 +57,25 @@ async function main() {
 
   const fresh = buildEmptyProductionStore();
   fresh.users = adminsToKeep;
-  fresh.nextIds.user = Math.max(...adminsToKeep.map((user) => Number(user.id) || 0), 0) + 1;
+  fresh.nextIds ||= {};
+  const idTables = [
+    ["user", fresh.users],
+    ["campaign", fresh.campaigns],
+    ["code", fresh.campaignCodes],
+    ["participant", fresh.participants],
+    ["campaignDecline", fresh.campaignDeclines],
+    ["branch", fresh.branches],
+    ["city", fresh.cities],
+    ["category", fresh.categories],
+    ["platform", fresh.platforms],
+    ["tag", fresh.tags],
+    ["passwordReset", fresh.passwordResets],
+    ["auditEvent", fresh.auditEvents],
+    ["journalEntry", fresh.journalEntries],
+  ];
+  for (const [key, rows] of idTables) {
+    fresh.nextIds[key] = maxIdOrZero(rows) + 1;
+  }
 
   const tempPath = `${STORE_PATH}.tmp-${process.pid}`;
   await fs.writeFile(tempPath, `${JSON.stringify(fresh, null, 2)}\n`, "utf8");

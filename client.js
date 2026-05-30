@@ -481,7 +481,12 @@ function shippingAddressDraftFrom(address, seed = null) {
 }
 
 function currentShippingAddress() {
-  return state.currentUser?.address || null;
+  const user = editableProfileUser();
+  if (!user) return null;
+  if (isAdminMemberEditPage()) {
+    return shippingAddressStateForUser(user).address || null;
+  }
+  return user.address || null;
 }
 
 function clearShippingAddressComposer() {
@@ -491,8 +496,9 @@ function clearShippingAddressComposer() {
 }
 
 function openShippingAddressEditor(address = currentShippingAddress()) {
+  const user = editableProfileUser();
   state.shippingAddressEditorOpen = true;
-  state.shippingAddressDraft = shippingAddressDraftFrom(address, state.currentUser?.residential || null);
+  state.shippingAddressDraft = shippingAddressDraftFrom(address, user?.residential || null);
   state.shippingAddressPickerOpen = "";
   state.shippingAddressPickerQueries = {};
 }
@@ -771,10 +777,10 @@ function defaultPageForRole(role) {
 
 function validPagesForRole(role) {
   if (role === "admin") {
-    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "branches", "branch-edit", "master-data", "managers", "manager-edit", "journal", "reports", "profile"]);
+    return new Set(["dashboard", "influencers", "influencer-profile", "admin-edit-member", "campaigns", "campaign-edit", "campaign-view", "branches", "branch-edit", "master-data", "managers", "manager-edit", "journal", "reports", "profile"]);
   }
   if (role === "campaign_manager") {
-    return new Set(["dashboard", "influencers", "influencer-profile", "campaigns", "campaign-edit", "campaign-view", "journal", "reports", "profile"]);
+    return new Set(["dashboard", "influencers", "influencer-profile", "admin-edit-member", "campaigns", "campaign-edit", "campaign-view", "journal", "reports", "profile"]);
   }
   return new Set(["dashboard", "campaigns", "campaign-preview", "profile"]);
 }
@@ -833,6 +839,10 @@ function sameNavDestination(page, extraParams = {}) {
   return Object.keys(extraParams).every((key) => state[key] === extraParams[key]);
 }
 
+function isProfileEditingPage(page) {
+  return page === "profile" || page === "admin-edit-member";
+}
+
 function currentHistoryUrl() {
   const path = `${window.location.pathname}${window.location.search}`;
   return state.currentPage ? `${path}#${state.currentPage}` : path;
@@ -874,7 +884,7 @@ function navigateTo(page, extraParams = {}) {
 
   state.currentPage = page;
   if (page !== "campaign-preview") state.rejectingCampaignId = null;
-  if (page !== "profile") closeShippingAddressEditor();
+  if (!isProfileEditingPage(page)) closeShippingAddressEditor();
   state.codeCardParticipantId = null;
   for (const key of Object.keys(extraParams)) {
     state[key] = extraParams[key];
@@ -896,7 +906,7 @@ function goBack() {
     const previous = state.navStack.pop();
     applyNavSnapshot(previous);
     if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
-    if (state.currentPage !== "profile") closeShippingAddressEditor();
+    if (!isProfileEditingPage(state.currentPage)) closeShippingAddressEditor();
     state.codeCardParticipantId = null;
     pushBrowserHistory();
     render();
@@ -932,6 +942,7 @@ function handlePopState(event) {
   state.navStack = cloneNavStack(event.state.navStack);
   applyNavSnapshot(event.state.snapshot);
   if (state.currentPage !== "campaign-preview") state.rejectingCampaignId = null;
+  if (!isProfileEditingPage(state.currentPage)) closeShippingAddressEditor();
   state.codeCardParticipantId = null;
   render();
 }
@@ -1602,6 +1613,7 @@ function auditActionLabel(action) {
     address_rejected: l("Rejected shipping address at signup", "رفض عنوان الشحن أثناء التسجيل"),
     address_cleared: l("Cleared shipping address", "حذف عنوان الشحن"),
     address_viewed: l("Viewed shipping address", "عرض عنوان الشحن"),
+    profile_updated_by_admin: l("Updated member profile", "حدّث ملف العضو"),
     "journal.created": l("Created journal entry", "أنشأ منشوراً"),
     "journal.updated": l("Updated journal entry", "حدّث منشوراً"),
     "journal.deleted": l("Deleted journal entry", "حذف منشوراً"),
@@ -1680,6 +1692,9 @@ function auditMetaLabel(key) {
     canceledParticipants: l("Canceled", "الملغاة"),
     sourceCampaignId: l("Source", "المصدر"),
     campaignId: l("Campaign", "الحملة"),
+    viewerRole: l("Viewer role", "دور العارض"),
+    editedByRole: l("Edited by role", "تم التعديل بواسطة"),
+    fieldsChanged: l("Fields", "الحقول"),
   };
   return labels[key] || key;
 }
@@ -2475,6 +2490,7 @@ function currentDocumentTitle() {
         : l("PICK Social Club — Dashboard", "نادي بك — لوحة التحكم"),
     influencers: l("PICK Social Club — Members", "نادي بك — الأعضاء"),
     "influencer-profile": l("PICK Social Club — Member Profile", "نادي بك — ملف العضو"),
+    "admin-edit-member": l("PICK Social Club — Edit Member", "نادي بك — تعديل العضو"),
     campaigns: l("PICK Social Club — Campaigns", "نادي بك — الحملات"),
     "campaign-edit": l("PICK Social Club — Edit Campaign", "نادي بك — تعديل الحملة"),
     "campaign-view": l("PICK Social Club — Campaign View", "نادي بك — عرض الحملة"),
@@ -3498,6 +3514,78 @@ function selectedInfluencer() {
   return allInfluencers().find((user) => user.id === Number(state.selectedInfluencerId)) || null;
 }
 
+function isAdminMemberEditPage() {
+  return state.currentPage === "admin-edit-member" && ["admin", "campaign_manager"].includes(state.currentUser?.role || "");
+}
+
+function editableProfileUser() {
+  return isAdminMemberEditPage() ? selectedInfluencer() : state.currentUser;
+}
+
+function shippingAddressStateForUser(user) {
+  if (!user) return { loading: false, loaded: false, address: null, error: "" };
+  if (isAdminMemberEditPage()) {
+    return state.adminAddressCards[user.id] || { loading: false, loaded: false, address: null, error: "" };
+  }
+  return { loading: false, loaded: true, address: user.address || null, error: "" };
+}
+
+function exitAdminMemberEdit(userId, message) {
+  closeShippingAddressEditor();
+  const previous = state.navStack[state.navStack.length - 1];
+  if (
+    previous?.params?.currentPage === "influencer-profile" &&
+    Number(previous?.params?.selectedInfluencerId) === Number(userId)
+  ) {
+    state.navStack.pop();
+  }
+  state.currentPage = "influencer-profile";
+  state.selectedInfluencerId = Number(userId);
+  render();
+  flash(message, "success");
+}
+
+async function ensureAdminAddressLoaded(userId, options = {}) {
+  const current = state.adminAddressCards[userId] || { expanded: false, loading: false, loaded: false, address: null, error: "" };
+  if (current.loaded || current.loading) return current;
+  state.adminAddressCards = {
+    ...state.adminAddressCards,
+    [userId]: {
+      ...current,
+      expanded: options.expanded ?? current.expanded,
+      loading: true,
+      error: "",
+    },
+  };
+  render();
+  try {
+    const payload = await api(`/api/admin/users/${userId}/address`);
+    state.adminAddressCards = {
+      ...state.adminAddressCards,
+      [userId]: {
+        expanded: options.expanded ?? current.expanded,
+        loading: false,
+        loaded: true,
+        address: payload.address || null,
+        error: "",
+      },
+    };
+  } catch (error) {
+    state.adminAddressCards = {
+      ...state.adminAddressCards,
+      [userId]: {
+        expanded: options.expanded ?? current.expanded,
+        loading: false,
+        loaded: false,
+        address: null,
+        error: error.message || l("Could not load the address.", "تعذر تحميل العنوان."),
+      },
+    };
+  }
+  render();
+  return state.adminAddressCards[userId];
+}
+
 function selectedBranch() {
   return (state.data?.branches || []).find((branch) => branch.id === Number(state.selectedBranchId)) || null;
 }
@@ -3542,6 +3630,7 @@ function renderPage() {
 function renderAdminPages() {
   if (state.currentPage === "influencers") return renderInfluencersPage();
   if (state.currentPage === "influencer-profile") return renderInfluencerProfilePage();
+  if (state.currentPage === "admin-edit-member") return renderAdminEditMemberPage();
   if (state.currentPage === "campaigns") return renderCampaignsPage();
   if (state.currentPage === "campaign-edit") return renderCampaignEditPage();
   if (state.currentPage === "campaign-view") return renderCampaignViewPage();
@@ -3559,6 +3648,7 @@ function renderAdminPages() {
 function renderManagerPages() {
   if (state.currentPage === "influencers") return renderInfluencersPage();
   if (state.currentPage === "influencer-profile") return renderInfluencerProfilePage();
+  if (state.currentPage === "admin-edit-member") return renderAdminEditMemberPage();
   if (state.currentPage === "campaigns") return renderCampaignsPage();
   if (state.currentPage === "campaign-edit") return renderCampaignEditPage();
   if (state.currentPage === "campaign-view") return renderCampaignViewPage();
@@ -6903,8 +6993,13 @@ function renderSignupAddressSection() {
   `;
 }
 
-function renderShippingAddressSection() {
-  const address = currentShippingAddress();
+function renderShippingAddressSection(options = {}) {
+  const user = options.user || editableProfileUser();
+  const shippingState = shippingAddressStateForUser(user);
+  const address = shippingState.address || null;
+  const loading = Boolean(shippingState.loading && !shippingState.loaded);
+  const errorMessage = shippingState.error || "";
+  const editDisabled = loading ? "disabled" : "";
   if (!state.shippingAddressEditorOpen) {
     return `
       <section class="block block--bone shipping-address-block">
@@ -6918,10 +7013,12 @@ function renderShippingAddressSection() {
                 : l("Add a shipping address to receive special packages and offers from PICK.", "أضف عنوان شحن لتصلك الهدايا والعروض الخاصة من PICK.")
             )}</p>
           </div>
-          <button type="button" class="secondary" data-action="${address ? "edit-shipping-address" : "start-shipping-address"}">
+          <button type="button" class="secondary" data-action="${address ? "edit-shipping-address" : "start-shipping-address"}" ${editDisabled}>
             ${escapeHtml(address ? l("Edit", "تعديل") : l("Add address", "إضافة عنوان"))}
           </button>
         </div>
+        ${loading ? `<p class="compact">${escapeHtml(l("Loading saved address…", "جارٍ تحميل العنوان المحفوظ…"))}</p>` : ""}
+        ${errorMessage ? `<p class="compact status-strip-danger">${escapeHtml(errorMessage)}</p>` : ""}
         ${address ? `
           <div class="address-summary">
             <p>${formattedAddressHtml(address)}</p>
@@ -6977,6 +7074,62 @@ function renderAdminAddressCard(user) {
   `;
 }
 
+function renderProfileEditorForm(user, options = {}) {
+  const isInfluencer = user.role === "influencer";
+  const formId = options.formId || "profileForm";
+  const showReadonlyEmail = options.showReadonlyEmail === true;
+  return `
+    <form id="${formId}" class="form-grid two-col" enctype="multipart/form-data" data-user-id="${user.id}">
+      <div class="profile-image-panel" style="grid-column: 1 / -1;">
+        ${renderUserAvatar(user, "user-avatar--profile")}
+        <div class="profile-image-panel__copy">
+          <strong>${l("Profile image", "صورة الملف")}</strong>
+          <p class="compact">${l("Optional for all roles. Upload JPG, PNG, WebP, or HEIC.", "اختيارية لكل الأدوار. ارفع JPG أو PNG أو WebP أو HEIC.")}</p>
+        </div>
+      </div>
+      <label class="field" style="grid-column: 1 / -1;"><span>${l("Upload image", "رفع الصورة")}</span><input name="avatar" type="file" accept="image/*" /></label>
+      <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(user.fullName || "")}" /></label>
+      ${showReadonlyEmail ? `
+        <div class="field">
+          <span>${escapeHtml(l("Email", "البريد الإلكتروني"))}</span>
+          <strong>${escapeHtml(user.email || l("Not set", "غير محدد"))}</strong>
+          <p class="compact">${escapeHtml(l("Email is managed in the dedicated account flow.", "يتم تعديل البريد من خلال مسار الحساب المخصص."))}</p>
+        </div>
+      ` : ""}
+      <label class="field"><span>${l("Mobile", "الهاتف")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderKuwaitMobileField("mobile", user.mobile || "", isInfluencer)}</label>
+      <label class="field"><span>${l("Gender", "الجنس")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderGenderSelect("gender", user.gender || "", isInfluencer)}</label>
+      <label class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><input name="dateOfBirth" type="date" value="${escapeHtml(user.dateOfBirth || "")}" /></label>
+      <div class="field field-span-full profile-residential-block">
+        <span>${l("Residential location", "مكان السكن")} <em class="required-mark">*</em></span>
+        <p class="compact">${escapeHtml(l("This is used for campaign targeting and member filters.", "يُستخدم هذا لاستهداف الحملات وفلاتر الأعضاء."))}</p>
+        <div class="form-grid two-col profile-residential-block__grid">
+          ${renderResidentialCascadeFields({
+            prefix: "residential",
+            value: user.residential || emptyResidential(),
+            required: true,
+          })}
+        </div>
+      </div>
+      ${renderCategoryChecklist({
+        selectedValues: user.categoryIds || [],
+        required: true,
+        hint: l(
+          "Pick at least one. Used to match you to campaigns.",
+          "اختر فئة واحدة على الأقل. تُستخدم لمطابقتك بالحملات."
+        ),
+      })}
+      <label class="field"><span>Instagram${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span><input name="instagram" ${isInfluencer ? "required" : ""} value="${escapeHtml(user.instagram || "")}" /></label>
+      <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" value="${escapeHtml(user.followers?.instagram || 0)}" /></label>
+      <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(user.tiktok || "")}" /></label>
+      <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" value="${escapeHtml(user.followers?.tiktok || 0)}" /></label>
+      <label class="field"><span>Snapchat</span><input name="snapchat" value="${escapeHtml(user.snapchat || "")}" /></label>
+      <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" value="${escapeHtml(user.followers?.snapchat || 0)}" /></label>
+      <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", user.preferredPlatform || "")}</label>
+      <button type="submit" style="grid-column: 1 / -1;">${escapeHtml(options.submitLabel || l("Save profile", "حفظ الملف"))}</button>
+    </form>
+  `;
+}
+
 function renderProfilePage() {
   const user = state.currentUser;
   const isInfluencer = user.role === "influencer";
@@ -6989,49 +7142,34 @@ function renderProfilePage() {
       <p class="panel-subtitle">${isInfluencer
         ? l("Required fields are marked with *. For member profiles, full name, mobile, gender, residential location, interested categories, and Instagram are required.", "الحقول المطلوبة مميزة بعلامة *. وبالنسبة لملفات الأعضاء فإن الاسم الكامل والهاتف والجنس ومكان السكن والفئات المهتمة وإنستغرام مطلوبة.")
         : l("Required fields are marked with *. Everything else on this page is optional.", "الحقول المطلوبة مميزة بعلامة *. وكل ما عدا ذلك في هذه الصفحة اختياري.")}</p>
-      <form id="profileForm" class="form-grid two-col" enctype="multipart/form-data">
-        <div class="profile-image-panel" style="grid-column: 1 / -1;">
-          ${renderUserAvatar(user, "user-avatar--profile")}
-          <div class="profile-image-panel__copy">
-            <strong>${l("Profile image", "صورة الملف")}</strong>
-            <p class="compact">${l("Optional for all roles. Upload JPG, PNG, WebP, or HEIC.", "اختيارية لكل الأدوار. ارفع JPG أو PNG أو WebP أو HEIC.")}</p>
-          </div>
-        </div>
-        <label class="field" style="grid-column: 1 / -1;"><span>${l("Upload image", "رفع الصورة")}</span><input name="avatar" type="file" accept="image/*" /></label>
-        <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(user.fullName || "")}" /></label>
-        <label class="field"><span>${l("Mobile", "الهاتف")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderKuwaitMobileField("mobile", user.mobile || "", isInfluencer)}</label>
-        <label class="field"><span>${l("Gender", "الجنس")}${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span>${renderGenderSelect("gender", user.gender || "", isInfluencer)}</label>
-        <label class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><input name="dateOfBirth" type="date" value="${escapeHtml(user.dateOfBirth || "")}" /></label>
-        <div class="field field-span-full profile-residential-block">
-          <span>${l("Residential location", "مكان السكن")} <em class="required-mark">*</em></span>
-          <p class="compact">${escapeHtml(l("This is used for campaign targeting and member filters.", "يُستخدم هذا لاستهداف الحملات وفلاتر الأعضاء."))}</p>
-          <div class="form-grid two-col profile-residential-block__grid">
-            ${renderResidentialCascadeFields({
-              prefix: "residential",
-              value: user.residential || emptyResidential(),
-              required: true,
-            })}
-          </div>
-        </div>
-        ${renderCategoryChecklist({
-          selectedValues: user.categoryIds || [],
-          required: true,
-          hint: l(
-            "Pick at least one. Used to match you to campaigns.",
-            "اختر فئة واحدة على الأقل. تُستخدم لمطابقتك بالحملات."
-          ),
-        })}
-        <label class="field"><span>Instagram${isInfluencer ? ' <em class="required-mark">*</em>' : ""}</span><input name="instagram" ${isInfluencer ? "required" : ""} value="${escapeHtml(user.instagram || "")}" /></label>
-        <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" value="${escapeHtml(user.followers?.instagram || 0)}" /></label>
-        <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(user.tiktok || "")}" /></label>
-        <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" value="${escapeHtml(user.followers?.tiktok || 0)}" /></label>
-        <label class="field"><span>Snapchat</span><input name="snapchat" value="${escapeHtml(user.snapchat || "")}" /></label>
-        <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" value="${escapeHtml(user.followers?.snapchat || 0)}" /></label>
-        <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", user.preferredPlatform || "")}</label>
-        <button type="submit" style="grid-column: 1 / -1;">${l("Save profile", "حفظ الملف")}</button>
-      </form>
+      ${renderProfileEditorForm(user)}
     </section>
-    ${isInfluencer ? renderShippingAddressSection() : ""}
+    ${renderShippingAddressSection({ user })}
+  `;
+}
+
+function renderAdminEditMemberPage() {
+  const user = selectedInfluencer();
+  if (!user) return renderEmptyCampaignPage(l("No member selected.", "لا يوجد عضو محدد."));
+  return `
+    ${pageHeader(
+      l("Edit Member", "تعديل العضو"),
+      l("Update this member's profile details, residential location, categories, and shipping address on their behalf.", "حدّث تفاصيل هذا العضو ومكان السكن والفئات وعنوان الشحن نيابةً عنه."),
+      { hideHeroStats: true }
+    )}
+    <section class="panel">
+      <h3>${escapeHtml(user.fullName)}</h3>
+      <p class="panel-subtitle">${escapeHtml(user.email)}</p>
+      <p class="compact">${escapeHtml(l("Email, password, and role are managed through dedicated admin actions.", "يتم إدارة البريد وكلمة المرور والدور من خلال إجراءات إدارة مخصصة."))}</p>
+      ${renderProfileEditorForm(user, {
+        formId: "adminProfileForm",
+        submitLabel: l("Save member profile", "حفظ ملف العضو"),
+        showReadonlyEmail: true,
+      })}
+    </section>
+    <section class="panel">
+      ${renderShippingAddressSection({ user })}
+    </section>
   `;
 }
 
@@ -7115,6 +7253,7 @@ function renderInfluencerProfilePage() {
           <button type="submit">${l("Save tags and notes", "حفظ العلامات والملاحظات")}</button>
         </form>
         <div class="row-wrap" style="margin-top: 12px;">
+          <button type="button" class="secondary" data-action="edit-member" data-user-id="${user.id}">${l("Edit member", "تعديل العضو")}</button>
           ${user.status === "pending"
             ? `
               <button data-action="approve-user" data-user-id="${user.id}">${l("Approve", "اعتماد")}</button>
@@ -7521,11 +7660,18 @@ async function handleClick(event) {
     event.preventDefault();
     if (!window.confirm(l("Remove the saved shipping address?", "هل تريد حذف عنوان الشحن المحفوظ؟"))) return;
     try {
-      await api("/api/me/address", { method: "DELETE" });
+      const editingMember = isAdminMemberEditPage();
+      const targetUser = editableProfileUser();
+      const url = editingMember ? `/api/admin/users/${targetUser.id}/address` : "/api/me/address";
+      await api(url, { method: "DELETE" });
       await loadBootstrap();
       closeShippingAddressEditor();
-      flash(l("Shipping address removed.", "تم حذف عنوان الشحن."), "success");
-      render();
+      if (editingMember && targetUser) {
+        exitAdminMemberEdit(targetUser.id, l("Member shipping address removed.", "تم حذف عنوان شحن العضو."));
+      } else {
+        flash(l("Shipping address removed.", "تم حذف عنوان الشحن."), "success");
+        render();
+      }
     } catch (error) {
       flash(error.message, "error");
     }
@@ -7679,6 +7825,17 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "edit-member") {
+    event.preventDefault();
+    const userId = Number(target.dataset.userId);
+    const current = state.adminAddressCards[userId] || { expanded: false, loading: false, loaded: false, address: null, error: "" };
+    navigateTo("admin-edit-member", { selectedInfluencerId: userId });
+    if (!current.loaded && !current.loading) {
+      ensureAdminAddressLoaded(userId);
+    }
+    return;
+  }
+
   if (action === "back-from-influencer-profile") {
     navigateTo(state.influencerProfileReturnPage || "influencers");
     return;
@@ -7698,41 +7855,7 @@ async function handleClick(event) {
     };
     render();
     if (!expanded || current.loaded || current.loading) return;
-    state.adminAddressCards = {
-      ...state.adminAddressCards,
-      [userId]: {
-        ...current,
-        expanded: true,
-        loading: true,
-        error: "",
-      },
-    };
-    render();
-    try {
-      const payload = await api(`/api/admin/users/${userId}/address`);
-      state.adminAddressCards = {
-        ...state.adminAddressCards,
-        [userId]: {
-          expanded: true,
-          loading: false,
-          loaded: true,
-          address: payload.address || null,
-          error: "",
-        },
-      };
-    } catch (error) {
-      state.adminAddressCards = {
-        ...state.adminAddressCards,
-        [userId]: {
-          expanded: true,
-          loading: false,
-          loaded: false,
-          address: null,
-          error: error.message || l("Could not load the address.", "تعذر تحميل العنوان."),
-        },
-      };
-    }
-    render();
+    await ensureAdminAddressLoaded(userId, { expanded: true });
     return;
   }
 
@@ -8373,14 +8496,21 @@ async function handleSubmit(event) {
         }
       }
       try {
-        await api("/api/me/address", {
+        const editingMember = isAdminMemberEditPage();
+        const targetUser = editableProfileUser();
+        const url = editingMember ? `/api/admin/users/${targetUser.id}/address` : "/api/me/address";
+        await api(url, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
         await loadBootstrap();
         closeShippingAddressEditor();
-        flash(l("Shipping address saved.", "تم حفظ عنوان الشحن."), "success");
-        render();
+        if (editingMember && targetUser) {
+          exitAdminMemberEdit(targetUser.id, l("Member profile updated.", "تم تحديث ملف العضو."));
+        } else {
+          flash(l("Shipping address saved.", "تم حفظ عنوان الشحن."), "success");
+          render();
+        }
         return;
       } catch (error) {
         const code = String(error.message || "");
@@ -8389,7 +8519,7 @@ async function handleSubmit(event) {
         throw new Error(message);
       }
     }
-    if (form.id === "profileForm") {
+    if (form.id === "profileForm" || form.id === "adminProfileForm") {
       const formData = new FormData(form);
       const mobileError = validateKuwaitMobile(formData.get("mobile"));
       if (mobileError) {
@@ -8427,7 +8557,8 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(message);
       }
-      if (state.currentUser.role === "influencer") {
+      const subjectUser = form.id === "adminProfileForm" ? selectedInfluencer() : state.currentUser;
+      if (subjectUser?.role === "influencer") {
         if (!formData.get("mobile")) {
           const message = l("Mobile number is required.", "رقم الهاتف مطلوب.");
           setFieldError(form, "mobile", message);
@@ -8440,6 +8571,19 @@ async function handleSubmit(event) {
           reportFormValidity(form);
           throw new Error(message);
         }
+      }
+      if (form.id === "adminProfileForm" && subjectUser) {
+        try {
+          await api(`/api/admin/users/${subjectUser.id}/profile`, {
+            method: "PUT",
+            body: formData,
+          });
+          await loadBootstrap();
+          exitAdminMemberEdit(subjectUser.id, l("Member profile updated.", "تم تحديث ملف العضو."));
+        } catch (error) {
+          throw error;
+        }
+        return;
       }
       await mutateAndRefresh("/api/profile/update", formData, l("Saved 💜", "تم الحفظ 💜"), { rethrow: true });
       return;
