@@ -245,6 +245,21 @@ a {
   flex-shrink: 0;
 }
 
+.terms-consent-field .option-pill {
+  align-items: flex-start;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.terms-consent-field .option-pill span {
+  line-height: 1.55;
+}
+
+.terms-consent-field .option-pill a {
+  color: var(--brand-strong, var(--accent, #6c2bd9));
+  font-weight: 700;
+}
+
 .signup-address-panel__fields {
   margin-top: 2px;
 }
@@ -794,6 +809,16 @@ body.nav-locked {
   margin: -6px 0 18px;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.terms-editor-card {
+  margin-bottom: 18px;
+}
+
+.terms-editor-form textarea {
+  min-height: 260px;
+  resize: vertical;
+  line-height: 1.65;
 }
 
 .field-help,
@@ -3768,6 +3793,25 @@ body.member-scope .campaign-preview-footer__helper {
 }
 
 body.member-scope.rtl .campaign-preview-footer__helper {
+  font-family: var(--font-body-ar);
+}
+
+body.member-scope .campaign-preview-footer__terms-note {
+  margin: -4px auto 0;
+  font-family: var(--font-body-en);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  text-align: center;
+  max-width: 38ch;
+}
+
+body.member-scope .campaign-preview-footer__terms-note a {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+body.member-scope.rtl .campaign-preview-footer__terms-note {
   font-family: var(--font-body-ar);
 }
 

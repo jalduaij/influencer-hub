@@ -33,11 +33,13 @@ const SHOW_UAT_PANEL = (() => {
 })();
 const SECRET_DIR = path.join(DATA_DIR, ".secrets");
 const ADDRESS_REFERENCE_PATH = path.join(ROOT, "seeds", "address-reference.json");
+const TERMS_DEFAULT_PATH = path.join(ROOT, "seeds", "terms-default.json");
 let ADDRESS_REFERENCE = {
   countries: [],
   kuwait: { governorates: [], areas: [] },
   saudiArabia: { regions: [], cities: [], districts: [] },
 };
+let TERMS_DEFAULT = null;
 try {
   ADDRESS_REFERENCE = JSON.parse(fsSync.readFileSync(ADDRESS_REFERENCE_PATH, "utf8"));
   console.log(
@@ -47,6 +49,12 @@ try {
   console.error(
     `[address] FAILED to load ${ADDRESS_REFERENCE_PATH}: ${error.message}. Country dropdowns will be empty. This is a deployment misconfiguration.`
   );
+}
+try {
+  TERMS_DEFAULT = JSON.parse(fsSync.readFileSync(TERMS_DEFAULT_PATH, "utf8"));
+  console.log(`[terms] loaded default T&C seed v${Number(TERMS_DEFAULT?.version) || 0}`);
+} catch (error) {
+  console.error(`[terms] FAILED to load ${TERMS_DEFAULT_PATH}: ${error.message}`);
 }
 const ADDRESS_LOOKUPS = (() => {
   const map = (rows) => Object.fromEntries((rows || []).map((row) => [row.id, row]));
@@ -432,6 +440,31 @@ function sanitizeUser(user, options = {}) {
     safeUser.address = address;
   }
   return safeUser;
+}
+
+function hashTermsContent(textEnValue, textArValue) {
+  const combined = `${String(textEnValue || "")}\n---\n${String(textArValue || "")}`;
+  return `sha256:${crypto.createHash("sha256").update(combined, "utf8").digest("hex")}`;
+}
+
+function serializeTermsAndConditions(store) {
+  const terms = store?.termsAndConditions || { version: 0, textEn: "", textAr: "", updatedAt: "", updatedByUserId: null };
+  return {
+    version: Math.max(0, Number(terms.version) || 0),
+    textEn: String(terms.textEn || ""),
+    textAr: String(terms.textAr || ""),
+    updatedAt: String(terms.updatedAt || ""),
+    updatedByUserId: terms.updatedByUserId ?? null,
+    contentHash: hashTermsContent(terms.textEn, terms.textAr),
+  };
+}
+
+function currentTermsSnapshot(store) {
+  const terms = serializeTermsAndConditions(store);
+  return {
+    version: terms.version,
+    contentHash: terms.contentHash,
+  };
 }
 
 function maxIdOrZero(items) {
@@ -1236,6 +1269,23 @@ function normalizeStore(store) {
   store.categories ||= [];
   store.platforms ||= [];
   store.tags ||= [];
+  if (!store.termsAndConditions && TERMS_DEFAULT) {
+    store.termsAndConditions = { ...TERMS_DEFAULT };
+    changed.value = true;
+  }
+  if (store.termsAndConditions) {
+    const normalizedTerms = {
+      version: Math.max(1, Number(store.termsAndConditions.version) || Number(TERMS_DEFAULT?.version) || 1),
+      textEn: String(store.termsAndConditions.textEn || ""),
+      textAr: String(store.termsAndConditions.textAr || ""),
+      updatedAt: String(store.termsAndConditions.updatedAt || TERMS_DEFAULT?.updatedAt || new Date().toISOString()),
+      updatedByUserId: store.termsAndConditions.updatedByUserId ?? null,
+    };
+    if (JSON.stringify(store.termsAndConditions) !== JSON.stringify(normalizedTerms)) {
+      store.termsAndConditions = normalizedTerms;
+      changed.value = true;
+    }
+  }
 
   for (const user of store.users) {
     if (user.category) ensureChoiceByName(store.categories, user.category);
@@ -1631,11 +1681,15 @@ function applyLifecycleSweep(store) {
 }
 
 function buildInitialStore() {
-  return normalizeStore({}).store;
+  return normalizeStore({
+    termsAndConditions: TERMS_DEFAULT ? { ...TERMS_DEFAULT } : null,
+  }).store;
 }
 
 function buildEmptyProductionStore() {
-  return buildInitialStore();
+  return normalizeStore({
+    termsAndConditions: TERMS_DEFAULT ? { ...TERMS_DEFAULT } : null,
+  }).store;
 }
 
 async function readStore() {
@@ -2303,6 +2357,7 @@ function buildBootstrap(store, user, options = {}) {
     categories: store.categories,
     platforms: store.platforms,
     tags: store.tags,
+    termsAndConditions: serializeTermsAndConditions(store),
     branches: store.branches.map((branch) => serializeBranch(store, branch, { includePin: includeBranchPin })),
     campaigns,
     notifications: generateNotifications(store, user),
@@ -2378,6 +2433,38 @@ function publicMetadata(store) {
     addressReference: ADDRESS_REFERENCE,
     showUatPanel: SHOW_UAT_PANEL,
   };
+}
+
+function handleGetTerms(req, res, store) {
+  return sendJson(res, 200, serializeTermsAndConditions(store));
+}
+
+async function handleUpdateTerms(req, res, store, actor) {
+  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
+  const body = jsonOrForm(await readBody(req), req);
+  const textEnValue = String(body.textEn || "").trim();
+  const textArValue = String(body.textAr || "").trim();
+  if (!textEnValue || !textArValue) {
+    return sendJson(res, 422, { error: "Both English and Arabic terms are required." });
+  }
+  const previous = serializeTermsAndConditions(store);
+  const nextVersion = Math.max(1, Number(previous.version) || 0) + 1;
+  store.termsAndConditions = {
+    version: nextVersion,
+    textEn: textEnValue,
+    textAr: textArValue,
+    updatedAt: new Date().toISOString(),
+    updatedByUserId: actor.id,
+  };
+  const next = serializeTermsAndConditions(store);
+  appendAuditEvent(store, actor, "terms_updated", "user", actor.id, {
+    oldVersion: previous.version,
+    newVersion: next.version,
+    oldHash: previous.contentHash,
+    newHash: next.contentHash,
+  });
+  await writeStore(store);
+  return sendJson(res, 200, next);
 }
 
 function campaignPayload(body, existingCampaign = null) {
@@ -2617,6 +2704,9 @@ async function handleSignup(req, res, store) {
   if (!residentialResult.ok) return sendJson(res, 422, { error: residentialResult.error });
   const categoryResult = validateCategoryIds(categoryIdsFromBody(body), store);
   if (!categoryResult.ok) return sendJson(res, 422, { error: categoryResult.error });
+  if (body.termsAccepted !== true) {
+    return sendJson(res, 422, { error: "terms_acceptance_required" });
+  }
   if (!email || !text(body.password) || !text(body.fullName)) {
     return sendJson(res, 422, { error: "Full name, email, and password are required." });
   }
@@ -2676,9 +2766,16 @@ async function handleSignup(req, res, store) {
     createdAt: new Date().toISOString(),
     lastLogin: "",
     approvedByUserId: null,
+    termsAcceptance: null,
   };
 
   store.users.push(user);
+  const termsSnapshot = currentTermsSnapshot(store);
+  user.termsAcceptance = {
+    acceptedAt: new Date().toISOString(),
+    acceptedVersion: termsSnapshot.version,
+    contentHash: termsSnapshot.contentHash,
+  };
   appendAuditEvent(store, user, "residential_updated", "user", user.id, {
     country: user.residential?.country || "",
     source: "signup",
@@ -2686,6 +2783,10 @@ async function handleSignup(req, res, store) {
   appendAuditEvent(store, user, "categories_updated", "user", user.id, {
     categoryIds: user.categoryIds,
     source: "signup",
+  });
+  appendAuditEvent(store, user, "terms_accepted", "user", user.id, {
+    version: termsSnapshot.version,
+    contentHash: termsSnapshot.contentHash,
   });
   let signupAddressWarning = null;
   if (body.address !== undefined && body.address !== null) {
@@ -4236,9 +4337,13 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && pathname === "/branch/verify") {
     return serveFile(res, path.join(ROOT, "verify.html"));
   }
+  if (req.method === "GET" && pathname === "/terms") {
+    return serveFile(res, path.join(ROOT, "terms.html"));
+  }
 
   if (req.method === "GET" && pathname === "/api/session") return handleSession(req, res, store);
   if (req.method === "GET" && pathname === "/api/public-metadata") return sendJson(res, 200, publicMetadata(store));
+  if (req.method === "GET" && pathname === "/api/terms") return handleGetTerms(req, res, store);
   if (req.method === "POST" && pathname === "/api/branch/verify/lookup") return handleVerifyLookup(req, res, store);
   if (req.method === "POST" && pathname === "/api/branch/verify/reveal") return handleVerifyReveal(req, res, store);
   if (req.method === "POST" && pathname === "/api/branch/verify/redeem") return handleVerifyRedeem(req, res, store);
@@ -4266,6 +4371,9 @@ async function requestHandler(req, res) {
   }
   if (req.method === "DELETE" && pathname === "/api/me/address") {
     return handleClearMyAddress(req, res, store, actor);
+  }
+  if (req.method === "PUT" && pathname === "/api/admin/terms") {
+    return handleUpdateTerms(req, res, store, actor);
   }
   if (req.method === "PUT" && adminUserProfileMatch) {
     return handleAdminUpdateUserProfile(req, res, store, actor, adminUserProfileMatch[0]);

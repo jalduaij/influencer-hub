@@ -243,6 +243,7 @@ const SIGNUP_FORM_FIELDS = Object.freeze([
   "snapchat",
   "snapchatFollowers",
   "preferredPlatform",
+  "termsAccepted",
 ]);
 const EMPTY_ADDRESS_REFERENCE = Object.freeze({
   countries: [],
@@ -443,6 +444,7 @@ function emptySignupDraft() {
     snapchat: "",
     snapchatFollowers: "0",
     preferredPlatform: "",
+    termsAccepted: false,
   };
 }
 
@@ -585,6 +587,8 @@ function updateSignupDraft(name, rawValue) {
   const next = signupDraftValue();
   if (name === "categoryIds") {
     next[name] = normalizeCategoryIds(rawValue);
+  } else if (name === "termsAccepted") {
+    next[name] = rawValue === true;
   } else {
     const value = typeof rawValue === "string" ? rawValue : String(rawValue ?? "");
     next[name] = value;
@@ -1057,6 +1061,7 @@ function applyApiErrorToForm(form, message) {
     { match: "city_region_mismatch", fields: ["residentialTier2Id", "residentialTier3Id"] },
     { match: "category_required", fields: ["categoryIds"] },
     { match: "invalid_category", fields: ["categoryIds"] },
+    { match: "terms_acceptance_required", fields: ["termsAccepted"] },
     { match: "Instagram is required.", fields: ["instagram"] },
     { match: "Password is required.", fields: ["password"] },
     { match: "New password is required.", fields: ["password"] },
@@ -1614,6 +1619,8 @@ function auditActionLabel(action) {
     address_cleared: l("Cleared shipping address", "حذف عنوان الشحن"),
     address_viewed: l("Viewed shipping address", "عرض عنوان الشحن"),
     profile_updated_by_admin: l("Updated member profile", "حدّث ملف العضو"),
+    terms_accepted: l("Accepted Terms & Conditions", "وافق على الشروط والأحكام"),
+    terms_updated: l("Updated Terms & Conditions", "حدّث الشروط والأحكام"),
     "journal.created": l("Created journal entry", "أنشأ منشوراً"),
     "journal.updated": l("Updated journal entry", "حدّث منشوراً"),
     "journal.deleted": l("Deleted journal entry", "حذف منشوراً"),
@@ -1695,6 +1702,12 @@ function auditMetaLabel(key) {
     viewerRole: l("Viewer role", "دور العارض"),
     editedByRole: l("Edited by role", "تم التعديل بواسطة"),
     fieldsChanged: l("Fields", "الحقول"),
+    version: l("Version", "الإصدار"),
+    contentHash: l("Content hash", "بصمة المحتوى"),
+    oldVersion: l("Old version", "الإصدار السابق"),
+    newVersion: l("New version", "الإصدار الجديد"),
+    oldHash: l("Old hash", "البصمة السابقة"),
+    newHash: l("New hash", "البصمة الجديدة"),
   };
   return labels[key] || key;
 }
@@ -2643,6 +2656,15 @@ function renderSignupForm() {
       <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", draft.preferredPlatform || "")}</label>
       <p class="compact field-span-full">${l("Follower counts help us match you with relevant campaigns. You can update them later in your profile.", "أعداد المتابعين تساعدنا على مطابقتك مع الحملات المناسبة. يمكنك تحديثها لاحقاً من ملفك الشخصي.")}</p>
       ${renderSignupAddressSection()}
+      <div class="field checkbox-field field-span-full terms-consent-field">
+        <label class="option-pill option-pill--terms">
+          <input type="checkbox" name="termsAccepted" required ${draft.termsAccepted ? "checked" : ""} />
+          <span>${l(
+            `I have read and agree to the <a href="/terms" target="_blank" rel="noopener">Terms & Conditions</a>.`,
+            `لقد قرأت <a href="/terms" target="_blank" rel="noopener">الشروط والأحكام</a> وأوافق عليها.`
+          )}</span>
+        </label>
+      </div>
       <button type="submit" style="grid-column: 1 / -1;">${l("Send my request", "إرسال طلبي")}</button>
     </form>
   `;
@@ -4986,8 +5008,51 @@ function renderMasterDataPage() {
   const visibleCategories = state.masterDataShowInactive.category ? categories : categories.filter((row) => row.status === "active");
   const visiblePlatforms = state.masterDataShowInactive.platform ? platforms : platforms.filter((row) => row.status === "active");
   const visibleTags = state.masterDataShowInactive.tag ? tags : tags.filter((row) => row.status === "active");
+  const terms = state.data?.termsAndConditions || null;
+  const termsUpdatedBy = terms?.updatedByUserId
+    ? (state.data?.users || []).find((user) => user.id === Number(terms.updatedByUserId))
+    : null;
   return `
     ${pageHeader(l("Master Data", "البيانات الأساسية"), l("Manage branch cities, categories, platforms, and controlled tags used across the system.", "إدارة مدن الأفرع والفئات والمنصات والعلامات المعتمدة المستخدمة عبر النظام."), { hideHeroStats: true })}
+    ${state.currentUser?.role === "admin" && terms ? `
+      <section class="panel terms-editor-card">
+        <div class="row report-toolbar-head">
+          <div>
+            <h3>${l("Terms & Conditions", "الشروط والأحكام")}</h3>
+            <p class="panel-subtitle">
+              ${escapeHtml(
+                l(
+                  `Version ${terms.version} · Last updated ${formatDateTime(terms.updatedAt) || "-"}`,
+                  `الإصدار ${terms.version} · آخر تحديث ${formatDateTime(terms.updatedAt) || "-"}`
+                )
+              )}
+              ${termsUpdatedBy ? ` · ${escapeHtml(l("By", "بواسطة"))}: ${escapeHtml(termsUpdatedBy.fullName || termsUpdatedBy.email || "")}` : ""}
+            </p>
+          </div>
+        </div>
+        <form id="termsForm" class="form-grid terms-editor-form">
+          <label class="field">
+            <span>${l("English", "الإنجليزية")}</span>
+            <textarea name="textEn" rows="14" required>${escapeHtml(terms.textEn || "")}</textarea>
+          </label>
+          <label class="field">
+            <span>${l("Arabic", "العربية")}</span>
+            <textarea name="textAr" rows="14" required dir="auto">${escapeHtml(terms.textAr || "")}</textarea>
+          </label>
+          <p class="compact field-span-full">
+            ${escapeHtml(
+              l(
+                "Members will see the new text on the public terms page and at future enrollments. Existing members are not re-prompted.",
+                "سيشاهد الأعضاء النص الجديد في صفحة الشروط العامة وعند التسجيلات المستقبلية. لن تتم إعادة مطالبة الأعضاء الحاليين."
+              )
+            )}
+          </p>
+          <div class="row-wrap field-span-full">
+            <button type="submit">${l("Save Terms & Conditions", "حفظ الشروط والأحكام")}</button>
+          </div>
+        </form>
+      </section>
+    ` : ""}
     <section class="panel">
       <div class="row report-toolbar-head">
         <div>
@@ -6610,6 +6675,16 @@ function renderInfluencerCampaignPreviewPage() {
 
   const canConfirm = shouldShowConfirmInterest(participant, isEligible);
   const canDecline = !participant && !alreadyDeclined && isEligible;
+  const termsNote = canConfirm
+    ? `
+      <p class="campaign-preview-footer__terms-note">
+        ${l(
+          `By joining, you agree to the <a href="/terms" target="_blank" rel="noopener">Terms & Conditions</a>.`,
+          `بالانضمام، فإنك توافق على <a href="/terms" target="_blank" rel="noopener">الشروط والأحكام</a>.`
+        )}
+      </p>
+    `
+    : "";
 
   let primaryRow = "";
   let rejectPanel = "";
@@ -6666,6 +6741,7 @@ function renderInfluencerCampaignPreviewPage() {
   const footer = `
     <section class="block block--mauve campaign-preview-footer">
       ${primaryRow}
+      ${termsNote}
       ${rejectPanel}
       <div class="campaign-preview-footer__back-row">
         <button class="secondary" data-nav="campaigns">${escapeHtml(l("Back to campaigns", "العودة إلى الحملات"))}</button>
@@ -8289,6 +8365,12 @@ async function handleSubmit(event) {
         reportFormValidity(form);
         throw new Error(message);
       }
+      if (!form.elements.termsAccepted?.checked) {
+        const message = l("You must accept the Terms & Conditions to continue.", "يجب الموافقة على الشروط والأحكام للمتابعة.");
+        setFieldError(form, "termsAccepted", message);
+        reportFormValidity(form);
+        throw new Error(message);
+      }
       const signupAddress = pickSignupAddressPayload();
       const payload = {
         fullName: values.fullName,
@@ -8305,6 +8387,7 @@ async function handleSubmit(event) {
         snapchatFollowers: values.snapchatFollowers,
         preferredPlatform: values.preferredPlatform,
         residential,
+        termsAccepted: form.elements.termsAccepted?.checked === true,
         ...(signupAddress ? { address: signupAddress } : {}),
       };
       const response = await api("/api/signup", { method: "POST", body: JSON.stringify(payload) });
@@ -8623,6 +8706,22 @@ async function handleSubmit(event) {
       form.reset();
       return;
     }
+    if (form.id === "termsForm") {
+      const values = formDataToObject(new FormData(form));
+      const payload = await api("/api/admin/terms", {
+        method: "PUT",
+        body: JSON.stringify(values),
+      });
+      await loadBootstrap();
+      flash(
+        l(
+          `Terms & Conditions updated to version ${payload.version}. Members will see the new text on the public terms page and at future enrollments. Existing members are not re-prompted.`,
+          `تم تحديث الشروط والأحكام إلى الإصدار ${payload.version}. سيشاهد الأعضاء النص الجديد في صفحة الشروط العامة وعند التسجيلات المستقبلية. لن تتم إعادة مطالبة الأعضاء الحاليين.`
+        ),
+        "success"
+      );
+      return;
+    }
     if (form.classList.contains("update-city-form")) {
       await mutateAndRefresh(`/api/cities/${form.dataset.cityId}/update`, formDataToObject(new FormData(form)), l("City updated.", "تم تحديث المدينة."), { rethrow: true });
       return;
@@ -8706,6 +8805,8 @@ function handleChange(event) {
   }
   if (event.target.closest("#signupForm") && event.target.name === "categoryIds") {
     syncSignupCategoryDraftFromForm(event.target.form);
+  } else if (event.target.closest("#signupForm") && event.target.name === "termsAccepted") {
+    updateSignupDraft(event.target.name, event.target.checked);
   } else if (event.target.closest("#signupForm") && event.target.name) {
     updateSignupDraft(event.target.name, event.target.value);
   }
