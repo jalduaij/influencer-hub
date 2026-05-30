@@ -230,6 +230,7 @@ const SIGNUP_FORM_FIELDS = Object.freeze([
   "fullName",
   "email",
   "password",
+  "passwordConfirm",
   "mobile",
   "gender",
   "residentialCountry",
@@ -431,6 +432,7 @@ function emptySignupDraft() {
     fullName: "",
     email: "",
     password: "",
+    passwordConfirm: "",
     mobile: "",
     gender: "",
     residentialCountry: "",
@@ -2621,51 +2623,143 @@ function renderLoginForm() {
 
 function renderSignupForm() {
   const draft = signupDraftValue();
+  const section = (num, titleEn, titleAr, ledeEn, ledeAr, fieldsHtml) => `
+    <section class="signup-section">
+      <div class="signup-section__head">
+        <span class="signup-section__num">${num}</span>
+        <h2 class="signup-section__title">${l(titleEn, titleAr)}</h2>
+      </div>
+      ${ledeEn ? `<p class="signup-section__lede">${l(ledeEn, ledeAr)}</p>` : ""}
+      <div class="signup-section__fields form-grid two-col">
+        ${fieldsHtml}
+      </div>
+    </section>
+  `;
+
   return `
-    <form id="signupForm" class="form-grid two-col">
-      <label class="field"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(draft.fullName || "")}" /></label>
-      <label class="field"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required value="${escapeHtml(draft.email || "")}" /></label>
-      ${renderPasswordField("password", { required: true, autocomplete: "new-password", hint: passwordRequirementHint(), label: l("Password", "كلمة المرور"), value: draft.password || "", minLength: 8 })}
-      <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", draft.mobile || "", true)}</label>
-      <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", draft.gender || "", true)}</label>
-      <div class="field field-span-full signup-residential-block">
-        <span>${l("Where do you live?", "أين تسكن؟")} <em class="required-mark">*</em></span>
-        <p class="compact">${escapeHtml(l("Choose your country, governorate or region, and city so PICK can match you to nearby campaigns.", "اختر دولتك ومحافظتك أو منطقتك ومدينتك حتى يتمكن PICK من مطابقتك مع الحملات القريبة."))}</p>
-        <div class="form-grid two-col signup-residential-block__grid">
-          ${renderResidentialCascadeFields({
-            prefix: "residential",
-            value: signupResidentialValue(),
+    <form id="signupForm" class="signup-form">
+
+      ${section(
+        "01",
+        "Who you are",
+        "من أنت",
+        "The basics for your member profile. Everything in this section is required.",
+        "الأساسيات لملفك الشخصي كعضو. جميع الحقول في هذا القسم مطلوبة.",
+        `
+          <label class="field field-span-full"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(draft.fullName || "")}" /></label>
+          <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", draft.mobile || "", true)}</label>
+          <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", draft.gender || "", true)}</label>
+        `
+      )}
+
+      ${section(
+        "02",
+        "How you sign in",
+        "تسجيل الدخول",
+        "Used for login and important campaign notices. We never share these.",
+        "تُستخدم لتسجيل الدخول والإشعارات المهمة بشأن الحملات. لن نشاركها أبداً.",
+        `
+          <label class="field field-span-full"><span>${l("Email", "البريد الإلكتروني")} <em class="required-mark">*</em></span><input name="email" type="email" required value="${escapeHtml(draft.email || "")}" /></label>
+          ${renderPasswordField("password", {
             required: true,
+            autocomplete: "new-password",
+            hint: passwordRequirementHint(),
+            label: l("Password", "كلمة المرور"),
+            value: draft.password || "",
+            minLength: 8,
           })}
+          ${renderPasswordField("passwordConfirm", {
+            required: true,
+            autocomplete: "new-password",
+            hint: "",
+            label: l("Confirm password", "تأكيد كلمة المرور"),
+            value: draft.passwordConfirm || "",
+            minLength: 8,
+          })}
+        `
+      )}
+
+      ${section(
+        "03",
+        "Where you live",
+        "أين تسكن",
+        "Used to match you with nearby campaigns and pre-fill your shipping address.",
+        "تُستخدم لمطابقتك مع الحملات القريبة ولتعبئة عنوان الشحن مسبقاً.",
+        renderResidentialCascadeFields({
+          prefix: "residential",
+          value: signupResidentialValue(),
+          required: true,
+        })
+      )}
+
+      ${section(
+        "04",
+        "What you post about",
+        "ما تنشر عنه",
+        "Pick every category that fits your content — at least one is required.",
+        "اختر كل فئة تناسب محتواك — مطلوب واحدة على الأقل.",
+        renderCategoryChecklist({
+          selectedValues: draft.categoryIds || [],
+          required: true,
+          hint: "",
+          fieldClass: "field checkbox-field field-span-full signup-section__chips",
+        })
+      )}
+
+      ${section(
+        "05",
+        "Where you post",
+        "أين تنشر",
+        "Add the handles you actively use. Follower counts are estimates — you can update them later.",
+        "أضف الحسابات التي تستخدمها فعلياً. أعداد المتابعين تقديرية — يمكنك تحديثها لاحقاً.",
+        `
+          <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required value="${escapeHtml(draft.instagram || "")}" /></label>
+          <label class="field"><span>${l("Instagram followers", "متابعو إنستغرام")}</span><input name="instagramFollowers" type="number" min="0" value="${escapeHtml(draft.instagramFollowers || "0")}" /></label>
+          <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(draft.tiktok || "")}" /></label>
+          <label class="field"><span>${l("TikTok followers", "متابعو تيك توك")}</span><input name="tiktokFollowers" type="number" min="0" value="${escapeHtml(draft.tiktokFollowers || "0")}" /></label>
+          <label class="field"><span>Snapchat</span><input name="snapchat" value="${escapeHtml(draft.snapchat || "")}" /></label>
+          <label class="field"><span>${l("Snapchat followers", "متابعو سناب شات")}</span><input name="snapchatFollowers" type="number" min="0" value="${escapeHtml(draft.snapchatFollowers || "0")}" /></label>
+          <label class="field field-span-full"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", draft.preferredPlatform || "")}</label>
+        `
+      )}
+
+      <section class="signup-section signup-section--shipping">
+        <div class="signup-section__head">
+          <span class="signup-section__num">06</span>
+          <h2 class="signup-section__title">${l("Shipping address", "عنوان الشحن")}</h2>
         </div>
+        <p class="signup-section__lede">${l(
+          "Optional. Save a delivery address if you'd like to receive packages and gifts from PICK. You can also add it later from your profile.",
+          "اختياري. احفظ عنوان شحن إذا كنت ترغب في استلام الطرود والهدايا من بِك. يمكنك إضافته لاحقاً من ملفك الشخصي."
+        )}</p>
+        <div class="signup-section__fields">
+          ${renderSignupAddressSection()}
+        </div>
+      </section>
+
+      <section class="signup-section signup-section--agreement">
+        <div class="signup-section__head">
+          <span class="signup-section__num">07</span>
+          <h2 class="signup-section__title">${l("Agreement", "الموافقة")}</h2>
+        </div>
+        <div class="signup-agreement terms-consent-field">
+          <label class="option-pill option-pill--terms signup-agreement__label">
+            <input type="checkbox" name="termsAccepted" required ${draft.termsAccepted ? "checked" : ""} />
+            <span>${l(
+              `I have read and agree to the <a href="/terms" target="_blank" rel="noopener">Terms & Conditions</a>.`,
+              `لقد قرأت <a href="/terms" target="_blank" rel="noopener">الشروط والأحكام</a> وأوافق عليها.`
+            )}</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="signup-submit-row">
+        <button type="submit" class="signup-submit">${l("Send my request", "إرسال طلبي")}</button>
+        <p class="signup-submit-foot">${l(
+          "A team member will review and welcome you.",
+          "سيقوم أحد أعضاء الفريق بمراجعة طلبك والترحيب بك."
+        )}</p>
       </div>
-      ${renderCategoryChecklist({
-        selectedValues: draft.categoryIds || [],
-        required: true,
-        hint: l(
-          "Pick at least one. Used to match you to campaigns.",
-          "اختر فئة واحدة على الأقل. تُستخدم لمطابقتك بالحملات."
-        ),
-      })}
-      <label class="field"><span>Instagram <em class="required-mark">*</em></span><input name="instagram" required value="${escapeHtml(draft.instagram || "")}" /></label>
-      <label class="field"><span>Instagram followers</span><input name="instagramFollowers" type="number" min="0" value="${escapeHtml(draft.instagramFollowers || "0")}" /></label>
-      <label class="field"><span>TikTok</span><input name="tiktok" value="${escapeHtml(draft.tiktok || "")}" /></label>
-      <label class="field"><span>TikTok followers</span><input name="tiktokFollowers" type="number" min="0" value="${escapeHtml(draft.tiktokFollowers || "0")}" /></label>
-      <label class="field"><span>Snapchat</span><input name="snapchat" value="${escapeHtml(draft.snapchat || "")}" /></label>
-      <label class="field"><span>Snapchat followers</span><input name="snapchatFollowers" type="number" min="0" value="${escapeHtml(draft.snapchatFollowers || "0")}" /></label>
-      <label class="field"><span>${l("Preferred platform", "المنصة المفضلة")}</span>${renderPlatformSelect("preferredPlatform", draft.preferredPlatform || "")}</label>
-      <p class="compact field-span-full">${l("Follower counts help us match you with relevant campaigns. You can update them later in your profile.", "أعداد المتابعين تساعدنا على مطابقتك مع الحملات المناسبة. يمكنك تحديثها لاحقاً من ملفك الشخصي.")}</p>
-      ${renderSignupAddressSection()}
-      <div class="field checkbox-field field-span-full terms-consent-field">
-        <label class="option-pill option-pill--terms">
-          <input type="checkbox" name="termsAccepted" required ${draft.termsAccepted ? "checked" : ""} />
-          <span>${l(
-            `I have read and agree to the <a href="/terms" target="_blank" rel="noopener">Terms & Conditions</a>.`,
-            `لقد قرأت <a href="/terms" target="_blank" rel="noopener">الشروط والأحكام</a> وأوافق عليها.`
-          )}</span>
-        </label>
-      </div>
-      <button type="submit" style="grid-column: 1 / -1;">${l("Send my request", "إرسال طلبي")}</button>
     </form>
   `;
 }
@@ -8370,6 +8464,20 @@ async function handleSubmit(event) {
         setFieldError(form, "termsAccepted", message);
         reportFormValidity(form);
         throw new Error(message);
+      }
+      const password = String(form.elements.password?.value || "");
+      const passwordConfirm = String(form.elements.passwordConfirm?.value || "");
+      if (password !== passwordConfirm) {
+        flash(
+          l("Passwords don't match. Please retype the confirmation.", "كلمتا المرور غير متطابقتين. يُرجى إعادة كتابة التأكيد."),
+          "error"
+        );
+        const confirmField = form.elements.passwordConfirm;
+        if (confirmField) {
+          confirmField.focus();
+          confirmField.select?.();
+        }
+        return;
       }
       const signupAddress = pickSignupAddressPayload();
       const payload = {
