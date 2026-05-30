@@ -21,16 +21,23 @@
     }
     .lang-toggle button {
       padding: 8px 16px;
-      border: 1px solid #d5cfe0;
+      border: 1px solid #ccc;
       background: #fff;
+      color: #1f1620;
       border-radius: 999px;
       cursor: pointer;
       font-weight: 600;
+      font-family: inherit;
     }
     .lang-toggle button.active {
       background: #3a2552;
       color: #fff;
       border-color: #3a2552;
+    }
+    .lang-toggle button:not(.active):hover {
+      background: #f3eaf9;
+      border-color: #3a2552;
+      color: #3a2552;
     }
     h1 {
       color: #3a2552;
