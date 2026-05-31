@@ -8825,3 +8825,13 @@ body.rtl .signup-section__title {
 body.rtl .signup-section__head {
   flex-direction: row-reverse;
 }
+
+/* ===== Branch location cascade (spec 99) ===== */
+
+.branch-location-field .compact {
+  margin: 6px 0 12px;
+}
+
+.branch-location-field .form-grid {
+  margin-top: 10px;
+}

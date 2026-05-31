@@ -623,6 +623,26 @@ function validateResidential(input) {
   return { ok: true, value: out };
 }
 
+function validateBranchLocation(input) {
+  const result = validateResidential(input);
+  if (!result.ok) {
+    const errorMap = {
+      residential_required: "branch_location_required",
+      invalid_country: "invalid_country",
+      invalid_governorate: "invalid_governorate",
+      area_required: "area_required",
+      invalid_area: "invalid_area",
+      area_governorate_mismatch: "area_governorate_mismatch",
+      invalid_region: "invalid_region",
+      city_required: "city_required",
+      invalid_city: "invalid_city",
+      city_region_mismatch: "city_region_mismatch",
+    };
+    return { ok: false, error: errorMap[result.error] || result.error };
+  }
+  return result;
+}
+
 function residentialFromBody(body) {
   if (body?.residential && typeof body.residential === "object") {
     return body.residential;
@@ -642,6 +662,48 @@ function residentialFromBody(body) {
     country,
     regionId: tier2Id,
     cityId: tier3Id,
+  };
+}
+
+function branchLocationFromBody(body) {
+  if (body?.location && typeof body.location === "object" && !Array.isArray(body.location)) {
+    return body.location;
+  }
+  if (typeof body?.location === "string" && text(body.location)) {
+    try {
+      const parsed = JSON.parse(body.location);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      // Fall back to flat fields when location isn't valid JSON.
+    }
+  }
+  const country = text(body?.locationCountry).toUpperCase();
+  const tier2Id = text(body?.locationTier2Id);
+  const tier3Id = text(body?.locationTier3Id);
+  if (!country && !tier2Id && !tier3Id) return null;
+  if (country === "KW") {
+    return {
+      country,
+      governorateId: tier2Id,
+      areaId: tier3Id,
+    };
+  }
+  return {
+    country,
+    regionId: tier2Id,
+    cityId: tier3Id,
+  };
+}
+
+function branchLocationSnapshot(branch) {
+  return {
+    country: text(branch?.country).toUpperCase(),
+    governorateId: text(branch?.governorateId),
+    regionId: text(branch?.regionId),
+    areaId: text(branch?.areaId),
+    cityId: typeof branch?.cityId === "string" ? branch.cityId : "",
   };
 }
 
@@ -1143,6 +1205,32 @@ function cityById(store, cityId) {
   return store.cities.find((city) => city.id === Number(cityId)) || null;
 }
 
+function addressReferenceName(row, locale = "en") {
+  if (!row) return "";
+  return locale === "ar" ? row.nameAr || row.nameEn || "" : row.nameEn || row.nameAr || "";
+}
+
+function branchLocationSummary(store, branch, locale = "en") {
+  if (branch?.country === "KW") {
+    const governorate = ADDRESS_LOOKUPS.governorates[text(branch.governorateId)];
+    const area = ADDRESS_LOOKUPS.areas[text(branch.areaId)];
+    const summary = [addressReferenceName(governorate, locale), addressReferenceName(area, locale)]
+      .filter(Boolean)
+      .join(" · ");
+    if (summary) return summary;
+  }
+  if (branch?.country === "SA") {
+    const region = ADDRESS_LOOKUPS.regions[text(branch.regionId)];
+    const city = ADDRESS_LOOKUPS.cities[text(branch.cityId)];
+    const summary = [addressReferenceName(region, locale), addressReferenceName(city, locale)]
+      .filter(Boolean)
+      .join(" · ");
+    if (summary) return summary;
+  }
+  const legacyCity = typeof branch?.cityId === "number" ? cityById(store, branch.cityId) : null;
+  return addressReferenceName(legacyCity, locale) || text(branch?.city);
+}
+
 function categoryById(store, categoryId) {
   return store.categories.find((category) => category.id === Number(categoryId)) || null;
 }
@@ -1290,9 +1378,6 @@ function normalizeStore(store) {
   for (const user of store.users) {
     if (user.category) ensureChoiceByName(store.categories, user.category);
   }
-  for (const branch of store.branches) {
-    if (branch.city) branch.cityId ||= ensureChoiceByName(store.cities, branch.city);
-  }
 
   store.nextIds ||= {};
   const idTables = [
@@ -1392,7 +1477,24 @@ function normalizeStore(store) {
   for (const branch of store.branches) {
     branch.nameEn ||= branch.name || "";
     branch.nameAr ||= branch.nameEn;
-    branch.cityId ||= ensureChoiceByName(store.cities, branch.city || "");
+    if (branch.country) {
+      const normalizedLocation = validateBranchLocation(branchLocationSnapshot(branch));
+      if (normalizedLocation.ok) {
+        const nextLocation = normalizedLocation.value;
+        if (JSON.stringify(branchLocationSnapshot(branch)) !== JSON.stringify(nextLocation)) {
+          branch.country = nextLocation.country;
+          branch.governorateId = nextLocation.governorateId;
+          branch.regionId = nextLocation.regionId;
+          branch.areaId = nextLocation.areaId;
+          branch.cityId = nextLocation.cityId;
+          changed.value = true;
+        }
+        if ("city" in branch) {
+          delete branch.city;
+          changed.value = true;
+        }
+      }
+    }
     branch.areaEn ||= "";
     branch.areaAr ||= branch.areaEn;
     branch.addressEn ||= "";
@@ -1719,11 +1821,14 @@ async function writeStore(store, options = {}) {
 }
 
 function serializeBranch(store, branch, options = {}) {
-  const city = cityById(store, branch.cityId);
+  const locationNameEn = branchLocationSummary(store, branch, "en");
+  const locationNameAr = branchLocationSummary(store, branch, "ar");
   const serialized = {
     ...branch,
-    cityNameEn: city?.nameEn || "",
-    cityNameAr: city?.nameAr || "",
+    locationNameEn,
+    locationNameAr,
+    cityNameEn: locationNameEn,
+    cityNameAr: locationNameAr,
   };
   if (!options.includePin) {
     delete serialized.pin;
@@ -2353,7 +2458,7 @@ function buildBootstrap(store, user, options = {}) {
   const journalEntries = visibleJournalEntriesFor(store, user).map((entry) => serializeJournalEntry(store, entry));
   const common = {
     currentUser: sanitizeUser(user, { includeAddress: true }),
-    cities: store.cities,
+    cities: [],
     categories: store.categories,
     platforms: store.platforms,
     tags: store.tags,
@@ -2426,7 +2531,7 @@ function handleExportReportCsv(req, res, store, actor, searchParams) {
 
 function publicMetadata(store) {
   return {
-    cities: store.cities.filter((city) => city.status === "active"),
+    cities: [],
     categories: store.categories.filter((category) => category.status === "active"),
     platforms: store.platforms.filter((platform) => platform.status === "active"),
     tags: store.tags.filter((tag) => tag.status === "active"),
@@ -3238,39 +3343,24 @@ async function handleUpdateManager(req, res, store, actor, userId) {
 }
 
 async function handleCreateCity(req, res, store, actor) {
-  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const body = jsonOrForm(await readBody(req), req);
-  if (!text(body.nameEn)) return sendJson(res, 422, { error: "City English name is required." });
-  store.cities.push({
-    id: store.nextIds.city++,
-    nameEn: text(body.nameEn),
-    nameAr: text(body.nameAr || body.nameEn),
-    status: body.status === "inactive" ? "inactive" : "active",
-    createdAt: new Date().toISOString(),
+  return sendJson(res, 410, {
+    error: "store_cities_retired",
+    message: "Cities are now managed through the address reference. Edit seeds/address-reference.json via spec.",
   });
-  await writeStore(store);
-  return sendJson(res, 201, { ok: true });
 }
 
 async function handleUpdateCity(req, res, store, actor, cityId) {
-  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const city = cityById(store, cityId);
-  if (!city) return sendJson(res, 404, { error: "City not found." });
-  const body = jsonOrForm(await readBody(req), req);
-  city.nameEn = text(body.nameEn || city.nameEn);
-  city.nameAr = text(body.nameAr || city.nameAr);
-  city.status = body.status === "inactive" ? "inactive" : "active";
-  await writeStore(store);
-  return sendJson(res, 200, { ok: true });
+  return sendJson(res, 410, {
+    error: "store_cities_retired",
+    message: "Cities are now managed through the address reference. Edit seeds/address-reference.json via spec.",
+  });
 }
 
 async function handleDeleteCity(req, res, store, actor, cityId) {
-  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
-  const city = cityById(store, cityId);
-  if (!city) return sendJson(res, 404, { error: "City not found." });
-  city.status = "inactive";
-  await writeStore(store);
-  return sendJson(res, 200, { ok: true });
+  return sendJson(res, 410, {
+    error: "store_cities_retired",
+    message: "Cities are now managed through the address reference. Edit seeds/address-reference.json via spec.",
+  });
 }
 
 async function handleCreateCategory(req, res, store, actor) {
@@ -3415,14 +3505,19 @@ async function handleCreateBranch(req, res, store, actor) {
     ? parseMultipart(rawBody, contentType)
     : { fields: jsonOrForm(rawBody, req), files: {} };
   const body = parsed.fields;
-  if (!text(body.nameEn) || !Number(body.cityId)) {
-    return sendJson(res, 422, { error: "Branch name and city are required." });
-  }
+  if (!text(body.nameEn)) return sendJson(res, 422, { error: "Branch English name is required." });
+  const locationResult = validateBranchLocation(branchLocationFromBody(body));
+  if (!locationResult.ok) return sendJson(res, 422, { error: locationResult.error });
+  const location = locationResult.value;
   const branch = {
     id: store.nextIds.branch++,
     nameEn: text(body.nameEn),
     nameAr: text(body.nameAr || body.nameEn),
-    cityId: Number(body.cityId),
+    country: location.country,
+    governorateId: location.governorateId,
+    regionId: location.regionId,
+    areaId: location.areaId,
+    cityId: location.cityId,
     addressEn: text(body.addressEn),
     addressAr: text(body.addressAr || body.addressEn),
     mapLink: text(body.mapLink),
@@ -3455,9 +3550,20 @@ async function handleUpdateBranch(req, res, store, actor, branchId) {
     ? parseMultipart(rawBody, contentType)
     : { fields: jsonOrForm(rawBody, req), files: {} };
   const body = parsed.fields;
+  const previousLocation = branchLocationSnapshot(branch);
   branch.nameEn = text(body.nameEn || branch.nameEn);
   branch.nameAr = text(body.nameAr || branch.nameAr);
-  branch.cityId = Number(body.cityId) || branch.cityId;
+  const nextLocationInput = branchLocationFromBody(body);
+  if (nextLocationInput) {
+    const locationResult = validateBranchLocation(nextLocationInput);
+    if (!locationResult.ok) return sendJson(res, 422, { error: locationResult.error });
+    const location = locationResult.value;
+    branch.country = location.country;
+    branch.governorateId = location.governorateId;
+    branch.regionId = location.regionId;
+    branch.areaId = location.areaId;
+    branch.cityId = location.cityId;
+  }
   branch.addressEn = text(body.addressEn ?? branch.addressEn);
   branch.addressAr = text(body.addressAr ?? branch.addressAr);
   branch.mapLink = text(body.mapLink ?? branch.mapLink);
@@ -3468,6 +3574,13 @@ async function handleUpdateBranch(req, res, store, actor, branchId) {
     const persisted = await persistUploadedImage(image);
     branch.imageName = persisted.displayName;
     branch.imagePath = `/uploads/${persisted.storedName}`;
+  }
+  const nextLocation = branchLocationSnapshot(branch);
+  if (JSON.stringify(previousLocation) !== JSON.stringify(nextLocation)) {
+    appendAuditEvent(store, actor, "branch.location_updated", "branch", branch.id, {
+      previousLocation,
+      nextLocation,
+    });
   }
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
@@ -4401,17 +4514,14 @@ async function requestHandler(req, res) {
     return handleUpdateManager(req, res, store, actor, managerUpdateMatch[0]);
   }
   if (req.method === "POST" && pathname === "/api/cities") {
-    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleCreateCity(req, res, store, actor);
   }
   const cityMatch = routeMatch(pathname, /^\/api\/cities\/(\d+)\/update$/);
   if (req.method === "POST" && cityMatch) {
-    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateCity(req, res, store, actor, cityMatch[0]);
   }
   const cityDeleteMatch = routeMatch(pathname, /^\/api\/cities\/(\d+)\/delete$/);
   if (req.method === "POST" && cityDeleteMatch) {
-    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleDeleteCity(req, res, store, actor, cityDeleteMatch[0]);
   }
   if (req.method === "POST" && pathname === "/api/categories") {

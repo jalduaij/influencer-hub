@@ -109,7 +109,6 @@ const state = {
     id: null,
   },
   masterDataShowInactive: {
-    city: false,
     category: false,
     platform: false,
     tag: false,
@@ -569,7 +568,7 @@ function isSignupFieldName(name) {
 }
 
 function isResidentialFieldName(name) {
-  return ["residentialCountry", "residentialTier2Id", "residentialTier3Id"].includes(name);
+  return /(Country|Tier2Id|Tier3Id)$/.test(String(name || ""));
 }
 
 function syncSignupCategoryDraftFromForm(form) {
@@ -1246,9 +1245,24 @@ function genderLabel(value) {
   return l("Not set", "غير محدد");
 }
 
-function cityName(cityId) {
-  const city = [...(state.data?.cities || []), ...(state.publicData?.cities || [])].find((item) => item.id === Number(cityId));
-  return city ? (state.locale === "ar" ? city.nameAr : city.nameEn) : "-";
+function branchLocationDisplay(branch, options = {}) {
+  const { fallback = "-", includeCountry = true } = options;
+  if (!branch) return fallback;
+  const country = residentialCountryValue(branch);
+  const parts = [];
+  if (includeCountry && country) {
+    parts.push(`${addressCountryFlag(country)} ${addressCountryName(country)}`);
+  }
+  const tier2Name = addressLocalizedName(residentialTier2Row(branch));
+  const tier3Name = addressLocalizedName(residentialTier3Row(branch));
+  if (tier2Name) parts.push(tier2Name);
+  if (tier3Name) parts.push(tier3Name);
+  const summary = parts.join(" · ");
+  if (summary) return summary;
+  const serverSummary = state.locale === "ar"
+    ? branch.locationNameAr || branch.cityNameAr
+    : branch.locationNameEn || branch.cityNameEn;
+  return serverSummary || branch.city || fallback;
 }
 
 function categoryName(categoryId) {
@@ -1613,6 +1627,7 @@ function auditActionLabel(action) {
     "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
     "participant.submission": l("Submitted proof", "أرسل الإثبات"),
     "branch.pin_rotated": l("Rotated branch PIN", "غيّر رمز الفرع"),
+    "branch.location_updated": l("Updated branch location", "حدّث موقع الفرع"),
     residential_updated: l("Updated residential location", "حدّث مكان السكن"),
     categories_updated: l("Updated interested categories", "حدّث الفئات المهتمة"),
     campaign_targeting_reset: l("Reset campaign targeting", "أعاد ضبط استهداف الحملة"),
@@ -4983,13 +4998,49 @@ function syncCampaignTargetingForm(form) {
   }
 }
 
+function branchLocationFromForm(form) {
+  return residentialFromSelection({
+    residentialCountry: form.elements.locationCountry?.value || "",
+    residentialTier2Id: form.elements.locationTier2Id?.value || "",
+    residentialTier3Id: form.elements.locationTier3Id?.value || "",
+  });
+}
+
+function branchFormData(form) {
+  const formData = new FormData(form);
+  formData.delete("locationCountry");
+  formData.delete("locationTier2Id");
+  formData.delete("locationTier3Id");
+  formData.set("location", JSON.stringify(branchLocationFromForm(form)));
+  return formData;
+}
+
 function renderBranchForm(branch) {
   return `
     <form id="${branch ? "editBranchForm" : "createBranchForm"}" class="form-grid two-col" enctype="multipart/form-data">
       ${branch ? `<input type="hidden" name="branchId" value="${branch.id}" />` : ""}
       <label class="field"><span>Name (EN)</span><input name="nameEn" required value="${escapeHtml(branch?.nameEn || "")}" /></label>
       <label class="field"><span>Name (AR)</span><input name="nameAr" value="${escapeHtml(branch?.nameAr || "")}" /></label>
-      <label class="field"><span>${l("City", "المدينة")}</span>${renderCitySelect("cityId", branch?.cityId || "")}</label>
+      <div class="field field-span-full branch-location-field">
+        <span>${l("Branch location", "موقع الفرع")} <em class="required-mark">*</em></span>
+        <p class="compact">${escapeHtml(l(
+          "Country -> Governorate / Region -> City. Same list used everywhere else in the app.",
+          "الدولة <- المحافظة / المنطقة <- المدينة. نفس القائمة المستخدمة في باقي التطبيق."
+        ))}</p>
+        <div class="form-grid two-col">
+          ${renderResidentialCascadeFields({
+            prefix: "location",
+            value: {
+              country: branch?.country || "",
+              governorateId: branch?.governorateId || "",
+              regionId: branch?.regionId || "",
+              areaId: branch?.areaId || "",
+              cityId: typeof branch?.cityId === "string" ? branch.cityId : "",
+            },
+            required: true,
+          })}
+        </div>
+      </div>
       <label class="field"><span>${l("Status", "الحالة")}</span>
         <select name="status">
           <option value="active" ${!branch || branch.status === "active" ? "selected" : ""}>active</option>
@@ -5013,13 +5064,13 @@ function renderBranchesPage() {
       compareValues((state.locale === "ar" ? left.nameAr : left.nameEn) || left.nameEn || "", (state.locale === "ar" ? right.nameAr : right.nameEn) || right.nameEn || "")
     );
   return `
-    ${pageHeader(l("Branches", "الأفرع"), l("Create branches, manage their city and address details, and keep the branch list tidy for campaign setup.", "أنشئ الأفرع وأدر تفاصيل المدينة والعنوان وحافظ على تنظيم قائمة الأفرع لاستخدامها في إعداد الحملات."), { hideHeroStats: true })}
+    ${pageHeader(l("Branches", "الأفرع"), l("Create branches, manage their geography and address details, and keep the branch list tidy for campaign setup.", "أنشئ الأفرع وأدر الجغرافيا وتفاصيل العنوان وحافظ على تنظيم قائمة الأفرع لاستخدامها في إعداد الحملات."), { hideHeroStats: true })}
     <section class="content-grid">
       <section class="panel">
         <div class="row report-toolbar-head">
           <div>
             <h3>${l("Add Branch", "إضافة فرع")}</h3>
-            <p class="panel-subtitle">${l("Keep English and Arabic names and addresses aligned in one clean form. Cities can be managed from Master Data.", "حافظ على الأسماء والعناوين باللغتين ضمن نموذج مرتب واحد. يمكن إدارة المدن من البيانات الأساسية.")}</p>
+            <p class="panel-subtitle">${l("Keep English and Arabic names, geography, and addresses aligned in one clean form.", "حافظ على الأسماء والجغرافيا والعناوين باللغتين ضمن نموذج مرتب واحد.")}</p>
           </div>
         </div>
         ${renderBranchForm(null)}
@@ -5047,7 +5098,7 @@ function renderBranchesPage() {
               render: (row) => `<button type="button" class="table-link-button" data-action="edit-branch" data-branch-id="${row.id}">${escapeHtml((state.locale === "ar" ? row.nameAr : row.nameEn) || row.nameEn)}</button>`,
               html: true,
             },
-            { label: l("City", "المدينة"), render: (row) => cityName(row.cityId) || "-" },
+            { label: l("Location", "الموقع"), render: (row) => branchLocationDisplay(row) || "-" },
             { label: l("Address", "العنوان"), render: (row) => (state.locale === "ar" ? row.addressAr : row.addressEn) || row.addressEn || "-" },
             { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${statusTone(row.status)}">${escapeHtml(row.status)}</span>`, html: true },
             { label: l("Map", "الخريطة"), render: (row) => row.mapLink ? `<a class="table-link-button" href="${escapeHtml(row.mapLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open map", "فتح الخريطة"))}</a>` : "-", html: true },
@@ -5066,11 +5117,11 @@ function renderBranchEditPage() {
   return `
     ${pageHeader(
       l("Edit Branch", "تعديل الفرع"),
-      l("Update branch naming, city, address, map, and image from one clean page.", "حدّث اسم الفرع والمدينة والعنوان والخريطة والصورة من صفحة مرتبة واحدة."),
+      l("Update branch naming, location, address, map, and image from one clean page.", "حدّث اسم الفرع والموقع والعنوان والخريطة والصورة من صفحة مرتبة واحدة."),
       {
         heroStats: [
           { label: l("Branch status", "حالة الفرع"), value: `<span class="hero-status-badge badge ${statusTone(branch.status)}">${escapeHtml(branch.status)}</span>`, allowHtml: true },
-          { label: l("City", "المدينة"), value: cityName(branch.cityId) || l("Not set", "غير محدد") },
+          { label: l("Location", "الموقع"), value: branchLocationDisplay(branch) || l("Not set", "غير محدد") },
           { label: l("Map link", "رابط الخريطة"), value: branch.mapLink ? l("Added", "مضاف") : l("Missing", "غير مضاف") },
         ],
         compactHeroStats: true,
@@ -5087,18 +5138,16 @@ function renderBranchEditPage() {
       </section>
       <section class="panel">
         <h3>${l("Branch Image", "صورة الفرع")}</h3>
-        ${branch.imagePath ? `<img class="campaign-banner hero" src="${branch.imagePath}" alt="${escapeHtml(branch.nameEn)}" />` : `<div class="campaign-banner hero campaign-banner-fallback"><span>${escapeHtml((state.locale === "ar" ? branch.nameAr : branch.nameEn) || branch.nameEn)}</span><small>${escapeHtml(cityName(branch.cityId) || "")}</small></div>`}
+        ${branch.imagePath ? `<img class="campaign-banner hero" src="${branch.imagePath}" alt="${escapeHtml(branch.nameEn)}" />` : `<div class="campaign-banner hero campaign-banner-fallback"><span>${escapeHtml((state.locale === "ar" ? branch.nameAr : branch.nameEn) || branch.nameEn)}</span><small>${escapeHtml(branchLocationDisplay(branch, { fallback: "" }) || "")}</small></div>`}
       </section>
     </section>
   `;
 }
 
 function renderMasterDataPage() {
-  const cities = (state.data?.cities || []).slice().sort((left, right) => compareValues((state.locale === "ar" ? left.nameAr : left.nameEn) || left.nameEn, (state.locale === "ar" ? right.nameAr : right.nameEn) || right.nameEn));
   const categories = (state.data?.categories || []).slice().sort((left, right) => compareValues((state.locale === "ar" ? left.nameAr : left.nameEn) || left.nameEn, (state.locale === "ar" ? right.nameAr : right.nameEn) || right.nameEn));
   const platforms = (state.data?.platforms || []).slice().sort((left, right) => compareValues((state.locale === "ar" ? left.nameAr : left.nameEn) || left.nameEn, (state.locale === "ar" ? right.nameAr : right.nameEn) || right.nameEn));
   const tags = (state.data?.tags || []).slice().sort((left, right) => compareValues(left.value, right.value));
-  const visibleCities = state.masterDataShowInactive.city ? cities : cities.filter((row) => row.status === "active");
   const visibleCategories = state.masterDataShowInactive.category ? categories : categories.filter((row) => row.status === "active");
   const visiblePlatforms = state.masterDataShowInactive.platform ? platforms : platforms.filter((row) => row.status === "active");
   const visibleTags = state.masterDataShowInactive.tag ? tags : tags.filter((row) => row.status === "active");
@@ -5107,7 +5156,7 @@ function renderMasterDataPage() {
     ? (state.data?.users || []).find((user) => user.id === Number(terms.updatedByUserId))
     : null;
   return `
-    ${pageHeader(l("Master Data", "البيانات الأساسية"), l("Manage branch cities, categories, platforms, and controlled tags used across the system.", "إدارة مدن الأفرع والفئات والمنصات والعلامات المعتمدة المستخدمة عبر النظام."), { hideHeroStats: true })}
+    ${pageHeader(l("Master Data", "البيانات الأساسية"), l("Manage categories, platforms, controlled tags, and Terms & Conditions used across the system.", "إدارة الفئات والمنصات والعلامات المعتمدة والشروط والأحكام المستخدمة عبر النظام."), { hideHeroStats: true })}
     ${state.currentUser?.role === "admin" && terms ? `
       <section class="panel terms-editor-card">
         <div class="row report-toolbar-head">
@@ -5148,62 +5197,6 @@ function renderMasterDataPage() {
       </section>
     ` : ""}
     <section class="panel">
-      <div class="row report-toolbar-head">
-        <div>
-          <h3>${l("Cities", "المدن")}</h3>
-          <p class="panel-subtitle">${l("This list applies only to branch locations. Member residential cities are managed through the address reference data.", "تنطبق هذه القائمة على مواقع الأفرع فقط. مدن سكن الأعضاء تُدار عبر بيانات مرجع العناوين.")}</p>
-        </div>
-        <div class="row-wrap">
-          <span class="badge">${visibleCities.length} ${escapeHtml(l("visible", "ظاهر"))}</span>
-          <button type="button" class="secondary" data-action="toggle-master-data-inactive" data-type="city">${state.masterDataShowInactive.city ? l("Hide inactive", "إخفاء غير النشط") : l("Show inactive", "إظهار غير النشط")}</button>
-        </div>
-      </div>
-      <form id="createCityForm" class="form-grid two-col" style="margin-bottom: 16px;">
-        <label class="field"><span>Name (EN)</span><input name="nameEn" required /></label>
-        <label class="field"><span>Name (AR)</span><input name="nameAr" /></label>
-        <button type="submit">${l("Add city", "إضافة مدينة")}</button>
-      </form>
-      ${renderDataTable(
-        [
-          {
-            label: l("City", "المدينة"),
-            render: (row) => `<button type="button" class="table-link-button" data-action="toggle-master-data-editor" data-type="city" data-id="${row.id}">${escapeHtml((state.locale === "ar" ? row.nameAr : row.nameEn) || row.nameEn)}</button>`,
-            html: true,
-          },
-          { label: l("Arabic", "العربية"), render: (row) => row.nameAr || "-" },
-          { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${statusTone(row.status)}">${escapeHtml(row.status)}</span>`, html: true },
-        ],
-        visibleCities,
-        l("No cities yet.", "لا توجد مدن بعد.")
-      )}
-      <div class="stack" style="margin-top: 14px;">
-        ${cities
-          .filter((row) => state.masterDataEditor.type === "city" && state.masterDataEditor.id === row.id)
-          .map(
-            (city) => `
-              <form class="list-card update-city-form" data-city-id="${city.id}">
-                <div class="form-grid two-col">
-                  <label class="field"><span>Name (EN)</span><input name="nameEn" value="${escapeHtml(city.nameEn)}" /></label>
-                  <label class="field"><span>Name (AR)</span><input name="nameAr" value="${escapeHtml(city.nameAr)}" /></label>
-                  <label class="field"><span>${l("Status", "الحالة")}</span>
-                    <select name="status">
-                      <option value="active" ${city.status === "active" ? "selected" : ""}>active</option>
-                      <option value="inactive" ${city.status === "inactive" ? "selected" : ""}>inactive</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="row-wrap" style="margin-top: 12px;">
-                  <button type="submit">${l("Save city", "حفظ المدينة")}</button>
-                  <button type="button" class="secondary" data-action="delete-master-data" data-type="city" data-id="${city.id}">${l("Delete", "حذف")}</button>
-                  <button type="button" class="secondary" data-action="toggle-master-data-editor" data-type="city" data-id="${city.id}">${l("Close", "إغلاق")}</button>
-                </div>
-              </form>
-            `
-          )
-          .join("")}
-      </div>
-    </section>
-    <section class="panel" style="margin-top: 18px;">
       <div class="row report-toolbar-head">
         <div>
           <h3>${l("Categories", "الفئات")}</h3>
@@ -7570,24 +7563,6 @@ function syncResidentialCascadeForm(container) {
   tier3Select.value = nextTier3Value;
 }
 
-function renderCitySelect(name, selectedValue, includeAll = false, required = false) {
-  const cities = state.data?.cities || state.publicData?.cities || [];
-  const normalizedSelected = Number(selectedValue) || null;
-  return `
-    <select name="${name}" ${required ? "required" : ""}>
-      ${includeAll ? `<option value="">${l("All", "الكل")}</option>` : `<option value="">${l("Select", "اختر")}</option>`}
-      ${cities
-        .filter((city) => city.status === "active" || Number(city.id) === normalizedSelected)
-        .map(
-          (city) => `
-            <option value="${city.id}" ${normalizedSelected === city.id ? "selected" : ""}>${escapeHtml(state.locale === "ar" ? city.nameAr : city.nameEn)}</option>
-          `
-        )
-        .join("")}
-    </select>
-  `;
-}
-
 function renderCategorySelect(name, selectedValue, includeAll = false) {
   const categories = state.data?.categories || state.publicData?.categories || [];
   const normalizedSelected = Number(selectedValue) || null;
@@ -8092,7 +8067,7 @@ async function handleClick(event) {
 
   if (action === "toggle-master-data-inactive") {
     const type = target.dataset.type || "";
-    if (!["city", "category", "platform", "tag"].includes(type)) return;
+    if (!["category", "platform", "tag"].includes(type)) return;
     state.masterDataShowInactive = {
       ...state.masterDataShowInactive,
       [type]: !state.masterDataShowInactive[type],
@@ -8105,7 +8080,6 @@ async function handleClick(event) {
     const type = target.dataset.type || "";
     const id = Number(target.dataset.id);
     const config = {
-      city: { url: `/api/cities/${id}/delete`, message: l("City deactivated for future use.", "تم تعطيل المدينة للاستخدامات المستقبلية.") },
       category: { url: `/api/categories/${id}/delete`, message: l("Category deactivated for future use.", "تم تعطيل الفئة للاستخدامات المستقبلية.") },
       platform: { url: `/api/platforms/${id}/delete`, message: l("Platform deactivated for future use.", "تم تعطيل المنصة للاستخدامات المستقبلية.") },
       tag: { url: `/api/tags/${id}/delete`, message: l("Tag deactivated for future use.", "تم تعطيل العلامة للاستخدامات المستقبلية.") },
@@ -8809,11 +8783,6 @@ async function handleSubmit(event) {
       await mutateAndRefresh(`/api/managers/${managerId}/update`, values, l("Campaign manager updated.", "تم تحديث مدير الحملات."), { rethrow: true });
       return;
     }
-    if (form.id === "createCityForm") {
-      await mutateAndRefresh("/api/cities", formDataToObject(new FormData(form)), l("City added.", "تمت إضافة المدينة."), { rethrow: true });
-      form.reset();
-      return;
-    }
     if (form.id === "termsForm") {
       const values = formDataToObject(new FormData(form));
       const payload = await api("/api/admin/terms", {
@@ -8828,10 +8797,6 @@ async function handleSubmit(event) {
         ),
         "success"
       );
-      return;
-    }
-    if (form.classList.contains("update-city-form")) {
-      await mutateAndRefresh(`/api/cities/${form.dataset.cityId}/update`, formDataToObject(new FormData(form)), l("City updated.", "تم تحديث المدينة."), { rethrow: true });
       return;
     }
     if (form.id === "createCategoryForm") {
@@ -8870,13 +8835,13 @@ async function handleSubmit(event) {
       return;
     }
     if (form.id === "createBranchForm") {
-      await mutateAndRefresh("/api/branches", new FormData(form), l("Branch created.", "تم إنشاء الفرع."), { rethrow: true });
+      await mutateAndRefresh("/api/branches", branchFormData(form), l("Branch created.", "تم إنشاء الفرع."), { rethrow: true });
       form.reset();
       return;
     }
     if (form.id === "editBranchForm") {
       const branchId = new FormData(form).get("branchId");
-      await mutateAndRefresh(`/api/branches/${branchId}/update`, new FormData(form), l("Branch updated.", "تم تحديث الفرع."), { rethrow: true });
+      await mutateAndRefresh(`/api/branches/${branchId}/update`, branchFormData(form), l("Branch updated.", "تم تحديث الفرع."), { rethrow: true });
       return;
     }
     if (form.classList.contains("submission-form")) {
