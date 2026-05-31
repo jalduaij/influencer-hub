@@ -4430,6 +4430,124 @@ function campaignTargetPreviewCount(payload) {
   return allInfluencers().filter((influencer) => campaignMatchesInfluencer(previewCampaign, influencer)).length;
 }
 
+function formatCount(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function buildMatchBreakdown(payload, count) {
+  if (!count) return "";
+  const lines = [];
+  const targetCountries = (payload.targetCountries || []).map((value) => String(value || "").toUpperCase()).filter(Boolean);
+  const targetGovernorateIds = (payload.targetGovernorateIds || []).map((value) => String(value || "")).filter(Boolean);
+  const targetCityIds = (payload.targetCityIds || []).map((value) => String(value || "")).filter(Boolean);
+  const targetCategoryIds = (payload.targetCategoryIds || []).map((value) => Number(value)).filter((value) => value > 0);
+  const targetTags = (payload.targetTags || []).map((value) => String(value || "")).filter(Boolean);
+  const minFollowers = Number(payload.minFollowers) || 0;
+
+  if (targetCountries.length) {
+    const names = targetCountries.map((cc) => (
+      cc === "KW" ? l("Kuwait", "الكويت") : cc === "SA" ? l("Saudi Arabia", "السعودية") : cc
+    ));
+    lines.push({ label: l("Countries", "الدول"), value: names.join(" · ") });
+  }
+
+  if (targetGovernorateIds.length) {
+    const ref = state.publicData?.addressReference;
+    const all = [
+      ...(ref?.kuwait?.governorates || []),
+      ...(ref?.saudiArabia?.regions || []),
+    ];
+    const names = targetGovernorateIds
+      .map((id) => all.find((row) => row.id === id))
+      .filter(Boolean)
+      .map((row) => state.locale === "ar" ? row.nameAr : row.nameEn);
+    if (names.length) {
+      const display = names.length <= 3 ? names.join(" · ") : `${names.slice(0, 3).join(" · ")} +${names.length - 3}`;
+      lines.push({ label: l("Governorates / Regions", "محافظات / مناطق"), value: display });
+    }
+  }
+
+  if (targetCityIds.length) {
+    const ref = state.publicData?.addressReference;
+    const all = [
+      ...(ref?.kuwait?.areas || []),
+      ...(ref?.saudiArabia?.cities || []),
+    ];
+    const names = targetCityIds
+      .map((id) => all.find((row) => row.id === id))
+      .filter(Boolean)
+      .map((row) => state.locale === "ar" ? row.nameAr : row.nameEn);
+    if (names.length) {
+      const display = names.length <= 3 ? names.join(" · ") : `${names.slice(0, 3).join(" · ")} +${names.length - 3}`;
+      lines.push({ label: l("Cities", "المدن"), value: display });
+    }
+  }
+
+  if (targetCategoryIds.length) {
+    const categories = (state.data?.categories || [])
+      .filter((category) => targetCategoryIds.includes(Number(category.id)))
+      .map((category) => state.locale === "ar" ? category.nameAr : category.nameEn);
+    if (categories.length) {
+      const display = categories.length <= 3 ? categories.join(" · ") : `${categories.slice(0, 3).join(" · ")} +${categories.length - 3}`;
+      lines.push({ label: l("Categories", "الفئات"), value: display });
+    }
+  }
+
+  if (targetTags.length) {
+    const display = targetTags.length <= 3 ? targetTags.join(" · ") : `${targetTags.slice(0, 3).join(" · ")} +${targetTags.length - 3}`;
+    lines.push({ label: l("Tags", "الوسوم"), value: display });
+  }
+
+  if (minFollowers > 0) {
+    lines.push({ label: l("Min followers", "الحد الأدنى من المتابعين"), value: formatCount(minFollowers) });
+  }
+
+  if (payload.targetGender && payload.targetGender !== "any" && payload.targetGender !== "") {
+    lines.push({ label: l("Gender", "الجنس"), value: payload.targetGender === "female" ? l("Female", "أنثى") : l("Male", "ذكر") });
+  }
+
+  if (lines.length === 0) return "";
+  return lines.slice(0, 5).map((line) => `
+    <li><span class="match-count-tile__bk-label">${escapeHtml(line.label)}</span> <span class="match-count-tile__bk-value">${escapeHtml(line.value)}</span></li>
+  `).join("");
+}
+
+function renderMatchCountTile(count, payload) {
+  const totalMembers = allInfluencers().length;
+  const safeCount = Math.max(0, Number(count) || 0);
+  let tone = "normal";
+  if (totalMembers === 0) tone = "empty-system";
+  else if (safeCount === 0) tone = "zero";
+  else if (safeCount === totalMembers) tone = "all";
+
+  const eyebrow = {
+    normal: l("Matching members", "أعضاء مطابقون"),
+    zero: l("No matches yet", "لا توجد مطابقات بعد"),
+    all: l("All members match", "جميع الأعضاء مطابقون"),
+    "empty-system": l("No members in the system", "لا يوجد أعضاء في النظام"),
+  }[tone];
+
+  const lede = {
+    normal: safeCount === 1
+      ? l("member fits these targeting rules.", "عضو يطابق هذه الشروط.")
+      : l("members fit these targeting rules.", "أعضاء يطابقون هذه الشروط."),
+    zero: l("members fit these targeting rules. Try removing or loosening a filter.", "لا يوجد أعضاء يطابقون هذه الشروط. جرّب إزالة أو توسعة فلتر."),
+    all: l("members fit — your targeting is wide open. Add filters to narrow it down.", "كل الأعضاء يطابقون — استهدافك مفتوح. أضف فلاتر لتضييقه."),
+    "empty-system": l("Once you approve members they'll show up here.", "بمجرد قبول الأعضاء سيظهرون هنا."),
+  }[tone];
+
+  const breakdown = buildMatchBreakdown(payload, safeCount);
+
+  return `
+    <div class="match-count-tile match-count-tile--${tone}" data-targeting-preview>
+      <p class="match-count-tile__eyebrow">${eyebrow}</p>
+      <p class="match-count-tile__number" data-targeting-preview-count>${formatCount(safeCount)}</p>
+      <p class="match-count-tile__lede" data-targeting-preview-lede>${lede}</p>
+      ${breakdown ? `<ul class="match-count-tile__breakdown" data-targeting-preview-breakdown="1">${breakdown}</ul>` : ""}
+    </div>
+  `;
+}
+
 function renderCampaignForm(campaign) {
   const selectedBranchIds = new Set(campaign?.branchIds || []);
   const isCreate = !campaign;
@@ -4580,9 +4698,6 @@ function renderCampaignForm(campaign) {
           <div class="field checkbox-field field-span-full" data-target-tier3-section ${showTier3 ? "" : "hidden"}>
             ${renderCampaignTargetTier3SectionContent(targetGovernorateIds, targetCityIds)}
           </div>
-          <p class="compact field-span-full campaign-targeting-preview" data-targeting-preview>
-            ${escapeHtml(l("Matches", "يطابق"))} ${initialMatchCount} ${escapeHtml(initialMatchCount === 1 ? l("member.", "عضواً.") : l("members.", "أعضاء."))}
-          </p>
           <div class="field checkbox-field field-span-full">
             <span>${l("Target categories (leave empty for all)", "الفئات المستهدفة واتركها فارغة للجميع")}</span>
             <div class="row-wrap" style="margin-bottom: 10px;">
@@ -4650,6 +4765,9 @@ function renderCampaignForm(campaign) {
             </div>
           </div>
           <p class="compact">${l("A matching member needs at least one of the selected tags.", "يكفي أن يطابق العضو علامة واحدة على الأقل من العلامات المحددة.")}</p>
+          <div class="field field-span-full" data-target-preview-tile>
+            ${renderMatchCountTile(initialMatchCount, targetPreview)}
+          </div>
         </div>
       </section>
       <section class="form-section">
@@ -5105,21 +5223,28 @@ function syncCampaignTargetingForm(form) {
     tier3Section.innerHTML = renderCampaignTargetTier3SectionContent(selectedTier2, selectedTier3);
   }
 
-  const preview = form.querySelector("[data-targeting-preview]");
-  if (preview) {
-    const count = campaignTargetPreviewCount({
-      status: payload.status,
-      visitDeadline: payload.visitDeadline,
-      targetCountries: payload.targetCountries,
-      targetGovernorateIds: payload.targetGovernorateIds,
-      targetCityIds: payload.targetCityIds,
-      targetCategoryIds: payload.targetCategoryIds,
-      targetGender: payload.targetGender,
-      minFollowers: payload.minFollowers,
-      targetPlatformIds: payload.targetPlatformIds,
-      targetTags: payload.targetTags,
-    });
-    preview.textContent = `${l("Matches", "يطابق")} ${count} ${count === 1 ? l("member.", "عضواً.") : l("members.", "أعضاء.")}`;
+  const targetPreview = {
+    status: payload.status,
+    visitDeadline: payload.visitDeadline,
+    targetCountries: payload.targetCountries,
+    targetGovernorateIds: payload.targetGovernorateIds,
+    targetCityIds: payload.targetCityIds,
+    targetCategoryIds: payload.targetCategoryIds,
+    targetGender: payload.targetGender,
+    minFollowers: payload.minFollowers,
+    targetPlatformIds: payload.targetPlatformIds,
+    targetTags: payload.targetTags,
+  };
+  const tileWrapper = form.querySelector("[data-target-preview-tile]");
+  if (tileWrapper) {
+    const count = campaignTargetPreviewCount(targetPreview);
+    tileWrapper.innerHTML = renderMatchCountTile(count, targetPreview);
+    const tile = tileWrapper.querySelector(".match-count-tile");
+    if (tile) {
+      tile.classList.remove("is-pulsing");
+      void tile.offsetWidth;
+      tile.classList.add("is-pulsing");
+    }
   }
 }
 
