@@ -2737,6 +2737,7 @@ function renderSignupForm() {
           <label class="field field-span-full"><span>${l("Full name", "الاسم الكامل")} <em class="required-mark">*</em></span><input name="fullName" required value="${escapeHtml(draft.fullName || "")}" /></label>
           <label class="field"><span>${l("Mobile", "الهاتف")} <em class="required-mark">*</em></span>${renderKuwaitMobileField("mobile", draft.mobile || "", true)}</label>
           <label class="field"><span>${l("Gender", "الجنس")} <em class="required-mark">*</em></span>${renderGenderSelect("gender", draft.gender || "", true)}</label>
+          <label class="field"><span>${l("Date of birth", "تاريخ الميلاد")}</span><input name="dateOfBirth" type="date" value="${escapeHtml(draft.dateOfBirth || "")}" /><small class="field-help">${l("Optional. Helps with age-restricted campaigns.", "اختياري. يساعد في الحملات المقيدة بالعمر.")}</small></label>
         `
       )}
 
