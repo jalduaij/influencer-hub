@@ -9,7 +9,7 @@ const { buildUatStore, UAT_RESET_CONFIRM } = require("./scripts/uat-data-builder
 const ROOT = __dirname;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
 const STORE_PATH = path.resolve(process.env.STORE_PATH || path.join(DATA_DIR, "store.json"));
-const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(ROOT, "uploads"));
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(DATA_DIR, "uploads"));
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const BUNDLED_DATA_DIR = path.join(ROOT, "data");
 const BUNDLED_STORE_PATH = path.join(BUNDLED_DATA_DIR, "store.json");
@@ -55,6 +55,12 @@ try {
   console.log(`[terms] loaded default T&C seed v${Number(TERMS_DEFAULT?.version) || 0}`);
 } catch (error) {
   console.error(`[terms] FAILED to load ${TERMS_DEFAULT_PATH}: ${error.message}`);
+}
+try {
+  fsSync.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log(`[uploads] directory ready at ${UPLOAD_DIR}`);
+} catch (error) {
+  console.error(`[uploads] FAILED to create directory ${UPLOAD_DIR}: ${error.message}`);
 }
 const ADDRESS_LOOKUPS = (() => {
   const map = (rows) => Object.fromEntries((rows || []).map((row) => [row.id, row]));
@@ -348,6 +354,8 @@ async function persistUploadedImage(file) {
   const stamp = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const originalExt = path.extname(file.filename).toLowerCase();
   const baseName = safeFileNameSegment(file.filename);
+  const originalName = path.basename(String(file.filename || "upload"));
+  const size = Number(file.content?.length || 0);
 
   if ([".heic", ".heif"].includes(originalExt)) {
     const sourceName = `${stamp}-${baseName}${originalExt}`;
@@ -358,6 +366,7 @@ async function persistUploadedImage(file) {
     try {
       await execFileAsync("/usr/bin/sips", ["-s", "format", "jpeg", sourcePath, "--out", convertedPath]);
       await fs.rm(sourcePath, { force: true });
+      console.log(`[upload] saved ${originalName} -> ${convertedPath} (${size} bytes)`);
       return {
         storedName: convertedName,
         displayName: `${baseName}.jpg`,
@@ -370,7 +379,9 @@ async function persistUploadedImage(file) {
 
   const normalizedExt = originalExt || "";
   const storedName = `${stamp}-${baseName}${normalizedExt}`;
-  await fs.writeFile(path.join(UPLOAD_DIR, storedName), file.content);
+  const finalPath = path.join(UPLOAD_DIR, storedName);
+  await fs.writeFile(finalPath, file.content);
+  console.log(`[upload] saved ${originalName} -> ${finalPath} (${size} bytes)`);
   return {
     storedName,
     displayName: path.basename(file.filename),
@@ -4740,8 +4751,15 @@ const server = http.createServer((req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`PICK Social Club running on ${APP_BASE_URL}`);
+  (async () => {
+    await ensureRuntimeFiles();
+    await seedRuntimeFilesIfMissing();
+    server.listen(PORT, () => {
+      console.log(`PICK Social Club running on ${APP_BASE_URL}`);
+    });
+  })().catch((error) => {
+    console.error(error);
+    process.exit(1);
   });
 }
 
