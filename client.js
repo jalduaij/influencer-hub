@@ -8785,11 +8785,12 @@ async function handleSubmit(event) {
       await loadBootstrap();
       flash(
         bannerFile
-          ? l("Campaign created and banner uploaded.", "تم إنشاء الحملة ورفع البانر.")
-          : l("Campaign created.", "تم إنشاء الحملة."),
+          ? l("Campaign created. Now add your codes.", "تم إنشاء الحملة. الآن أضف الأكواد.")
+          : l("Campaign created. Now upload your banner and codes.", "تم إنشاء الحملة. الآن ارفع البانر والأكواد."),
         "success"
       );
-      form.reset();
+      state.selectedCampaignId = created.campaign.id;
+      navigateTo("campaign-edit");
       return;
     }
     if (form.id === "editCampaignForm") {
