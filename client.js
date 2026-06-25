@@ -3631,12 +3631,20 @@ function renderReservationDetails(participant, campaign) {
 function renderParticipantImages(images) {
   const rows = (images || []).filter((image) => image?.path);
   if (!rows.length) return "";
-  return rows
+  return `<div class="proof-thumb-strip">${rows
     .map(
-      (image) =>
-        `<a class="badge" href="${image.path}" target="_blank" rel="noreferrer">${escapeHtml(image.name || l("Open image", "عرض الصورة"))}</a>`
+      (image) => `
+        <a class="proof-thumb"
+           href="${escapeHtml(image.path)}"
+           target="_blank"
+           rel="noreferrer"
+           title="${escapeHtml(image.name || l("Open image", "عرض الصورة"))}">
+          <img src="${escapeHtml(image.path)}"
+               alt="${escapeHtml(image.name || l("Proof image", "صورة الإثبات"))}"
+               loading="lazy" />
+        </a>`
     )
-    .join("");
+    .join("")}</div>`;
 }
 
 function renderCampaignOffer(campaign, compact = false) {
@@ -5076,12 +5084,12 @@ function renderCampaignViewPage() {
           },
           {
             label: l("Images", "الصور"),
-            render: (row) =>
-              Array.isArray(row.images) && row.images.length
-                ? `<span class="badge">${row.images.length}</span>`
-                : row.imagePath
-                  ? `<span class="badge">1</span>`
-                  : "-",
+            render: (row) => {
+              const images = Array.isArray(row.images) && row.images.length
+                ? row.images
+                : (row.imagePath ? [{ path: row.imagePath, name: row.imageName || "" }] : []);
+              return images.length ? renderParticipantImages(images) : "-";
+            },
             html: true,
           },
           {
@@ -7714,6 +7722,16 @@ function renderInfluencerProfilePage() {
               row.socialLink
                 ? `<a class="table-link-button" href="${escapeHtml(row.socialLink)}" target="_blank" rel="noreferrer">${escapeHtml(l("Open post", "فتح المنشور"))}</a>`
                 : "-",
+            html: true,
+          },
+          {
+            label: l("Images", "الصور"),
+            render: (row) => {
+              const images = Array.isArray(row.images) && row.images.length
+                ? row.images
+                : (row.imagePath ? [{ path: row.imagePath, name: row.imageName || "" }] : []);
+              return images.length ? renderParticipantImages(images) : "-";
+            },
             html: true,
           },
           { label: l("Feedback", "الملاحظات"), render: (row) => row.feedback || "-" },

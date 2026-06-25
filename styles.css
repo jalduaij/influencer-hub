@@ -1038,6 +1038,38 @@ body.nav-locked {
   color: var(--danger);
 }
 
+.proof-thumb-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.proof-thumb {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--paper-page);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.proof-thumb:hover,
+.proof-thumb:focus-visible {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  outline: none;
+}
+
+.proof-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .status-strip {
   margin: -16px -18px 14px;
   padding: 10px 16px;
