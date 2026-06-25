@@ -1186,7 +1186,8 @@ function parseMultipart(buffer, contentType) {
         content: Buffer.from(bodyBlock, "binary"),
       };
     } else {
-      const value = bodyBlock.toString();
+      // Recover the original UTF-8 text bytes from the Latin-1 body slice.
+      const value = Buffer.from(bodyBlock, "binary").toString("utf8");
       if (fields[name] === undefined) {
         fields[name] = value;
       } else if (Array.isArray(fields[name])) {
