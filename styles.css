@@ -1,4 +1,5 @@
 :root {
+  --brand: #663084;
   --bg: #f5f0fb;
   --bg-strong: #eadff5;
   --panel: rgba(253, 250, 255, 0.86);
@@ -306,6 +307,48 @@ a {
 .brand-copy {
   color: rgba(251, 247, 255, 0.76);
   line-height: 1.6;
+}
+
+.brand-mascot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+
+.brand-mascot img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.brand-mascot--login {
+  margin: 0 auto 16px;
+  width: 180px;
+}
+
+.brand-mascot--login img {
+  width: 100%;
+}
+
+.brand-mascot--sidebar {
+  width: 120px;
+  margin: 20px auto 12px;
+  opacity: 0.92;
+  flex-shrink: 0;
+}
+
+.brand-mascot--sidebar img {
+  width: 100%;
+}
+
+.brand-mascot--empty {
+  width: 200px;
+  opacity: 0.35;
+}
+
+.brand-mascot--empty img {
+  width: 100%;
 }
 
 .control-panel {
@@ -1972,6 +2015,20 @@ button:disabled {
   color: var(--muted);
 }
 
+.empty-state--mascot,
+.empty-state__mascot-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-state-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .share-block {
   padding: 16px;
   border-radius: var(--radius-md);
@@ -2294,6 +2351,10 @@ button:disabled {
     transform: translateX(0);
   }
 
+  .brand-mascot--sidebar {
+    display: none;
+  }
+
   .mobile-nav-backdrop {
     display: block;
     position: fixed;
@@ -2325,6 +2386,12 @@ button:disabled {
 
   .hero-metrics--compact {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .brand-mascot--login {
+    width: 140px;
   }
 }
 

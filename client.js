@@ -2620,6 +2620,9 @@ function renderAuth() {
     <div class="flash-layer" data-flash-layer></div>
     <section class="login-shell${showUatPanel ? "" : " login-shell--solo"}">
       <article class="login-card">
+        <div class="brand-mascot brand-mascot--login">
+          <img src="/logo.svg" alt="" role="presentation" />
+        </div>
         <p class="eyebrow">PICK Internal</p>
         <h1>${l("PICK Social Club", "نادي بك")}</h1>
         <p class="login-copy">${l("Sign in or join the club. Welcome back 💜", "سجّل دخولك أو انضم للنادي. أهلاً بعودتك 💜")}</p>
@@ -2984,6 +2987,9 @@ function renderShell() {
             )
             .join("")}
         </nav>
+        <div class="brand-mascot brand-mascot--sidebar" aria-hidden="true">
+          <img src="/logo-light.svg" alt="" />
+        </div>
         <div class="sidebar-footer">
           <div class="list-card">
             ${renderUserAvatar(state.currentUser, "user-avatar--sidebar")}
@@ -4103,8 +4109,8 @@ function renderInfluencersPage() {
           <p class="panel-subtitle">${l("Review each member record, update internal notes, and take direct account actions from the same page.", "راجع كل سجل عضو وحدّث الملاحظات الداخلية ونفّذ إجراءات الحساب مباشرة من الصفحة نفسها.")}</p>
         </div>
       </div>
-      <div class="stack">
-        ${rows.length
+        <div class="stack">
+          ${rows.length
           ? rows
               .map((user) => {
                 const summary = summaries.get(user.id) || {};
@@ -4144,7 +4150,12 @@ function renderInfluencersPage() {
                 `;
               })
               .join("")
-          : `<div class="empty-state">${l("No members match the current filter.", "لا يوجد أعضاء مطابقون للفلاتر الحالية.")}</div>`}
+          : `<div class="empty-state empty-state--mascot">
+              <div class="brand-mascot brand-mascot--empty">
+                <img src="/logo.svg" alt="" role="presentation" />
+              </div>
+              <p class="empty-state-copy">${l("No members match the current filter.", "لا يوجد أعضاء مطابقون للفلاتر الحالية.")}</p>
+            </div>`}
       </div>
     </section>
   `;
@@ -4318,7 +4329,12 @@ function renderCampaignsPage() {
                   `
                 )
                 .join("")
-            : `<div class="empty-state">${l("Quiet here for now. New campaigns will show up here.", "هادئ هنا حالياً. الحملات الجديدة ستظهر هنا.")}</div>`}
+            : `<div class="empty-state empty-state--mascot">
+                <div class="brand-mascot brand-mascot--empty">
+                  <img src="/logo.svg" alt="" role="presentation" />
+                </div>
+                <p class="empty-state-copy">${l("Quiet here for now. New campaigns will show up here.", "هادئ هنا حالياً. الحملات الجديدة ستظهر هنا.")}</p>
+              </div>`}
         </div>
       </section>
       <section class="panel">
@@ -5103,7 +5119,14 @@ function renderCampaignViewPage() {
           },
         ],
         submittedRows,
-        l("No submissions for this campaign yet.", "لا توجد تسليمات لهذه الحملة بعد."),
+        `
+          <div class="empty-state__mascot-block">
+            <div class="brand-mascot brand-mascot--empty">
+              <img src="/logo.svg" alt="" role="presentation" />
+            </div>
+            <p class="empty-state-copy">${l("No submissions for this campaign yet.", "لا توجد تسليمات لهذه الحملة بعد.")}</p>
+          </div>
+        `,
         { tableId: submissionsTableId, sort: submissionsSort }
       )}
     </section>

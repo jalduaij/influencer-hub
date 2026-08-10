@@ -4718,6 +4718,10 @@ async function requestHandler(req, res) {
   }
   if (req.method === "GET" && pathname === "/styles.css") return serveFile(res, path.join(ROOT, "styles.css"));
   if (req.method === "GET" && pathname === "/client.js") return serveFile(res, path.join(ROOT, "client.js"));
+  if (req.method === "GET" && pathname === "/logo.svg") return serveFile(res, path.join(ROOT, "logo.svg"));
+  if (req.method === "GET" && pathname === "/logo-light.svg") return serveFile(res, path.join(ROOT, "logo-light.svg"));
+  if (req.method === "GET" && pathname === "/favicon.svg") return serveFile(res, path.join(ROOT, "favicon.svg"));
+  if (req.method === "GET" && pathname === "/favicon.ico") return serveFile(res, path.join(ROOT, "favicon.ico"));
   if (req.method === "GET" && pathname === "/icons.svg") return serveFile(res, path.join(ROOT, "icons.svg"));
   if (req.method === "GET" && pathname.startsWith("/uploads/")) {
     const uploadPath = resolveUploadRequestPath(pathname);
