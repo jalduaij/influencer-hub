@@ -1,122 +1,138 @@
-# PICK Social Club Stage Deployment Guide
+# PICK Social Club Deployment Guide
 
-This app is ready for a **stage deployment** with the current file-based store.
+This document describes the current deployment workflow as of August 9, 2026.
 
-Important:
+## Working Assumptions
 
-- This setup is good for **internal staging / user acceptance testing**
-- It is **not yet the final production architecture**
-- The next real production step is still:
-  - PostgreSQL or Supabase for data
-  - durable file storage for uploads
-  - stronger authentication and password handling
+- GitHub repository `jalduaij/influencer-hub` on `main` is the code source of truth.
+- Render staging is the approval surface for UI, layout, and behavior verification.
+- The local Codex workspace may be stale and must not be treated as inherently current.
+- If shell Git networking is blocked but the GitHub connector works, use the connector path rather than stopping work.
 
-## What Is Ready Now
+## Current Render Environments
 
-- environment-based app URL via `APP_BASE_URL`
-- stage-safe cookies for HTTPS
-- health endpoint at `/health`
-- starter `package.json`
-- starter `render.yaml`
+| Environment | Service name | URL | Purpose | Deploy mode |
+| --- | --- | --- | --- | --- |
+| Staging | `pick-influence-hub-stage` | `https://pick-influence-hub-stage.onrender.com` | QA, UAT, bug verification | Auto-deploy from `main` |
+| Production | `pick-social-club` | `https://club.pick.com.kw` | Live member and team use | Manual deploy only |
 
-## Suggested Stage Setup
+Production notes:
 
-Use:
+- Use `https://club.pick.com.kw` as the canonical production URL.
+- Production should not be treated as auto-deploying from `main`.
+- Validate on staging first, then manually promote to production.
 
-- app hosting: `Render`
-- data for stage: the included file store (`data/store.json`)
-- uploads for stage: the included `uploads` folder
+## Design And Spec Rules
 
-This is enough to test the real workflows with your team.
+- For visual or frontend-heavy work, staging is the approval surface.
+- Localhost can be used for development and debugging, but it is not automatically the trusted design baseline.
+- New implementation specs should be copied into [for-codex/README.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/for-codex/README.md)'s folder before work starts.
+- If the local workspace and staging disagree visually, staging wins.
 
-## 1. Create Accounts
+## Storage Rules
 
-Create these first:
+The app is file-backed and depends on durable disk paths.
 
-1. a [Render](https://render.com/) account
-2. a Git repository for this project if you do not already have one
+Safe runtime storage:
 
-You do **not** need Supabase yet for stage if you want the quickest route.
+- `DATA_DIR/store.json`
+- `DATA_DIR/backups/`
+- `DATA_DIR/uploads/`
 
-## 2. Push This Project To Git
+Read-only bundled files that should stay outside `data/`:
 
-Put this project in a Git repository and push it to GitHub/GitLab.
+- `seeds/address-reference.json`
+- `seeds/terms-default.json`
 
-The important files for staging are:
+If a future change introduces new writable files, they must also live under `DATA_DIR`.
 
-- [server.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/server.js)
-- [client.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/client.js)
-- [styles.css](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/styles.css)
-- [index.html](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/index.html)
-- [data/store.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/data/store.json)
-- [uploads](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/uploads)
-- [package.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/package.json)
-- [render.yaml](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/render.yaml)
+## Environment Variables
 
-## 3. Create A Web Service On Render
-
-In Render:
-
-1. create a new `Web Service`
-2. connect your Git repository
-3. let Render detect the Node app
-4. use:
-   - build command: `npm install`
-   - start command: `npm start`
-5. set the health check path to `/health`
-
-## 4. Add Environment Variables
-
-In Render, set:
+The minimum important variables are:
 
 - `NODE_ENV=production`
-- `APP_BASE_URL=https://your-stage-domain.onrender.com`
+- `APP_BASE_URL=<environment URL>`
 
-Optional if you later move storage paths:
+Current code also supports:
 
 - `DATA_DIR`
 - `STORE_PATH`
 - `UPLOAD_DIR`
 
-Reference values are in [.env.example](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/.env.example).
+The safe default upload path is now under `DATA_DIR/uploads`, even if older docs or examples still mention repo-root `uploads/`.
 
-## 5. First Deployment Check
+## Standard Release Flow
 
-After deployment:
+### For normal code-only changes
 
-1. open `/health`
-2. open the main app URL
-3. log in with a demo admin
-4. test:
-   - campaign creation
-   - code upload
-   - influencer join
-   - proof submission
-   - manager password reset link generation
+1. Save the active spec into `for-codex/`.
+2. Implement against the real project state.
+3. Update operational docs in the same pass when workflow or rollout rules changed.
+4. Push to `main`.
+5. Wait for staging to auto-deploy.
+6. Verify behavior on staging.
+7. Use Render `Manual Deploy` for production.
+8. Run a quick production smoke check.
 
-## 6. Stage Limitations You Should Expect
+For UI-heavy specs:
 
-With the current architecture:
+- do not sign off from localhost alone
+- compare the result on staging before production promotion
 
-- data is still file-based
-- uploaded files are still local to the server
-- passwords are still prototype-level
-- sessions are still in memory
+### For changes that need a one-time script
 
-That means this stage is best for:
+1. Push to `main`.
+2. Verify staging code deploy completed.
+3. Run any required script in staging shell.
+4. Restart staging if the script requires it.
+5. Verify staging behavior.
+6. Manually deploy production.
+7. Run the same required production script if applicable.
+8. Restart production if required.
+9. Smoke check production.
 
-- internal testing
-- workflow review
-- UI and UX feedback
-- limited real-user pilot
+## Current Useful Shell Scripts
 
-It is not yet the final production setup for long-term live use.
+- `node scripts/bootstrap-admin.js`
+- `node scripts/seed-uat-data.js`
+- `node scripts/migrate-94-dedupe-ids.js`
+- `node scripts/migrate-99-branches-address-ref.js`
+- `node scripts/migrate-103-clear-dead-image-refs.js`
+- `node scripts/migrate-106-fix-feedback-encoding.js`
 
-## 7. Best Next Step After Stage Is Stable
+Historical scripts such as the spec 91 wipe should only be run intentionally and with full awareness of their data impact.
 
-Move to:
+## Recommended Staging Smoke Checks
 
-1. PostgreSQL / Supabase for the main database
-2. object storage for banners, avatars, and uploads
-3. stronger authentication and reset flow
-4. POS used-code reconciliation upload
+After staging deploy, check at least:
+
+- login for admin, campaign manager, and member
+- member signup
+- member residential and shipping flows
+- campaign create -> edit -> banner -> codes flow
+- branch creation/editing
+- proof submission and proof image review
+- reports and dashboards
+- Terms & Conditions page and editor
+
+## Recommended Production Smoke Checks
+
+After a production manual deploy:
+
+- open [https://club.pick.com.kw](https://club.pick.com.kw)
+- confirm admin login works
+- confirm a recent campaign opens
+- confirm banners and uploads still render
+- confirm proof submissions and thumbnails render
+- confirm no obvious mojibake or broken Arabic copy
+
+## What This File Is For
+
+Use this document for:
+
+- how deploys currently work
+- which environment gets what
+- where runtime data safely lives
+- what to verify after a deployment
+
+For broader launch coordination, use [go-live-checklist.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/go-live-checklist.md).
