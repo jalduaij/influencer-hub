@@ -1,71 +1,157 @@
-# PICK Social Club Prototype
+# PICK Social Club Current System Guide
 
-This workspace now contains:
+This repository contains the current PICK Social Club web app and the operational docs needed to support staging, production deploys, QA, and launch readiness.
+
+## What This System Is Today
+
+- a dependency-light Node.js web app in [server.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/server.js)
+- a browser client in [client.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/client.js)
+- styling in [styles.css](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/styles.css)
+- a file-backed runtime store in [data/store.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/data/store.json)
+- persistent uploads under `DATA_DIR/uploads`
+- read-only bundled reference data in [seeds/address-reference.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/seeds/address-reference.json) and [seeds/terms-default.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/seeds/terms-default.json)
+
+This is the current live system shape. It is file-backed, but it is no longer just an early mockup or throwaway prototype.
+
+## Source Of Truth Docs
+
+Use these first:
+
+- [project-memory.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/project-memory.md)
+  Working agreement for this project: source of truth order, standard workflow, staging approval rule, and resume-after-a-gap instructions.
+- [launch-ops-summary.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/launch-ops-summary.md)
+  Current operational overview, bug triage map, deploy flow, and script index.
+- [staging-deployment.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/staging-deployment.md)
+  Current staging and production deployment workflow on Render.
+- [go-live-checklist.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/go-live-checklist.md)
+  Launch-readiness checklist for the live system.
+- [uat-checklist.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/uat-checklist.md)
+  Current QA/UAT checklist that matches the app as it exists now.
+
+Reference-only docs:
 
 - [influencer-management-system-spec.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/influencer-management-system-spec.md)
-- [technical-architecture.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/technical-architecture.md)
-- [database-schema.sql](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/database-schema.sql)
 - [screens-and-user-flows.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/screens-and-user-flows.md)
-- a dependency-free Node web app in [server.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/server.js)
-- the browser client in [client.js](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/client.js)
-- file-backed seed data in [data/store.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/data/store.json)
+- [technical-architecture.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/technical-architecture.md)
 
-## App Notes
+Those older docs are still useful for product context, but they are not the best place to check current live behavior.
 
-The app is intentionally framework-free so it can run in the current environment without installing packages.
+## Read This First After A Gap
 
-It includes:
+If the project has been quiet for days or weeks, open these in order:
 
-- cookie-based login with role-driven dashboard routing
-- seeded campaigns, members, and branches
-- member approvals
-- campaign creation
-- campaign editing for admin and campaign manager
-- campaign code CSV upload by campaign manager
-- eligible campaign joining
-- private code reservation at campaign join
-- visit confirmation using the already-assigned campaign code
-- post link and feedback submission
-- report summaries for campaign/code/visit/submission performance
-- Arabic and English UI toggle
+1. [project-memory.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/project-memory.md)
+2. [launch-ops-summary.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/launch-ops-summary.md)
+3. [staging-deployment.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/staging-deployment.md)
+4. the active spec under `for-codex/`
+
+That is the official cold-start path for this project.
+
+## Workspace And Git Notes
+
+- Staging is the visual source of truth for this project.
+- Localhost can still be useful for isolated reproduction, but it should not be treated as the approval surface for design-heavy specs unless explicitly agreed.
+- GitHub connector access and shell Git access are separate things.
+- If shell Git says `fatal: not a git repository`, this folder is a workspace snapshot without a real `.git` directory.
+- If shell Git says `Could not resolve host: github.com`, that is a shell DNS / network problem, not a GitHub token problem.
+- If the GitHub connector is healthy, prefer it over shell network troubleshooting for repo reads and writes.
+- Current shell-git worktree path: `/Users/jalduaij/Documents/Codex/influencer-hub-shell`
+- Refresh or rebuild that worktree with `./scripts/refresh-shell-worktree.sh`
+
+## Spec Intake Convention
+
+- Save every new implementation spec under [for-codex/README.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/for-codex/README.md)'s folder as `for-codex/<spec-number>-<short-slug>.md`.
+- If a spec arrives as pasted text or an attachment, copy it into `for-codex/` before implementation so the next session can reopen it quickly.
+- When a spec affects deploy flow, staging scripts, production rollout, or standard working method, also update the relevant operational `.md` files in this repo in the same pass.
+
+## Current Product Scope
+
+The app currently supports:
+
+- bilingual Arabic / English UI
+- role-based access for admin, campaign manager, and member
+- member signup with required residential cascade, category checklist, optional DOB, optional shipping address, and Terms & Conditions consent
+- admin approval and member management
+- admin-on-behalf member profile editing
+- campaign creation, editing, duplication, targeting, banner upload, and code CSV upload
+- branch management with address-reference location cascade
+- master data for categories, platforms, tags, and Terms & Conditions
+- member campaign join, visit confirmation, proof submission, and proof image upload
+- reviewer visibility of proof thumbnails in campaign and member review surfaces
+- reporting, journal content, and audit logging
+
+## Environment Model
+
+Current deployment model:
+
+- staging auto-deploys from `main`
+- production is manual deploy only
+- production traffic should use the custom domain `https://club.pick.com.kw`
+
+See [launch-ops-summary.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/launch-ops-summary.md) and [staging-deployment.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/staging-deployment.md) for the exact flow.
+
+## Critical Storage Rules
+
+Anything written at runtime must live under `DATA_DIR`.
+
+Current safe pattern:
+
+- store file: `DATA_DIR/store.json`
+- backups: `DATA_DIR/backups`
+- uploads: `DATA_DIR/uploads`
+
+Read-only bundled assets and reference files should stay outside `data/`, for example:
+
+- `seeds/address-reference.json`
+- `seeds/terms-default.json`
 
 ## Run Locally
 
-Run:
-
-```bash
-/Applications/Codex.app/Contents/Resources/node server.js
-```
-
-Or use the helper script:
+Use:
 
 ```bash
 ./start.sh
 ```
 
-Then open [http://localhost:5050](http://localhost:5050).
-
-If your terminal says `command not found: node`, use `./start.sh` or the full runtime path above. This project can use the Node runtime bundled inside Codex.
-
-`./start.sh` now defaults to watch mode on port `5050`, and you can opt out with:
+Or:
 
 ```bash
-./start.sh --no-watch
+node server.js
 ```
 
-## Stage Deployment
+Default local URL:
 
-Staging prep files are now included:
+- [http://localhost:5050](http://localhost:5050)
 
-- [package.json](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/package.json)
-- [.env.example](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/.env.example)
-- [render.yaml](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/render.yaml)
-- [staging-deployment.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/staging-deployment.md)
-- [go-live-checklist.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/go-live-checklist.md)
+Local run reminder:
 
-The current architecture is ready for **stage testing**. It is still file-based, so it is best for internal/staging use before moving to database-backed production.
+- use local only for development and reproduction
+- use staging for final visual verification and rollout sign-off
 
-## Demo Credentials
+## Useful Scripts
+
+- `node scripts/smoke-test.js`
+  Broad local smoke test.
+- `node scripts/seed-uat-data.js`
+  Reseed rich UAT data locally.
+- `node scripts/bootstrap-admin.js`
+  Bootstrap or recover an admin account when needed.
+- `node scripts/migrate-91-residential-cascade.js`
+  Historical destructive wipe used for the residential schema reset.
+- `node scripts/migrate-94-dedupe-ids.js`
+  Cleanup for duplicate reference IDs.
+- `node scripts/migrate-96-fix-terms-email.js`
+  Repairs old T&C contact email values.
+- `node scripts/migrate-99-branches-address-ref.js`
+  Migrates branches from legacy city references to address-reference locations.
+- `node scripts/migrate-103-clear-dead-image-refs.js`
+  Clears image references whose upload files no longer exist.
+- `node scripts/migrate-106-fix-feedback-encoding.js`
+  Repairs mojibake participant feedback stored before the multipart UTF-8 fix.
+- `./scripts/refresh-shell-worktree.sh`
+  Rebuilds the sibling shell-git worktree at `/Users/jalduaij/Documents/Codex/influencer-hub-shell`.
+
+## Demo / UAT Accounts
 
 Team accounts:
 
@@ -73,60 +159,25 @@ Team accounts:
 - Nasser — Campaign Manager — `nasser@pick.internal` / `pick123`
 - Jassem — Campaign Manager — `jalduaij@kdigtc.com` / `pick123`
 
-Member accounts:
+Member accounts commonly used in local / staging seed data:
 
-- Laila — everything-state Member — `laila@example.com` / `member123`
-- Maha — 23k followers, VIP — `maha@example.com` / `member123`
-- Dana — 47k followers, beauty/VIP — `dana@example.com` / `member123`
-- Abdullah — 18k followers, fitness, male — `abdullah@example.com` / `member123`
-- Bader — incomplete profile (0 followers) — `bader@example.com` / `member123`
-- Youssef — tagged family — `youssef@example.com` / `member123`
-- Nada — pending (approve me) — `nada@example.com` / `member123`
-- Maryam — suspended (try reactivating) — `maryam@example.com` / `member123`
+- Laila — `laila@example.com` / `member123`
+- Maha — `maha@example.com` / `member123`
+- Abdullah — `abdullah@example.com` / `member123`
 
-## UAT Seed
+The richer seeded data may include more test members depending on the seed script used.
 
-Use the rich UAT seed when the QA team needs a clean, repeatable dataset with varied campaigns, members, submissions, and audit history.
+## If A Bug Comes In
 
-Generate the bundled dataset locally:
+Start here:
 
-```bash
-node scripts/seed-uat-data.js
-```
+1. Read [launch-ops-summary.md](/Users/jalduaij/Documents/Codex/2026-04-19-i-need-influencer-management-system-a/launch-ops-summary.md).
+2. Identify the feature area and likely files.
+3. Confirm whether the issue is:
+   - code / UI
+   - seed data / runtime data
+   - deployment / environment
+   - one-off migration fallout
+4. Reproduce locally or on staging before touching production.
 
-Write the same dataset to another file for inspection:
-
-```bash
-node scripts/seed-uat-data.js --out /tmp/test-uat-store.json
-```
-
-On staging with a persistent disk, an admin can reseed runtime data without a redeploy:
-
-```bash
-curl -X POST "$APP_BASE_URL/api/admin/reset-uat-data" \
-  -H "Content-Type: application/json" \
-  -H "Origin: $APP_BASE_URL" \
-  -b "<admin session cookie>" \
-  -d '{"confirm":"yes-overwrite-staging"}'
-```
-
-Seeded member password:
-
-- All seeded members use `member123`
-
-Deterministic branch PINs for cashier and branch-flow UAT:
-
-- `PICK The Avenues`: `100001`
-- `PICK 360 Mall`: `100002`
-- `PICK Al Kout`: `100003`
-
-## Code Logic
-
-Campaign capacity is driven by uploaded code count. If a campaign has 200 uploaded CSV codes, it can support 200 member participations.
-
-When a member confirms interest:
-
-- one available code is reserved immediately
-- that code becomes private to that member
-- the code cannot be assigned to anyone else
-- after the branch visit, the member confirms the visit and the code becomes used
+That document is the fastest operational ramp-up path for future fixes.
