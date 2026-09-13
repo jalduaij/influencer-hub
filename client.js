@@ -822,6 +822,11 @@ function campaignStatusTone(status) {
   return "";
 }
 
+function renderHiddenCampaignBadge(campaign) {
+  if (!campaign?.hiddenFromInfluencers) return "";
+  return `<span class="badge badge--muted" title="${escapeHtml(l("Not visible to influencers", "غير مرئية للمؤثرين"))}">${escapeHtml(l("Hidden", "مخفية"))}</span>`;
+}
+
 function codeStatusLabel(status) {
   if (status === "available") return l("Available", "متاح");
   if (status === "reserved") return l("Reserved", "محجوز");
@@ -4312,6 +4317,10 @@ function renderCampaignsPage() {
                         <div>
                           <strong>${renderCampaignTitleLink(campaign)}</strong>
                           <p>${escapeHtml(campaignAudience(campaign))}</p>
+                          <div class="row-wrap" style="margin-top: 8px;">
+                            <span class="badge ${campaignStatusTone(campaign.status)}">${escapeHtml(campaignStatusLabel(campaign.status))}</span>
+                            ${renderHiddenCampaignBadge(campaign)}
+                          </div>
                         </div>
                       </div>
                       <div class="row-wrap" style="margin-top: 12px;">
@@ -4631,6 +4640,19 @@ function renderCampaignForm(campaign) {
             </select>
           </label>
           <label class="field field-span-full">
+            <span>${l("Hide from influencers", "إخفاء عن المؤثرين")}</span>
+            <div class="row-wrap">
+              <label class="choice-pill">
+                <input type="checkbox" name="hiddenFromInfluencers" value="1" ${campaign?.hiddenFromInfluencers ? "checked" : ""} />
+                <span>${l("Yes — remove from every influencer's view", "نعم — إخفاؤها من كل واجهات المؤثرين")}</span>
+              </label>
+            </div>
+            <small>${l(
+              "Hidden campaigns disappear from influencers' Campaigns, History, and notifications. Admins and campaign managers still see everything. Reversible.",
+              "تختفي الحملات المخفية من قائمة المؤثرين وسجلاتهم وإشعاراتهم. يظل المديرون ومديرو الحملات يرون كل شيء. قابل للاستعادة."
+            )}</small>
+          </label>
+          <label class="field field-span-full">
             <span>${l("Show as Coming Soon preview to members", "اعرض كمعاينة قريباً للأعضاء")}</span>
             <div class="row-wrap">
               <label class="choice-pill">
@@ -4854,7 +4876,7 @@ function renderCampaignEditPage() {
         heroStats: [
           {
             label: l("Campaign status", "حالة الحملة"),
-            value: `<span class="hero-status-badge badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>`,
+            value: `<span class="row-wrap"><span class="hero-status-badge badge ${campaignStatusTone(campaign.status)}">${escapeHtml(campaignStatusLabel(campaign.status))}</span>${renderHiddenCampaignBadge(campaign)}</span>`,
             allowHtml: true,
           },
           {
@@ -5017,7 +5039,8 @@ function renderCampaignViewPage() {
           </article>
         ` : ""}
         <div class="row-wrap" style="margin-bottom: 16px;">
-          <span class="badge ${statusTone(campaign.status)}">${escapeHtml(campaign.status)}</span>
+          <span class="badge ${campaignStatusTone(campaign.status)}">${escapeHtml(campaignStatusLabel(campaign.status))}</span>
+          ${renderHiddenCampaignBadge(campaign)}
           <span class="badge">${escapeHtml(campaignAudience(campaign))}</span>
           <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
           <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
@@ -5979,7 +6002,11 @@ function renderCampaignReports(dashboard) {
         ${renderDataTable(
           [
             { label: l("Campaign", "الحملة"), render: (row) => renderCampaignTitleLink(row.campaign, { label: row.title, campaignId: row.campaignId }), html: true },
-            { label: l("Status", "الحالة"), render: (row) => `<span class="badge ${campaignStatusTone(row.status)}">${escapeHtml(campaignStatusLabel(row.status))}</span>`, html: true },
+            {
+              label: l("Status", "الحالة"),
+              render: (row) => `<span class="row-wrap"><span class="badge ${campaignStatusTone(row.status)}">${escapeHtml(campaignStatusLabel(row.status))}</span>${renderHiddenCampaignBadge(row.campaign)}</span>`,
+              html: true,
+            },
             {
               label: l("Demand", "الطلب"),
               render: (row) => {
@@ -9360,6 +9387,7 @@ function campaignFormPayload(form) {
     type: formData.get("type"),
     status: formData.get("status"),
     previewMode: formData.get("previewMode") === "1",
+    hiddenFromInfluencers: formData.get("hiddenFromInfluencers") === "1",
     audience: formData.get("audience"),
     audienceAr: formData.get("audienceAr"),
     offerUsageCount: Number(formData.get("offerUsageCount")) || 1,

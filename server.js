@@ -1305,6 +1305,10 @@ function campaignById(store, campaignId) {
   return store.campaigns.find((campaign) => campaign.id === Number(campaignId)) || null;
 }
 
+function isHiddenFromInfluencers(campaign) {
+  return Boolean(campaign && campaign.hiddenFromInfluencers);
+}
+
 function participantById(store, participantId) {
   return store.participants.find((participant) => participant.id === Number(participantId)) || null;
 }
@@ -1916,6 +1920,7 @@ function serializeCampaign(store, campaign, options = {}) {
   const updatedBy = userById(store, campaign.updatedBy);
   const serialized = {
     ...campaign,
+    hiddenFromInfluencers: Boolean(campaign.hiddenFromInfluencers),
     codeStats: codeStatsForCampaign(store, campaign.id),
     createdByName: createdBy?.fullName || "",
     updatedByName: updatedBy?.fullName || "",
@@ -1946,6 +1951,7 @@ function serializePreviewCampaign(campaign) {
     type: campaign.type || "shop_visit",
     status: campaign.status || "draft",
     previewMode: Boolean(campaign.previewMode),
+    hiddenFromInfluencers: Boolean(campaign.hiddenFromInfluencers),
   };
 }
 
@@ -1976,8 +1982,12 @@ function visibleJournalEntriesFor(store, actor) {
   return sortedEntries.filter((entry) => entry.status === "published");
 }
 
-function influencerSummary(store, influencer) {
-  const participations = store.participants.filter((participant) => participant.influencerId === influencer.id);
+function influencerSummary(store, influencer, options = {}) {
+  const participations = store.participants.filter((participant) => {
+    if (participant.influencerId !== influencer.id) return false;
+    if (!options.excludeHiddenCampaigns) return true;
+    return !isHiddenFromInfluencers(campaignById(store, participant.campaignId));
+  });
   const joined = participations.filter((participant) => participant.status !== "canceled").length;
   const visited = participations.filter((participant) =>
     ["visited", "submitted", "completed"].includes(participant.status)
@@ -2288,10 +2298,13 @@ function activeManagerScopeCampaigns(store, user) {
   const participantCampaignIds = new Set(
     store.participants.filter((participant) => participant.influencerId === user.id).map((participant) => participant.campaignId)
   );
-  return store.campaigns.filter((campaign) => participantCampaignIds.has(campaign.id));
+  return store.campaigns.filter(
+    (campaign) => participantCampaignIds.has(campaign.id) && !isHiddenFromInfluencers(campaign)
+  );
 }
 
 function campaignMatchesInfluencer(store, campaign, influencer) {
+  if (isHiddenFromInfluencers(campaign)) return false;
   if (!["live"].includes(campaign.status)) return false;
   if (campaign.visitDeadline) {
     const today = todayDateString();
@@ -2387,9 +2400,11 @@ function generateNotifications(store, user) {
   }
 
   if (user.role === "influencer") {
-    const pendingProof = store.participants.filter(
-      (participant) => participant.influencerId === user.id && ["confirmed", "visited"].includes(participant.status)
-    );
+    const pendingProof = store.participants.filter((participant) => {
+      if (participant.influencerId !== user.id) return false;
+      if (!["confirmed", "visited"].includes(participant.status)) return false;
+      return !isHiddenFromInfluencers(campaignById(store, participant.campaignId));
+    });
     if (pendingProof.length) {
       notifications.push(
         makeNotification(
@@ -2416,9 +2431,11 @@ function generateNotifications(store, user) {
       );
     }
 
-    const canceled = store.participants.filter(
-      (participant) => participant.influencerId === user.id && participant.status === "canceled"
-    );
+    const canceled = store.participants.filter((participant) => {
+      if (participant.influencerId !== user.id) return false;
+      if (participant.status !== "canceled") return false;
+      return !isHiddenFromInfluencers(campaignById(store, participant.campaignId));
+    });
     if (canceled.length) {
       notifications.push(
         makeNotification(
@@ -2462,7 +2479,10 @@ function buildBootstrap(store, user, options = {}) {
       baseUrl: options.baseUrl,
       includeAssignedCodeValue: user.role !== "influencer",
     });
-  const campaigns = store.campaigns.map((campaign) =>
+  const visibleCampaigns = user.role === "influencer"
+    ? store.campaigns.filter((campaign) => !isHiddenFromInfluencers(campaign))
+    : store.campaigns;
+  const campaigns = visibleCampaigns.map((campaign) =>
     serializeCampaign(store, campaign, { includeVerificationPassword })
   );
   const reports = reportBundleForCampaigns(store, store.campaigns);
@@ -2493,23 +2513,32 @@ function buildBootstrap(store, user, options = {}) {
 
   const myParticipants = store.participants
     .filter((participant) => participant.influencerId === user.id)
+    .filter((participant) => !isHiddenFromInfluencers(campaignById(store, participant.campaignId)))
     .map((participant) => serializeParticipantForRequest(participant));
 
   return {
     ...common,
     eligibleCampaignIds: eligibleCampaignsFor(store, user).map((campaign) => campaign.id),
     declinedCampaignIds: store.campaignDeclines
-      .filter((decline) => decline.influencerId === user.id)
+      .filter((decline) => {
+        if (decline.influencerId !== user.id) return false;
+        return !isHiddenFromInfluencers(campaignById(store, decline.campaignId));
+      })
       .map((decline) => decline.campaignId),
     previewCampaigns: store.campaigns
-      .filter((campaign) => campaign.status === "draft" && campaign.previewMode === true)
+      .filter(
+        (campaign) =>
+          campaign.status === "draft" &&
+          campaign.previewMode === true &&
+          !isHiddenFromInfluencers(campaign)
+      )
       .sort((left, right) => String(left.startDate || left.createdAt || "").localeCompare(String(right.startDate || right.createdAt || "")))
       .slice(0, 6)
       .map((campaign) => serializePreviewCampaign(campaign)),
     participants: myParticipants,
     journalEntries: journalEntries.slice(0, 3),
     reports: {
-      summary: influencerSummary(store, user),
+      summary: influencerSummary(store, user, { excludeHiddenCampaigns: true }),
       campaigns: myParticipants,
       influencers: [],
       submissions: myParticipants.filter((participant) => participant.socialLink || participant.feedback),
@@ -2592,6 +2621,7 @@ function campaignPayload(body, existingCampaign = null) {
       : body.status;
   const targetTags = parseTags(body.targetTags ?? existingCampaign?.targetTags);
   const hasPreviewMode = body.previewMode !== undefined;
+  const hasHiddenFromInfluencers = body.hiddenFromInfluencers !== undefined;
   return {
     titleEn: text(body.titleEn ?? existingCampaign?.titleEn),
     titleAr: text(body.titleAr ?? existingCampaign?.titleAr),
@@ -2602,6 +2632,9 @@ function campaignPayload(body, existingCampaign = null) {
     previewMode: hasPreviewMode
       ? Boolean(body.previewMode === "1" || body.previewMode === true)
       : Boolean(existingCampaign?.previewMode),
+    hiddenFromInfluencers: hasHiddenFromInfluencers
+      ? Boolean(body.hiddenFromInfluencers === "1" || body.hiddenFromInfluencers === true)
+      : Boolean(existingCampaign?.hiddenFromInfluencers),
     type: body.type === "product_trial" ? "product_trial" : "shop_visit",
     status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
       ? normalizedStatus
@@ -3766,6 +3799,7 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
 
   const body = jsonOrForm(await readBody(req), req);
   const previousStatus = campaign.status;
+  const previousHidden = isHiddenFromInfluencers(campaign);
   const previousVerificationPassword = campaign.verificationPassword || "";
   const payload = campaignPayload(body, campaign);
   if (!payload.titleEn || !payload.descriptionEn || !payload.offerDescription || !payload.startDate || !payload.endDate || !payload.visitDeadline || !payload.submissionDeadline) {
@@ -3790,6 +3824,22 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
     appendAuditEvent(store, actor, "campaign.verification_password_changed", "campaign", campaign.id, {
       regenerated: false,
     });
+  }
+
+  if (previousHidden !== campaign.hiddenFromInfluencers) {
+    appendAuditEvent(
+      store,
+      actor,
+      campaign.hiddenFromInfluencers
+        ? "campaign.hidden_from_influencers"
+        : "campaign.unhidden_from_influencers",
+      "campaign",
+      campaign.id,
+      {
+        previous: previousHidden,
+        next: campaign.hiddenFromInfluencers,
+      }
+    );
   }
 
   if (previousStatus !== "deactivated" && campaign.status === "deactivated") {

@@ -250,6 +250,10 @@ async function run() {
     assert(createCampaign.ok, `Campaign creation failed with status ${createCampaign.status}.`);
     const createdCampaignPayload = await createCampaign.json();
     const freshCampaignId = createdCampaignPayload.campaign.id;
+    assert(
+      createdCampaignPayload.campaign.hiddenFromInfluencers === false,
+      "New campaigns should default hiddenFromInfluencers to false."
+    );
     assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
     assert(createdCampaignPayload.campaign.whatsappMessage === "Custom body for smoke", "Created campaign should return its whatsappMessage.");
     assert(
@@ -257,6 +261,14 @@ async function run() {
       "Created campaign should return a generated verification password."
     );
     const clientSource = await fs.readFile(path.join(ROOT, "client.js"), "utf8");
+    const stylesSource = await fs.readFile(path.join(ROOT, "styles.css"), "utf8");
+    assert(
+      clientSource.includes('name="hiddenFromInfluencers"') &&
+        clientSource.includes("إخفاء عن المؤثرين") &&
+        clientSource.includes("function renderHiddenCampaignBadge"),
+      "Campaign management UI should include the bilingual Hidden control and badge helper."
+    );
+    assert(stylesSource.includes(".badge--muted"), "Hidden campaign badges should include the muted badge styling.");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
     const defaultCampaignShareBodySource = clientSource.match(/function defaultCampaignShareBody\(campaign\) \{[\s\S]*?\n\}/)?.[0];
     const generateCampaignShareTextSource = clientSource.match(/function generateCampaignShareText\(campaign, options = \{\}\) \{[\s\S]*?\n\}/)?.[0];
@@ -496,6 +508,7 @@ async function run() {
     const adminCampaign = adminBootstrapAfterCampaign.campaigns.find((campaign) => campaign.id === freshCampaignId);
     assert(adminCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Admin bootstrap should round-trip campaign captionGuide.");
     assert(adminCampaign?.whatsappMessage === "Custom body for smoke", "Admin bootstrap should round-trip campaign whatsappMessage.");
+    assert(adminCampaign?.hiddenFromInfluencers === false, "Admin bootstrap should normalize absent Hidden flags to false.");
 
     const contentStamp = Date.now();
     const publishedJournalTitle = `Smoke Journal ${contentStamp}`;
@@ -969,6 +982,112 @@ async function run() {
     assert(proofNotification?.title?.en && proofNotification?.title?.ar, "Notifications should expose bilingual titles.");
     assert(proofNotification?.body?.en && proofNotification?.body?.ar, "Notifications should expose bilingual bodies.");
 
+    const hideLiveCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...freshCampaignPayload, hiddenFromInfluencers: true }),
+    });
+    assert(hideLiveCampaign.ok, `Hiding a live campaign failed with status ${hideLiveCampaign.status}.`);
+    const hideLiveCampaignPayload = await hideLiveCampaign.json();
+    assert(
+      hideLiveCampaignPayload.campaign?.hiddenFromInfluencers === true,
+      "Campaign update should return hiddenFromInfluencers=true."
+    );
+
+    const bootstrapWhileHidden = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      !(bootstrapWhileHidden.campaigns || []).some((campaign) => campaign.id === freshCampaignId),
+      "Hidden campaigns must not leave the server in an influencer bootstrap."
+    );
+    assert(
+      !(bootstrapWhileHidden.participants || []).some((participant) => participant.campaignId === freshCampaignId),
+      "Hidden campaign participations must not leave the server in an influencer bootstrap."
+    );
+    assert(
+      !(bootstrapWhileHidden.eligibleCampaignIds || []).includes(freshCampaignId),
+      "Hidden campaigns must not remain influencer-eligible."
+    );
+    assert(
+      !(bootstrapWhileHidden.notifications || []).some((notification) =>
+        String(notification.id || "").startsWith("my-proof-") || String(notification.id || "").startsWith("my-canceled-")
+      ),
+      "Hidden campaigns must not contribute pending-proof or canceled notifications."
+    );
+    assert(
+      !(bootstrapWhileHidden.reports?.campaigns || []).some((participant) => participant.campaignId === freshCampaignId) &&
+        !(bootstrapWhileHidden.reports?.submissions || []).some((participant) => participant.campaignId === freshCampaignId),
+      "Hidden campaigns must not appear in influencer report surfaces."
+    );
+
+    const adminBootstrapWhileHidden = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      adminBootstrapWhileHidden.campaigns.some(
+        (campaign) => campaign.id === freshCampaignId && campaign.hiddenFromInfluencers === true
+      ),
+      "Admin bootstrap should retain Hidden campaigns and expose their flag."
+    );
+    assert(
+      adminBootstrapWhileHidden.participants.some((participant) => participant.id === activeParticipant.id),
+      "Admin bootstrap should retain participants belonging to Hidden campaigns."
+    );
+    assert(
+      adminBootstrapWhileHidden.reports?.campaigns?.some((row) => row.campaignId === freshCampaignId),
+      "Admin reports should retain Hidden campaigns."
+    );
+    assert(
+      (adminBootstrapWhileHidden.auditEvents || []).some(
+        (event) => event.action === "campaign.hidden_from_influencers" && Number(event.targetId) === freshCampaignId
+      ),
+      "Hiding a campaign should append the campaign.hidden_from_influencers audit event."
+    );
+
+    const storeWhileHidden = JSON.parse(await fs.readFile(storePath, "utf8"));
+    assert(
+      storeWhileHidden.participants.some(
+        (participant) => participant.id === activeParticipant.id && participant.status === "confirmed"
+      ),
+      "Hiding a campaign must not mutate or delete its participant records."
+    );
+
+    const joinWhileHidden = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/join`, {
+      method: "POST",
+      headers: { Cookie: femaleTwoCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(joinWhileHidden.status === 409, `Direct joins to a Hidden campaign should be rejected, got ${joinWhileHidden.status}.`);
+
+    const unhideLiveCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: nasserCookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...freshCampaignPayload, hiddenFromInfluencers: false }),
+    });
+    assert(unhideLiveCampaign.ok, `Campaign manager unhide failed with status ${unhideLiveCampaign.status}.`);
+
+    const bootstrapAfterUnhide = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      bootstrapAfterUnhide.campaigns.some((campaign) => campaign.id === freshCampaignId) &&
+        bootstrapAfterUnhide.participants.some((participant) => participant.id === activeParticipant.id),
+      "Unhiding should restore the campaign and participation to the influencer bootstrap."
+    );
+    assert(
+      (bootstrapAfterUnhide.notifications || []).some((notification) => String(notification.id || "").startsWith("my-proof-")),
+      "Unhiding an active campaign should restore its pending-proof notification."
+    );
+
     const branchPage = await fetch(`${baseUrl}/branch`);
     assert(branchPage.status === 404, `Mothballed branch page should return 404, got ${branchPage.status}.`);
 
@@ -1080,6 +1199,85 @@ async function run() {
     assert(submittedParticipant?.imagePath === submittedParticipant?.images?.[0]?.path, "Legacy primary image path should match the first image.");
     assert(submittedParticipant?.imageName === submittedParticipant?.images?.[0]?.name, "Legacy primary image name should match the first image.");
 
+    const hideAndDeactivateCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...freshCampaignPayload,
+        status: "deactivated",
+        hiddenFromInfluencers: true,
+      }),
+    });
+    assert(
+      hideAndDeactivateCampaign.ok,
+      `Hiding and deactivating a campaign failed with status ${hideAndDeactivateCampaign.status}.`
+    );
+
+    const bootstrapAfterHiddenDeactivation = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      !(bootstrapAfterHiddenDeactivation.campaigns || []).some((campaign) => campaign.id === freshCampaignId) &&
+        !(bootstrapAfterHiddenDeactivation.participants || []).some((participant) => participant.campaignId === freshCampaignId),
+      "A Hidden deactivated campaign must stay absent from influencer campaigns and history."
+    );
+    assert(
+      !(bootstrapAfterHiddenDeactivation.notifications || []).some((notification) =>
+        String(notification.id || "").startsWith("my-canceled-")
+      ),
+      "A Hidden deactivated campaign must not create a canceled-assignment notification."
+    );
+
+    const storeAfterHiddenDeactivation = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const storedHiddenCampaign = storeAfterHiddenDeactivation.campaigns.find((campaign) => campaign.id === freshCampaignId);
+    const storedCanceledSubmission = storeAfterHiddenDeactivation.participants.find(
+      (participant) => participant.id === activeParticipant.id
+    );
+    assert(storedHiddenCampaign?.hiddenFromInfluencers === true, "Hidden flag should persist in the JSON store.");
+    assert(
+      storedCanceledSubmission?.status === "canceled" && storedCanceledSubmission.socialLink === "https://instagram.com/p/smoke-proof",
+      "Deactivation should still cancel the participant without destroying the stored submission."
+    );
+
+    const unhideDeactivatedCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: nasserCookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...freshCampaignPayload,
+        status: "deactivated",
+        hiddenFromInfluencers: false,
+      }),
+    });
+    assert(
+      unhideDeactivatedCampaign.ok,
+      `Campaign manager unhide of a deactivated campaign failed with status ${unhideDeactivatedCampaign.status}.`
+    );
+
+    const bootstrapAfterDeactivatedUnhide = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(
+      bootstrapAfterDeactivatedUnhide.campaigns.some((campaign) => campaign.id === freshCampaignId) &&
+        bootstrapAfterDeactivatedUnhide.participants.some(
+          (participant) => participant.id === activeParticipant.id && participant.status === "canceled"
+        ),
+      "Unhiding a deactivated campaign should restore its canceled history entry."
+    );
+    assert(
+      (bootstrapAfterDeactivatedUnhide.notifications || []).some((notification) =>
+        String(notification.id || "").startsWith("my-canceled-")
+      ),
+      "Unhiding a deactivated campaign should restore the canceled-assignment notification."
+    );
+
     const exportResponse = await fetch(`${baseUrl}/api/reports/export.csv?tab=campaigns`, {
       headers: { Cookie: cookie.split(";")[0] },
     });
@@ -1132,6 +1330,15 @@ async function run() {
     assert(
       (finalBootstrap.auditEvents || []).some((event) => event.action === "participant.submission" && Number(event.targetId) === activeParticipant.id),
       "Admin bootstrap should include the participant submission audit event."
+    );
+    assert(
+      (finalBootstrap.auditEvents || []).some(
+        (event) => event.action === "campaign.hidden_from_influencers" && Number(event.targetId) === freshCampaignId
+      ) &&
+        (finalBootstrap.auditEvents || []).some(
+          (event) => event.action === "campaign.unhidden_from_influencers" && Number(event.targetId) === freshCampaignId
+        ),
+      "Admin bootstrap should retain both Hidden visibility audit actions."
     );
 
     console.log("Smoke test passed.");

@@ -1081,6 +1081,12 @@ body.nav-locked {
   color: var(--danger);
 }
 
+.badge--muted {
+  background: rgba(112, 47, 138, 0.08);
+  color: rgba(74, 31, 93, 0.72);
+  border: 1px solid rgba(112, 47, 138, 0.16);
+}
+
 .proof-thumb-strip {
   display: flex;
   flex-wrap: wrap;
