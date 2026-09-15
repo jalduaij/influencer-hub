@@ -2333,7 +2333,8 @@ button:disabled {
   .sidebar {
     position: fixed;
     inset-block: 0;
-    inset-inline-start: 0;
+    left: 0;
+    right: auto;
     width: 280px;
     max-width: 85vw;
     min-height: 100vh;
@@ -2347,8 +2348,8 @@ button:disabled {
   }
 
   .rtl .sidebar {
-    inset-inline-start: auto;
-    inset-inline-end: 0;
+    left: auto;
+    right: 0;
     transform: translateX(100%);
     box-shadow: -4px 0 20px rgba(15, 23, 42, 0.18);
   }

@@ -2548,6 +2548,8 @@ function render(options = {}) {
   const focusSnapshot = options.preserveFocus ? captureFocusedField() : null;
   let deferHistorySync = false;
   document.body.classList.toggle("rtl", state.locale === "ar");
+  document.documentElement.setAttribute("dir", state.locale === "ar" ? "rtl" : "ltr");
+  document.documentElement.setAttribute("lang", state.locale === "ar" ? "ar" : "en");
   applyMemberScope();
   if (!state.currentUser) {
     document.body.classList.toggle("nav-locked", false);
