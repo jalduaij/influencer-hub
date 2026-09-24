@@ -8425,6 +8425,7 @@ body.member-scope .code-card__code-box code {
   font-weight: 700;
   font-size: 26px;
   letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
 }
 
 body.member-scope .code-card__offer {
@@ -8684,6 +8685,46 @@ body.member-scope .campaign-reservation-card p {
   margin: 10px 0 0;
   color: var(--ink-soft);
   line-height: 1.5;
+}
+
+body.member-scope .campaign-reservation-card--delivery {
+  background: linear-gradient(145deg, rgba(249, 242, 252, 0.96), rgba(237, 226, 247, 0.84));
+  border-color: rgba(112, 47, 138, 0.2);
+}
+
+body.member-scope .campaign-reservation-card__delivery-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: var(--accent-deep);
+  color: #fff;
+}
+
+body.member-scope .campaign-reservation-card__delivery-code code {
+  min-width: 0;
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+body.member-scope .campaign-reservation-card__delivery-code .secondary {
+  flex: 0 0 auto;
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 480px) {
+  body.member-scope .campaign-reservation-card__delivery-code {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 body.member-scope .signup-residential-block,

@@ -254,11 +254,42 @@ async function run() {
       createdCampaignPayload.campaign.hiddenFromInfluencers === false,
       "New campaigns should default hiddenFromInfluencers to false."
     );
+    assert(
+      createdCampaignPayload.campaign.selfRedeemCode === false,
+      "New campaigns should default selfRedeemCode to false."
+    );
     assert(createdCampaignPayload.campaign.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Created campaign should return its caption guide.");
     assert(createdCampaignPayload.campaign.whatsappMessage === "Custom body for smoke", "Created campaign should return its whatsappMessage.");
     assert(
       /^PICK-[A-Z0-9]+$/.test(String(createdCampaignPayload.campaign.verificationPassword || "")),
       "Created campaign should return a generated verification password."
+    );
+
+    const deliveryCampaignPayload = {
+      ...freshCampaignPayload,
+      titleEn: "Smoke Delivery Campaign",
+      titleAr: "حملة توصيل للدخان",
+      descriptionEn: "Delivery campaign with direct influencer code access.",
+      descriptionAr: "حملة توصيل تعرض الكود مباشرة للمؤثر.",
+      type: "product_trial",
+      selfRedeemCode: true,
+      participantCap: 1,
+    };
+    const createDeliveryCampaign = await fetch(`${baseUrl}/api/campaigns`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(deliveryCampaignPayload),
+    });
+    assert(createDeliveryCampaign.ok, `Delivery campaign creation failed with status ${createDeliveryCampaign.status}.`);
+    const createdDeliveryCampaignPayload = await createDeliveryCampaign.json();
+    const deliveryCampaignId = createdDeliveryCampaignPayload.campaign.id;
+    assert(
+      createdDeliveryCampaignPayload.campaign.selfRedeemCode === true,
+      "Delivery campaign should return selfRedeemCode=true."
     );
     const clientSource = await fs.readFile(path.join(ROOT, "client.js"), "utf8");
     const stylesSource = await fs.readFile(path.join(ROOT, "styles.css"), "utf8");
@@ -267,6 +298,12 @@ async function run() {
         clientSource.includes("إخفاء عن المؤثرين") &&
         clientSource.includes("function renderHiddenCampaignBadge"),
       "Campaign management UI should include the bilingual Hidden control and badge helper."
+    );
+    assert(
+      clientSource.includes('name="selfRedeemCode"') &&
+        clientSource.includes("استخدام للتوصيل / أونلاين") &&
+        clientSource.includes('data-action="copy-delivery-code"'),
+      "Campaign and member UI should include the bilingual delivery self-redemption controls."
     );
     assert(stylesSource.includes(".badge--muted"), "Hidden campaign badges should include the muted badge styling.");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
@@ -590,6 +627,18 @@ async function run() {
     });
     assert(uploadCodes.ok, `Code upload failed with status ${uploadCodes.status}.`);
 
+    const deliveryCodesForm = new FormData();
+    deliveryCodesForm.append("codesFile", new Blob(["code\nDELIVERY-001\n"], { type: "text/csv" }), "delivery-codes.csv");
+    const uploadDeliveryCodes = await fetch(`${baseUrl}/api/campaigns/${deliveryCampaignId}/codes/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+      },
+      body: deliveryCodesForm,
+    });
+    assert(uploadDeliveryCodes.ok, `Delivery code upload failed with status ${uploadDeliveryCodes.status}.`);
+
     const staleCampaignPayload = {
       ...freshCampaignPayload,
       titleEn: "Smoke Closed Visit Campaign",
@@ -739,6 +788,8 @@ async function run() {
     );
     const influencerCampaign = influencerBootstrap.campaigns.find((campaign) => campaign.id === freshCampaignId);
     assert(influencerCampaign?.captionGuide === "Use #PICKKuwait and tag @pick.kuwait", "Influencer bootstrap should include campaign captionGuide.");
+    const influencerDeliveryCampaign = influencerBootstrap.campaigns.find((campaign) => campaign.id === deliveryCampaignId);
+    assert(influencerDeliveryCampaign?.selfRedeemCode === true, "Influencer bootstrap should identify delivery self-redemption campaigns.");
     assert(
       (influencerBootstrap.previewCampaigns || []).some((campaign) => campaign.id === previewCampaignId),
       "Member bootstrap should include draft preview campaigns marked as Coming Soon."
@@ -939,6 +990,64 @@ async function run() {
     });
     assert(femaleTwoLogin.ok, `Second female influencer login failed with status ${femaleTwoLogin.status}.`);
     const femaleTwoCookie = femaleTwoLogin.headers.get("set-cookie");
+
+    const deliveryJoin = await fetch(`${baseUrl}/api/campaigns/${deliveryCampaignId}/join`, {
+      method: "POST",
+      headers: { Cookie: femaleTwoCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(deliveryJoin.ok, `Delivery campaign join failed with status ${deliveryJoin.status}.`);
+    const deliveryJoinPayload = await deliveryJoin.json();
+    const deliveryBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: femaleTwoCookie.split(";")[0] },
+    }).then((response) => response.json());
+    const deliveryParticipant = deliveryBootstrap.participants.find(
+      (participant) => participant.id === deliveryJoinPayload.participantId
+    );
+    assert(deliveryParticipant?.assignedCodeValue === "DELIVERY-001", "Assigned influencer should receive the raw delivery code.");
+
+    const unrelatedDeliveryBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: influencerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    const unrelatedDeliveryParticipant = unrelatedDeliveryBootstrap.participants.find(
+      (participant) => participant.campaignId === deliveryCampaignId
+    );
+    assert(!unrelatedDeliveryParticipant, "Another influencer must not receive someone else's delivery participation or code.");
+
+    const disableDeliveryMode = await fetch(`${baseUrl}/api/campaigns/${deliveryCampaignId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...deliveryCampaignPayload, selfRedeemCode: false }),
+    });
+    assert(disableDeliveryMode.ok, `Disabling delivery mode failed with status ${disableDeliveryMode.status}.`);
+    const disabledDeliveryPayload = await disableDeliveryMode.json();
+    assert(disabledDeliveryPayload.campaign?.selfRedeemCode === false, "Campaign update should persist selfRedeemCode=false.");
+
+    const cancelDelivery = await fetch(`${baseUrl}/api/participants/${deliveryParticipant.id}/cancel`, {
+      method: "POST",
+      headers: { Cookie: femaleTwoCookie.split(";")[0], Origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    assert(cancelDelivery.ok, `Delivery participation cancellation failed with status ${cancelDelivery.status}.`);
+    const storeAfterDeliveryCancel = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const blockedDeliveryCode = storeAfterDeliveryCancel.campaignCodes.find(
+      (code) => code.id === deliveryParticipant.assignedCodeId
+    );
+    assert(
+      blockedDeliveryCode?.status === "blocked",
+      "Canceling a previously revealed delivery code should block it permanently even after delivery mode is disabled."
+    );
+    assert(
+      (storeAfterDeliveryCancel.auditEvents || []).some(
+        (event) => event.action === "campaign.self_redemption_changed" && Number(event.targetId) === deliveryCampaignId
+      ),
+      "Changing delivery self-redemption mode should append an audit event."
+    );
+
     const cappedJoin = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/join`, {
       method: "POST",
       headers: { Cookie: femaleTwoCookie.split(";")[0], Origin: baseUrl },

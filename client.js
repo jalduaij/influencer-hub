@@ -1455,14 +1455,22 @@ function renderDeskRail(participants) {
           </div>
           <div class="desk-tile__code">
             <span class="desk-tile__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
-            <span class="desk-tile__code-value">${escapeHtml(l("Tap Save to show QR", "اضغط حفظ لإظهار QR"))}</span>
+            <span class="desk-tile__code-value">${escapeHtml(
+              campaign.selfRedeemCode
+                ? l("Tap Code to view your delivery code", "اضغط الكود لعرض كود التوصيل")
+                : l("Tap Save to show QR", "اضغط حفظ لإظهار QR")
+            )}</span>
           </div>
           <div class="desk-tile__footer">
             <span class="desk-tile__deadline">
               ${l("BY", "قبل")} ${formatDate(campaign.submissionDeadline)}
             </span>
             <span class="desk-tile__actions">
-              ${renderSaveCodeButton(participant, l("Save", "احفظ"), "desk-tile__save")}
+              ${renderSaveCodeButton(
+                participant,
+                campaign.selfRedeemCode ? l("Code", "الكود") : l("Save", "احفظ"),
+                "desk-tile__save"
+              )}
               <span class="desk-tile__cta">${l("Submit", "أرسل")} ${state.locale === "ar" ? "←" : "→"}</span>
             </span>
           </div>
@@ -1700,6 +1708,7 @@ function auditActionLabel(action) {
     "campaign.joined": l("Joined campaign", "انضم إلى الحملة"),
     "campaign.manual_reserve": l("Reserved offline code", "حجز كوداً أوفلاين"),
     "campaign.duplicated": l("Duplicated campaign", "نسخ الحملة"),
+    "campaign.self_redemption_changed": l("Changed code redemption mode", "غيّر طريقة استخدام الكود"),
     "participant.removed": l("Removed participant", "أزال مشاركاً"),
     "participant.self_canceled": l("Canceled participation", "ألغى المشاركة"),
     "participant.visit_confirmed": l("Confirmed branch visit", "أكد زيارة الفرع"),
@@ -3023,6 +3032,7 @@ function renderCodeCard() {
   if (!participant || !participantHasWallet(participant)) return "";
   const campaign = findCampaignForParticipant(participant);
   if (!campaign) return "";
+  const isSelfRedeem = Boolean(campaign.selfRedeemCode);
   const offerCopy = campaign.offerDescription ? `<p class="code-card__offer">${escapeHtml(campaign.offerDescription)}</p>` : "";
   return `
     <div class="code-card-overlay" data-action="close-code-card-backdrop">
@@ -3036,7 +3046,11 @@ function renderCodeCard() {
           <h2 class="code-card__title">${escapeHtml(campaignTitle(campaign))}</h2>
           <div class="code-card__reserved">
             <p class="code-card__reserved-label">${escapeHtml(l("Reserved", "محجوز"))}</p>
-            <p class="code-card__reserved-help">${escapeHtml(l("Show your QR or read the reference to a PICK team member.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي لعضو فريق PICK."))}</p>
+            <p class="code-card__reserved-help">${escapeHtml(
+              isSelfRedeem
+                ? l("Use your private code in the delivery app checkout.", "استخدم كودك الخاص عند الدفع في تطبيق التوصيل.")
+                : l("Show your QR or read the reference to a PICK team member.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي لعضو فريق PICK.")
+            )}</p>
           </div>
           ${offerCopy}
           <dl class="code-card__meta">
@@ -3049,20 +3063,31 @@ function renderCodeCard() {
               <dd>${escapeHtml(formatDate(campaign.submissionDeadline))}</dd>
             </div>
             <div>
-              <dt>${escapeHtml(l("Branch", "الفرع"))}</dt>
-              <dd>${escapeHtml(l("Any PICK branch", "أي فرع PICK"))}</dd>
+              <dt>${escapeHtml(isSelfRedeem ? l("Redeem", "الاستخدام") : l("Branch", "الفرع"))}</dt>
+              <dd>${escapeHtml(isSelfRedeem ? l("Delivery app", "تطبيق التوصيل") : l("Any PICK branch", "أي فرع PICK"))}</dd>
             </div>
           </dl>
-          <div class="code-card__qr" data-qr-target data-qr-url="${escapeHtml(participant.verificationUrl)}"></div>
-          <div class="code-card__ref">
-            <span class="code-card__ref-label">${escapeHtml(l("REF", "رقم"))}</span>
-            <code>${escapeHtml(participant.verificationRef || "")}</code>
-          </div>
-          <p class="code-card__hint">${escapeHtml(l("Show this QR or read the reference at the branch when you redeem your offer.", "اعرض هذا الرمز أو اقرأ الرقم المرجعي عند الفرع لاستلام عرضك."))}</p>
+          ${
+            isSelfRedeem
+              ? `
+                <div class="code-card__code-box">
+                  <code>${escapeHtml(participant.assignedCodeValue || l("Code unavailable", "الكود غير متاح"))}</code>
+                </div>
+                <p class="code-card__hint">${escapeHtml(l("Copy this code and enter it at checkout. Keep it private because it is assigned only to you.", "انسخ هذا الكود وأدخله عند الدفع. احتفظ به سرياً لأنه مخصص لك فقط."))}</p>
+              `
+              : `
+                <div class="code-card__qr" data-qr-target data-qr-url="${escapeHtml(participant.verificationUrl)}"></div>
+                <div class="code-card__ref">
+                  <span class="code-card__ref-label">${escapeHtml(l("REF", "رقم"))}</span>
+                  <code>${escapeHtml(participant.verificationRef || "")}</code>
+                </div>
+                <p class="code-card__hint">${escapeHtml(l("Show this QR or read the reference at the branch when you redeem your offer.", "اعرض هذا الرمز أو اقرأ الرقم المرجعي عند الفرع لاستلام عرضك."))}</p>
+              `
+          }
         </div>
         <footer class="code-card__footer">
-          <button class="code-card__share" data-action="share-code-card" data-participant-id="${participant.id}">
-            ${escapeHtml(l("Share / Save to Photos", "مشاركة / حفظ في الصور"))}
+          <button class="code-card__share" data-action="${isSelfRedeem ? "copy-delivery-code" : "share-code-card"}" data-participant-id="${participant.id}" ${isSelfRedeem && !participant.assignedCodeValue ? "disabled" : ""}>
+            ${escapeHtml(isSelfRedeem ? l("Copy delivery code", "نسخ كود التوصيل") : l("Share / Save to Photos", "مشاركة / حفظ في الصور"))}
           </button>
         </footer>
       </article>
@@ -3629,6 +3654,21 @@ function renderCodeDetails(codeValue, usageCount, offerText, title = l("Assigned
 
 function renderReservationDetails(participant, campaign) {
   if (!participantHasWallet(participant)) return "";
+  if (campaign?.selfRedeemCode) {
+    return `
+      <div class="campaign-reservation-card campaign-reservation-card--delivery" style="margin-top: 12px;">
+        <div class="row">
+          <strong>${escapeHtml(l("Your delivery code", "كود التوصيل الخاص بك"))}</strong>
+          <span class="code-offer-uses">${escapeHtml(l("Uses", "عدد الاستخدام"))}: ${escapeHtml(participant.assignedCodeUsageCount || campaign?.offerUsageCount || 1)}</span>
+        </div>
+        <div class="campaign-reservation-card__delivery-code">
+          <code>${escapeHtml(participant.assignedCodeValue || l("Code unavailable", "الكود غير متاح"))}</code>
+          <button type="button" class="secondary button-small" data-action="copy-delivery-code" data-participant-id="${participant.id}" ${participant.assignedCodeValue ? "" : "disabled"}>${escapeHtml(l("Copy code", "نسخ الكود"))}</button>
+        </div>
+        <p>${escapeHtml(l("Enter this private code at checkout in the delivery app. Do not share it with anyone else.", "أدخل هذا الكود الخاص عند الدفع في تطبيق التوصيل. لا تشاركه مع أي شخص آخر."))}</p>
+      </div>
+    `;
+  }
   return `
     <div class="campaign-reservation-card" style="margin-top: 12px;">
       <div class="row">
@@ -4690,12 +4730,25 @@ function renderCampaignForm(campaign) {
         <div class="form-grid two-col">
           <label class="field"><span>${l("Offer usage count", "عدد استخدام العرض")} <em class="required-mark">*</em></span><input name="offerUsageCount" type="number" min="1" required value="${escapeHtml(campaign?.offerUsageCount || 1)}" /></label>
           <label class="field field-span-full"><span>${l("Offer description", "وصف العرض")} <em class="required-mark">*</em></span><input name="offerDescription" required value="${escapeHtml(campaign?.offerDescription || "")}" placeholder="${l("One free cold brew", "مشروب كولد برو مجاني واحد")}" /></label>
+          <label class="field field-span-full">
+            <span>${l("Delivery / online redemption", "استخدام للتوصيل / أونلاين")}</span>
+            <div class="row-wrap">
+              <label class="choice-pill">
+                <input type="checkbox" name="selfRedeemCode" value="1" ${campaign?.selfRedeemCode ? "checked" : ""} />
+                <span>${l("Show the assigned code directly to the influencer", "اعرض الكود المخصص مباشرة للمؤثر")}</span>
+              </label>
+            </div>
+            <small>${l(
+              "Use this when the influencer enters the code in a delivery app. The QR and cashier password remain available for standard campaigns.",
+              "استخدم هذا الخيار عندما يُدخل المؤثر الكود في تطبيق التوصيل. يظل رمز QR وكلمة مرور الكاشير للحملات العادية."
+            )}</small>
+          </label>
         </div>
       </section>
       <section class="form-section">
         <div class="form-section-header">
           <h4>${l("Cashier verification", "تحقق الكاشير")}</h4>
-          <p>${l("Branch staff type this password after scanning the QR or entering the member reference manually.", "يكتب فريق الفرع هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو يدوياً.")}</p>
+          <p>${l("For standard branch campaigns, staff type this password after scanning the QR or entering the member reference manually.", "في حملات الفروع العادية، يكتب فريق الفرع هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو يدوياً.")}</p>
         </div>
         <div class="form-grid">
           <label class="field field-span-full">
@@ -4886,8 +4939,8 @@ function renderCampaignEditPage() {
             value: campaignTypeLabel,
           },
           {
-            label: l("Branch scope", "نطاق الأفرع"),
-            value: branchScopeLabel,
+            label: l("Redemption", "طريقة الاستخدام"),
+            value: campaign.selfRedeemCode ? l("Delivery / online", "توصيل / أونلاين") : branchScopeLabel,
           },
         ],
         compactHeroStats: true,
@@ -4989,8 +5042,8 @@ function renderCampaignViewPage() {
             value: campaignTypeLabel,
           },
           {
-            label: l("Branch scope", "نطاق الأفرع"),
-            value: branchScopeLabel,
+            label: l("Redemption", "طريقة الاستخدام"),
+            value: campaign.selfRedeemCode ? l("Delivery / online", "توصيل / أونلاين") : branchScopeLabel,
           },
         ],
         compactHeroStats: true,
@@ -5047,11 +5100,20 @@ function renderCampaignViewPage() {
           <span class="badge">${l("Visit deadline", "آخر موعد للزيارة")}: ${formatDate(campaign.visitDeadline)}</span>
           <span class="badge">${l("Submission deadline", "آخر موعد للتسليم")}: ${formatDate(campaign.submissionDeadline)}</span>
         </div>
-        <article class="note-card" style="margin-bottom: 14px;">
-          <strong>${escapeHtml(l("Verification password", "كلمة مرور التحقق"))}</strong>
-          <p class="panel-subtitle">${escapeHtml(l("Cashiers type this after scanning the QR or entering the member reference.", "يكتب الكاشير هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو."))}</p>
-          <code style="font-family: 'Courier New', monospace; font-size: 16px;">${escapeHtml(campaign.verificationPassword || "")}</code>
-        </article>
+        ${campaign.selfRedeemCode
+          ? `
+            <article class="note-card" style="margin-bottom: 14px;">
+              <strong>${escapeHtml(l("Delivery / online redemption", "استخدام للتوصيل / أونلاين"))}</strong>
+              <p class="panel-subtitle">${escapeHtml(l("Each influencer sees only their own assigned code and enters it directly in the delivery app.", "يرى كل مؤثر الكود المخصص له فقط ويدخله مباشرة في تطبيق التوصيل."))}</p>
+            </article>
+          `
+          : `
+            <article class="note-card" style="margin-bottom: 14px;">
+              <strong>${escapeHtml(l("Verification password", "كلمة مرور التحقق"))}</strong>
+              <p class="panel-subtitle">${escapeHtml(l("Cashiers type this after scanning the QR or entering the member reference.", "يكتب الكاشير هذه الكلمة بعد مسح رمز QR أو إدخال الرقم المرجعي للعضو."))}</p>
+              <code style="font-family: 'Courier New', monospace; font-size: 16px;">${escapeHtml(campaign.verificationPassword || "")}</code>
+            </article>
+          `}
         ${renderCampaignOffer(campaign)}
         <article class="note-card">
           <div class="row">
@@ -6752,7 +6814,11 @@ function renderMemberCardSummary(participant, campaign, options = {}) {
           ${participantHasWallet(participant) ? `
             <span class="dashboard-card-code">
               <span class="dashboard-card-code__label">${escapeHtml(l("Reserved", "محجوز"))}</span>
-              <span class="dashboard-card-code__value">${escapeHtml(l("Open your QR below", "افتح رمز QR بالأسفل"))}</span>
+              <span class="dashboard-card-code__value">${escapeHtml(
+                campaign.selfRedeemCode
+                  ? l("Your delivery code is below", "كود التوصيل الخاص بك بالأسفل")
+                  : l("Open your QR below", "افتح رمز QR بالأسفل")
+              )}</span>
             </span>
           ` : ""}
           <span class="badge">${l("Submit by", "التسليم قبل")}: ${formatDate(campaign.submissionDeadline)}</span>
@@ -6856,7 +6922,9 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           const pendingForm = participantCanSubmit(participant) && !compactOnly ? renderSubmissionForm(participant, campaign) : "";
           const dashboardBodyBlock = `
             <p class="compact" style="margin-top: 10px;">
-              ${l("Show your QR or read the reference at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
+              ${campaign.selfRedeemCode
+                ? l("Use your assigned code in the delivery app checkout. Then post and submit your proof below.", "استخدم الكود المخصص لك عند الدفع في تطبيق التوصيل، ثم انشر وأرسل إثباتك أدناه.")
+                : l("Show your QR or read the reference at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
             </p>
             ${renderReservationDetails(participant, campaign)}
             ${pendingForm}
@@ -6982,16 +7050,25 @@ function renderInfluencerCampaignPreviewPage() {
     const reservationChip = `
       <div class="campaign-preview-status__code">
         <span class="campaign-preview-status__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
-        <span class="campaign-preview-status__code-value">${escapeHtml(l("Open your QR or read your reference at the branch.", "افتح رمز QR أو اقرأ الرقم المرجعي عند الفرع."))}</span>
+        <span class="campaign-preview-status__code-value">${escapeHtml(
+          campaign.selfRedeemCode
+            ? l("Your private delivery code is ready below.", "كود التوصيل الخاص بك جاهز بالأسفل.")
+            : l("Open your QR or read your reference at the branch.", "افتح رمز QR أو اقرأ الرقم المرجعي عند الفرع.")
+        )}</span>
       </div>
     `;
 
     let helper = "";
     if (isActive) {
-      helper = l(
-        "Your reservation is ready. Visit any PICK branch with your QR or reference, then submit your proof below.",
-        "حجزك جاهز. زر أي فرع PICK باستخدام رمز QR أو الرقم المرجعي، ثم أرسل إثباتك أدناه."
-      );
+      helper = campaign.selfRedeemCode
+        ? l(
+            "Your code is ready. Enter it at checkout in the delivery app, then submit your proof below.",
+            "كودك جاهز. أدخله عند الدفع في تطبيق التوصيل، ثم أرسل إثباتك بالأسفل."
+          )
+        : l(
+            "Your reservation is ready. Visit any PICK branch with your QR or reference, then submit your proof below.",
+            "حجزك جاهز. زر أي فرع PICK باستخدام رمز QR أو الرقم المرجعي، ثم أرسل إثباتك أدناه."
+          );
     } else if (["submitted", "completed"].includes(participant.status)) {
       helper = l("Your proof has been submitted.", "تم إرسال إثباتك.");
     }
@@ -7018,7 +7095,10 @@ function renderInfluencerCampaignPreviewPage() {
         </header>
         <hr class="rule rule--hair">
         ${reservationChip}
-        ${renderSaveCodeButton(participant)}
+        ${renderSaveCodeButton(
+          participant,
+          campaign.selfRedeemCode ? l("Open delivery code", "افتح كود التوصيل") : l("Save my code", "احفظ كودي")
+        )}
         ${helper ? `<p class="campaign-preview-status__helper">${escapeHtml(helper)}</p>` : ""}
         ${cancelBtn}
       </section>
@@ -8194,6 +8274,23 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "copy-delivery-code") {
+    event.preventDefault();
+    const participantId = Number(target.dataset.participantId);
+    const participant = (state.data?.participants || []).find((item) => item.id === participantId);
+    if (!participant?.assignedCodeValue) {
+      flash(l("Delivery code is unavailable.", "كود التوصيل غير متاح."), "error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(participant.assignedCodeValue);
+      flash(l("Delivery code copied.", "تم نسخ كود التوصيل."), "success");
+    } catch (error) {
+      flash(l("Could not copy the delivery code.", "تعذر نسخ كود التوصيل."), "error");
+    }
+    return;
+  }
+
   if (action === "share-code-card") {
     event.preventDefault();
     const participantId = Number(target.dataset.participantId);
@@ -8586,6 +8683,7 @@ async function handleClick(event) {
   if (action === "join-campaign") {
     if (target.disabled) return;
     const campaignId = Number(target.dataset.campaignId);
+    const campaign = currentCampaigns().find((item) => item.id === campaignId);
     target.disabled = true;
     try {
       await api(`/api/campaigns/${campaignId}/join`, {
@@ -8600,7 +8698,12 @@ async function handleClick(event) {
           statusBlock.scrollIntoView({ behavior: "smooth", block: "center" });
         }
       }, 100);
-      flash(l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"), "success");
+      flash(
+        campaign?.selfRedeemCode
+          ? l("Your delivery code is ready 💜", "كود التوصيل الخاص بك جاهز 💜")
+          : l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"),
+        "success"
+      );
     } catch (error) {
       flash(error.message, "error");
     } finally {
@@ -8664,10 +8767,24 @@ async function handleClick(event) {
 
   if (action === "cancel-participation") {
     if (target.disabled) return;
-    if (!window.confirm(l("Cancel this participation and release the reserved code?", "هل تريد إلغاء هذه المشاركة وإعادة الكود المحجوز؟"))) return;
+    const participant = (state.data?.participants || []).find((item) => item.id === Number(target.dataset.participantId));
+    const campaign = findCampaignForParticipant(participant);
+    const isSelfRedeem = Boolean(campaign?.selfRedeemCode);
+    if (!window.confirm(
+      isSelfRedeem
+        ? l("Cancel this participation? The delivery code will be blocked and cannot be assigned again.", "هل تريد إلغاء هذه المشاركة؟ سيتم حظر كود التوصيل ولن يتم تخصيصه مرة أخرى.")
+        : l("Cancel this participation and release the reserved code?", "هل تريد إلغاء هذه المشاركة وإعادة الكود المحجوز؟")
+    )) return;
     target.disabled = true;
     try {
-      await mutateAndRefresh(`/api/participants/${target.dataset.participantId}/cancel`, {}, l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."), { rethrow: true });
+      await mutateAndRefresh(
+        `/api/participants/${target.dataset.participantId}/cancel`,
+        {},
+        isSelfRedeem
+          ? l("Participation canceled and delivery code blocked.", "تم إلغاء المشاركة وحظر كود التوصيل.")
+          : l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."),
+        { rethrow: true }
+      );
     } finally {
       if (target.isConnected) target.disabled = false;
     }
@@ -9394,6 +9511,7 @@ function campaignFormPayload(form) {
     audienceAr: formData.get("audienceAr"),
     offerUsageCount: Number(formData.get("offerUsageCount")) || 1,
     offerDescription: formData.get("offerDescription"),
+    selfRedeemCode: formData.get("selfRedeemCode") === "1",
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate"),
     visitDeadline: formData.get("visitDeadline"),

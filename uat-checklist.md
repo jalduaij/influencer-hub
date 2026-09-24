@@ -116,6 +116,8 @@ Use this checklist on the PICK Social Club stage environment:
 - Reserve one code offline
 - Confirm offline reservation appears correctly in participants and code list
 - Remove one participant and confirm code becomes blocked
+- Enable `Delivery / online redemption` and confirm the campaign saves with that mode
+- Disable the option and confirm standard campaigns keep the cashier QR/password flow
 
 ### Campaign Status
 
@@ -153,7 +155,9 @@ Use this checklist on the PICK Social Club stage environment:
 
 - Confirm interest on an eligible campaign
 - Private code is assigned immediately
-- Assigned code and offer are visible
+- For a standard branch campaign, confirm the raw code stays hidden while the QR/reference and offer are visible
+- For a delivery/online campaign, confirm the raw assigned code and Copy action are visible only to its assigned member
+- Cancel a delivery/online participation and confirm its exposed code becomes blocked, not available
 
 ### My Campaigns
 

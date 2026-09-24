@@ -1585,6 +1585,9 @@ function normalizeStore(store) {
   for (const campaign of store.campaigns) {
     campaign.branchIds ||= store.branches.map((branch) => branch.id);
     campaign.branchMode ||= campaign.branchIds.length ? "selected" : "all";
+    campaign.selfRedeemCode = Boolean(
+      campaign.selfRedeemCode === true || campaign.selfRedeemCode === "1" || campaign.selfRedeemCode === 1
+    );
     campaign.targetCountries = parseStringList(campaign.targetCountries);
     campaign.targetGovernorateIds = parseStringList(campaign.targetGovernorateIds);
     campaign.targetCityIds = parseStringList(campaign.targetCityIds);
@@ -1711,6 +1714,7 @@ function normalizeStore(store) {
     syncParticipantPrimaryImage(participant);
     participant.platform ||= "";
     participant.canceledReason ||= "";
+    participant.deliveryCodeExposedAt ||= null;
     participant.source ||= participant.influencerId ? "platform" : "offline";
     participant.offlineName ||= "";
     participant.offlineMobile ||= "";
@@ -1921,6 +1925,7 @@ function serializeCampaign(store, campaign, options = {}) {
   const serialized = {
     ...campaign,
     hiddenFromInfluencers: Boolean(campaign.hiddenFromInfluencers),
+    selfRedeemCode: Boolean(campaign.selfRedeemCode),
     codeStats: codeStatsForCampaign(store, campaign.id),
     createdByName: createdBy?.fullName || "",
     updatedByName: updatedBy?.fullName || "",
@@ -1952,6 +1957,7 @@ function serializePreviewCampaign(campaign) {
     status: campaign.status || "draft",
     previewMode: Boolean(campaign.previewMode),
     hiddenFromInfluencers: Boolean(campaign.hiddenFromInfluencers),
+    selfRedeemCode: Boolean(campaign.selfRedeemCode),
   };
 }
 
@@ -2474,11 +2480,16 @@ function generateNotifications(store, user) {
 
 function buildBootstrap(store, user, options = {}) {
   const includeVerificationPassword = ["admin", "campaign_manager"].includes(user.role);
-  const serializeParticipantForRequest = (participant) =>
-    serializeParticipant(store, participant, {
+  const serializeParticipantForRequest = (participant) => {
+    const campaign = campaignById(store, participant.campaignId);
+    const influencerCanSeeAssignedCode = Boolean(
+      campaign?.selfRedeemCode && participant.status !== "canceled"
+    );
+    return serializeParticipant(store, participant, {
       baseUrl: options.baseUrl,
-      includeAssignedCodeValue: user.role !== "influencer",
+      includeAssignedCodeValue: user.role !== "influencer" || influencerCanSeeAssignedCode,
     });
+  };
   const visibleCampaigns = user.role === "influencer"
     ? store.campaigns.filter((campaign) => !isHiddenFromInfluencers(campaign))
     : store.campaigns;
@@ -2622,6 +2633,7 @@ function campaignPayload(body, existingCampaign = null) {
   const targetTags = parseTags(body.targetTags ?? existingCampaign?.targetTags);
   const hasPreviewMode = body.previewMode !== undefined;
   const hasHiddenFromInfluencers = body.hiddenFromInfluencers !== undefined;
+  const hasSelfRedeemCode = body.selfRedeemCode !== undefined;
   return {
     titleEn: text(body.titleEn ?? existingCampaign?.titleEn),
     titleAr: text(body.titleAr ?? existingCampaign?.titleAr),
@@ -2635,6 +2647,9 @@ function campaignPayload(body, existingCampaign = null) {
     hiddenFromInfluencers: hasHiddenFromInfluencers
       ? Boolean(body.hiddenFromInfluencers === "1" || body.hiddenFromInfluencers === true)
       : Boolean(existingCampaign?.hiddenFromInfluencers),
+    selfRedeemCode: hasSelfRedeemCode
+      ? Boolean(body.selfRedeemCode === "1" || body.selfRedeemCode === true)
+      : Boolean(existingCampaign?.selfRedeemCode),
     type: body.type === "product_trial" ? "product_trial" : "shop_visit",
     status: ["draft", "live", "deactivated", "completed"].includes(normalizedStatus)
       ? normalizedStatus
@@ -3800,6 +3815,7 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
   const body = jsonOrForm(await readBody(req), req);
   const previousStatus = campaign.status;
   const previousHidden = isHiddenFromInfluencers(campaign);
+  const previousSelfRedeemCode = Boolean(campaign.selfRedeemCode);
   const previousVerificationPassword = campaign.verificationPassword || "";
   const payload = campaignPayload(body, campaign);
   if (!payload.titleEn || !payload.descriptionEn || !payload.offerDescription || !payload.startDate || !payload.endDate || !payload.visitDeadline || !payload.submissionDeadline) {
@@ -3840,6 +3856,21 @@ async function handleUpdateCampaign(req, res, store, actor, campaignId) {
         next: campaign.hiddenFromInfluencers,
       }
     );
+  }
+
+  if (previousSelfRedeemCode !== campaign.selfRedeemCode) {
+    appendAuditEvent(store, actor, "campaign.self_redemption_changed", "campaign", campaign.id, {
+      previous: previousSelfRedeemCode,
+      next: campaign.selfRedeemCode,
+    });
+    if (campaign.selfRedeemCode) {
+      const exposedAt = new Date().toISOString();
+      for (const participant of store.participants) {
+        if (participant.campaignId !== campaign.id || participant.status === "canceled") continue;
+        if (!assignedCodeForParticipant(store, participant)) continue;
+        participant.deliveryCodeExposedAt ||= exposedAt;
+      }
+    }
   }
 
   if (previousStatus !== "deactivated" && campaign.status === "deactivated") {
@@ -4062,6 +4093,7 @@ async function handleJoinCampaign(req, res, store, actor, campaignId) {
     imagePath: "",
     platform: "",
     canceledReason: "",
+    deliveryCodeExposedAt: campaign.selfRedeemCode ? now : null,
   };
 
   availableCode.status = "reserved";
@@ -4325,10 +4357,13 @@ async function handleSelfCancelParticipant(req, res, store, actor, participantId
   if (participant.status !== "confirmed") {
     return sendJson(res, 409, { error: "Only reserved campaign visits can be canceled by the member." });
   }
-  cancelParticipant(store, participant, "Canceled by influencer", "available");
+  const campaign = campaignById(store, participant.campaignId);
+  const codeStatus = campaign?.selfRedeemCode || participant.deliveryCodeExposedAt ? "blocked" : "available";
+  cancelParticipant(store, participant, "Canceled by influencer", codeStatus);
   participant.assignedCodeId = null;
   appendAuditEvent(store, actor, "participant.self_canceled", "participant", participant.id, {
     campaignId: participant.campaignId,
+    codeDisposition: codeStatus,
   });
   await writeStore(store);
   return sendJson(res, 200, { ok: true });
