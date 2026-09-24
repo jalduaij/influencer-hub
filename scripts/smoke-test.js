@@ -301,9 +301,9 @@ async function run() {
     );
     assert(
       clientSource.includes('name="selfRedeemCode"') &&
-        clientSource.includes("استخدام للتوصيل / أونلاين") &&
+        clientSource.includes("استخدام كود التطبيق") &&
         clientSource.includes('data-action="copy-delivery-code"'),
-      "Campaign and member UI should include the bilingual delivery self-redemption controls."
+      "Campaign and member UI should include the bilingual app-code self-redemption controls."
     );
     assert(stylesSource.includes(".badge--muted"), "Hidden campaign badges should include the muted badge styling.");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];

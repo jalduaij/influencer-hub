@@ -1457,7 +1457,7 @@ function renderDeskRail(participants) {
             <span class="desk-tile__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
             <span class="desk-tile__code-value">${escapeHtml(
               campaign.selfRedeemCode
-                ? l("Tap Code to view your delivery code", "اضغط الكود لعرض كود التوصيل")
+                ? l("Tap Code to view your app code", "اضغط الكود لعرض كود التطبيق")
                 : l("Tap Save to show QR", "اضغط حفظ لإظهار QR")
             )}</span>
           </div>
@@ -3048,7 +3048,7 @@ function renderCodeCard() {
             <p class="code-card__reserved-label">${escapeHtml(l("Reserved", "محجوز"))}</p>
             <p class="code-card__reserved-help">${escapeHtml(
               isSelfRedeem
-                ? l("Use your private code in the delivery app checkout.", "استخدم كودك الخاص عند الدفع في تطبيق التوصيل.")
+                ? l("Use your private app code at checkout.", "استخدم كود التطبيق الخاص بك عند الدفع.")
                 : l("Show your QR or read the reference to a PICK team member.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي لعضو فريق PICK.")
             )}</p>
           </div>
@@ -3064,7 +3064,7 @@ function renderCodeCard() {
             </div>
             <div>
               <dt>${escapeHtml(isSelfRedeem ? l("Redeem", "الاستخدام") : l("Branch", "الفرع"))}</dt>
-              <dd>${escapeHtml(isSelfRedeem ? l("Delivery app", "تطبيق التوصيل") : l("Any PICK branch", "أي فرع PICK"))}</dd>
+              <dd>${escapeHtml(isSelfRedeem ? l("App", "التطبيق") : l("Any PICK branch", "أي فرع PICK"))}</dd>
             </div>
           </dl>
           ${
@@ -3087,7 +3087,7 @@ function renderCodeCard() {
         </div>
         <footer class="code-card__footer">
           <button class="code-card__share" data-action="${isSelfRedeem ? "copy-delivery-code" : "share-code-card"}" data-participant-id="${participant.id}" ${isSelfRedeem && !participant.assignedCodeValue ? "disabled" : ""}>
-            ${escapeHtml(isSelfRedeem ? l("Copy delivery code", "نسخ كود التوصيل") : l("Share / Save to Photos", "مشاركة / حفظ في الصور"))}
+            ${escapeHtml(isSelfRedeem ? l("Copy app code", "نسخ كود التطبيق") : l("Share / Save to Photos", "مشاركة / حفظ في الصور"))}
           </button>
         </footer>
       </article>
@@ -3658,14 +3658,14 @@ function renderReservationDetails(participant, campaign) {
     return `
       <div class="campaign-reservation-card campaign-reservation-card--delivery" style="margin-top: 12px;">
         <div class="row">
-          <strong>${escapeHtml(l("Your delivery code", "كود التوصيل الخاص بك"))}</strong>
+          <strong>${escapeHtml(l("Your app code", "كود التطبيق الخاص بك"))}</strong>
           <span class="code-offer-uses">${escapeHtml(l("Uses", "عدد الاستخدام"))}: ${escapeHtml(participant.assignedCodeUsageCount || campaign?.offerUsageCount || 1)}</span>
         </div>
         <div class="campaign-reservation-card__delivery-code">
           <code>${escapeHtml(participant.assignedCodeValue || l("Code unavailable", "الكود غير متاح"))}</code>
           <button type="button" class="secondary button-small" data-action="copy-delivery-code" data-participant-id="${participant.id}" ${participant.assignedCodeValue ? "" : "disabled"}>${escapeHtml(l("Copy code", "نسخ الكود"))}</button>
         </div>
-        <p>${escapeHtml(l("Enter this private code at checkout in the delivery app. Do not share it with anyone else.", "أدخل هذا الكود الخاص عند الدفع في تطبيق التوصيل. لا تشاركه مع أي شخص آخر."))}</p>
+        <p>${escapeHtml(l("Enter this private app code at checkout. Do not share it with anyone else.", "أدخل كود التطبيق الخاص بك عند الدفع. لا تشاركه مع أي شخص آخر."))}</p>
       </div>
     `;
   }
@@ -4731,7 +4731,7 @@ function renderCampaignForm(campaign) {
           <label class="field"><span>${l("Offer usage count", "عدد استخدام العرض")} <em class="required-mark">*</em></span><input name="offerUsageCount" type="number" min="1" required value="${escapeHtml(campaign?.offerUsageCount || 1)}" /></label>
           <label class="field field-span-full"><span>${l("Offer description", "وصف العرض")} <em class="required-mark">*</em></span><input name="offerDescription" required value="${escapeHtml(campaign?.offerDescription || "")}" placeholder="${l("One free cold brew", "مشروب كولد برو مجاني واحد")}" /></label>
           <label class="field field-span-full">
-            <span>${l("Delivery / online redemption", "استخدام للتوصيل / أونلاين")}</span>
+            <span>${l("App code redemption", "استخدام كود التطبيق")}</span>
             <div class="row-wrap">
               <label class="choice-pill">
                 <input type="checkbox" name="selfRedeemCode" value="1" ${campaign?.selfRedeemCode ? "checked" : ""} />
@@ -4739,8 +4739,8 @@ function renderCampaignForm(campaign) {
               </label>
             </div>
             <small>${l(
-              "Use this when the influencer enters the code in a delivery app. The QR and cashier password remain available for standard campaigns.",
-              "استخدم هذا الخيار عندما يُدخل المؤثر الكود في تطبيق التوصيل. يظل رمز QR وكلمة مرور الكاشير للحملات العادية."
+              "Use this when the influencer enters the assigned code in an app. The QR and cashier password remain available for standard campaigns.",
+              "استخدم هذا الخيار عندما يُدخل المؤثر الكود المخصص في أحد التطبيقات. يظل رمز QR وكلمة مرور الكاشير للحملات العادية."
             )}</small>
           </label>
         </div>
@@ -4940,7 +4940,7 @@ function renderCampaignEditPage() {
           },
           {
             label: l("Redemption", "طريقة الاستخدام"),
-            value: campaign.selfRedeemCode ? l("Delivery / online", "توصيل / أونلاين") : branchScopeLabel,
+            value: campaign.selfRedeemCode ? l("App code", "كود التطبيق") : branchScopeLabel,
           },
         ],
         compactHeroStats: true,
@@ -5043,7 +5043,7 @@ function renderCampaignViewPage() {
           },
           {
             label: l("Redemption", "طريقة الاستخدام"),
-            value: campaign.selfRedeemCode ? l("Delivery / online", "توصيل / أونلاين") : branchScopeLabel,
+            value: campaign.selfRedeemCode ? l("App code", "كود التطبيق") : branchScopeLabel,
           },
         ],
         compactHeroStats: true,
@@ -5103,8 +5103,8 @@ function renderCampaignViewPage() {
         ${campaign.selfRedeemCode
           ? `
             <article class="note-card" style="margin-bottom: 14px;">
-              <strong>${escapeHtml(l("Delivery / online redemption", "استخدام للتوصيل / أونلاين"))}</strong>
-              <p class="panel-subtitle">${escapeHtml(l("Each influencer sees only their own assigned code and enters it directly in the delivery app.", "يرى كل مؤثر الكود المخصص له فقط ويدخله مباشرة في تطبيق التوصيل."))}</p>
+              <strong>${escapeHtml(l("App code redemption", "استخدام كود التطبيق"))}</strong>
+              <p class="panel-subtitle">${escapeHtml(l("Each influencer sees only their own app code and enters it directly in the app.", "يرى كل مؤثر كود التطبيق الخاص به فقط ويدخله مباشرة في التطبيق."))}</p>
             </article>
           `
           : `
@@ -6816,7 +6816,7 @@ function renderMemberCardSummary(participant, campaign, options = {}) {
               <span class="dashboard-card-code__label">${escapeHtml(l("Reserved", "محجوز"))}</span>
               <span class="dashboard-card-code__value">${escapeHtml(
                 campaign.selfRedeemCode
-                  ? l("Your delivery code is below", "كود التوصيل الخاص بك بالأسفل")
+                  ? l("Your app code is below", "كود التطبيق الخاص بك بالأسفل")
                   : l("Open your QR below", "افتح رمز QR بالأسفل")
               )}</span>
             </span>
@@ -6923,7 +6923,7 @@ function renderMyCampaignCards(participants, compactOnly, proofOnly = false) {
           const dashboardBodyBlock = `
             <p class="compact" style="margin-top: 10px;">
               ${campaign.selfRedeemCode
-                ? l("Use your assigned code in the delivery app checkout. Then post and submit your proof below.", "استخدم الكود المخصص لك عند الدفع في تطبيق التوصيل، ثم انشر وأرسل إثباتك أدناه.")
+                ? l("Use your assigned app code at checkout. Then post and submit your proof below.", "استخدم كود التطبيق المخصص لك عند الدفع، ثم انشر وأرسل إثباتك أدناه.")
                 : l("Show your QR or read the reference at any PICK branch to redeem the offer. Then post and submit your proof below.", "اعرض رمز الـQR أو اقرأ الرقم المرجعي في أي فرع PICK لاستلام العرض، ثم انشر وأرسل إثباتك أدناه.")}
             </p>
             ${renderReservationDetails(participant, campaign)}
@@ -7052,7 +7052,7 @@ function renderInfluencerCampaignPreviewPage() {
         <span class="campaign-preview-status__code-label">${escapeHtml(l("Reserved", "محجوز"))}</span>
         <span class="campaign-preview-status__code-value">${escapeHtml(
           campaign.selfRedeemCode
-            ? l("Your private delivery code is ready below.", "كود التوصيل الخاص بك جاهز بالأسفل.")
+            ? l("Your private app code is ready below.", "كود التطبيق الخاص بك جاهز بالأسفل.")
             : l("Open your QR or read your reference at the branch.", "افتح رمز QR أو اقرأ الرقم المرجعي عند الفرع.")
         )}</span>
       </div>
@@ -7062,8 +7062,8 @@ function renderInfluencerCampaignPreviewPage() {
     if (isActive) {
       helper = campaign.selfRedeemCode
         ? l(
-            "Your code is ready. Enter it at checkout in the delivery app, then submit your proof below.",
-            "كودك جاهز. أدخله عند الدفع في تطبيق التوصيل، ثم أرسل إثباتك بالأسفل."
+            "Your app code is ready. Enter it at checkout, then submit your proof below.",
+            "كود التطبيق جاهز. أدخله عند الدفع، ثم أرسل إثباتك بالأسفل."
           )
         : l(
             "Your reservation is ready. Visit any PICK branch with your QR or reference, then submit your proof below.",
@@ -7097,7 +7097,7 @@ function renderInfluencerCampaignPreviewPage() {
         ${reservationChip}
         ${renderSaveCodeButton(
           participant,
-          campaign.selfRedeemCode ? l("Open delivery code", "افتح كود التوصيل") : l("Save my code", "احفظ كودي")
+          campaign.selfRedeemCode ? l("Open app code", "افتح كود التطبيق") : l("Save my code", "احفظ كودي")
         )}
         ${helper ? `<p class="campaign-preview-status__helper">${escapeHtml(helper)}</p>` : ""}
         ${cancelBtn}
@@ -8279,14 +8279,14 @@ async function handleClick(event) {
     const participantId = Number(target.dataset.participantId);
     const participant = (state.data?.participants || []).find((item) => item.id === participantId);
     if (!participant?.assignedCodeValue) {
-      flash(l("Delivery code is unavailable.", "كود التوصيل غير متاح."), "error");
+      flash(l("App code is unavailable.", "كود التطبيق غير متاح."), "error");
       return;
     }
     try {
       await navigator.clipboard.writeText(participant.assignedCodeValue);
-      flash(l("Delivery code copied.", "تم نسخ كود التوصيل."), "success");
+      flash(l("App code copied.", "تم نسخ كود التطبيق."), "success");
     } catch (error) {
-      flash(l("Could not copy the delivery code.", "تعذر نسخ كود التوصيل."), "error");
+      flash(l("Could not copy the app code.", "تعذر نسخ كود التطبيق."), "error");
     }
     return;
   }
@@ -8700,7 +8700,7 @@ async function handleClick(event) {
       }, 100);
       flash(
         campaign?.selfRedeemCode
-          ? l("Your delivery code is ready 💜", "كود التوصيل الخاص بك جاهز 💜")
+          ? l("Your app code is ready 💜", "كود التطبيق الخاص بك جاهز 💜")
           : l("Your code is reserved. See you at the branch 💜", "تم حجز كودك. نراك في الفرع 💜"),
         "success"
       );
@@ -8772,7 +8772,7 @@ async function handleClick(event) {
     const isSelfRedeem = Boolean(campaign?.selfRedeemCode);
     if (!window.confirm(
       isSelfRedeem
-        ? l("Cancel this participation? The delivery code will be blocked and cannot be assigned again.", "هل تريد إلغاء هذه المشاركة؟ سيتم حظر كود التوصيل ولن يتم تخصيصه مرة أخرى.")
+        ? l("Cancel this participation? The app code will be blocked and cannot be assigned again.", "هل تريد إلغاء هذه المشاركة؟ سيتم حظر كود التطبيق ولن يتم تخصيصه مرة أخرى.")
         : l("Cancel this participation and release the reserved code?", "هل تريد إلغاء هذه المشاركة وإعادة الكود المحجوز؟")
     )) return;
     target.disabled = true;
@@ -8781,7 +8781,7 @@ async function handleClick(event) {
         `/api/participants/${target.dataset.participantId}/cancel`,
         {},
         isSelfRedeem
-          ? l("Participation canceled and delivery code blocked.", "تم إلغاء المشاركة وحظر كود التوصيل.")
+          ? l("Participation canceled and app code blocked.", "تم إلغاء المشاركة وحظر كود التطبيق.")
           : l("Participation canceled and code released.", "تم إلغاء المشاركة وإعادة الكود."),
         { rethrow: true }
       );
