@@ -174,6 +174,7 @@ Handles:
 - manage all users
 - approve or reject influencers
 - invite influencers
+- promote active campaign managers to admins
 - create and manage campaigns
 - access all dashboards and reports
 - update system-wide settings

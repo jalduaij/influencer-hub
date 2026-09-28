@@ -1703,6 +1703,7 @@ function auditActionLabel(action) {
     "user.password_forgot_requested": l("Requested reset link", "طلب رابط إعادة التعيين"),
     "user.reset_link_generated": l("Generated reset link", "ولّد رابط إعادة التعيين"),
     "user.manager_created": l("Created manager", "أنشأ مديراً"),
+    "user.manager_promoted_to_admin": l("Promoted manager to admin", "رقّى مدير الحملات إلى مدير نظام"),
     "campaign.codes_uploaded": l("Uploaded codes", "رفع الأكواد"),
     "campaign.codes_reset": l("Reset codes", "أعاد ضبط الأكواد"),
     "campaign.joined": l("Joined campaign", "انضم إلى الحملة"),
@@ -5868,6 +5869,18 @@ function renderManagerEditPage() {
               </form>
             ` : ""}
           </article>
+          <article class="list-card">
+            <strong>${l("Promote to admin", "الترقية إلى مدير نظام")}</strong>
+            <p>${l(
+              "Grant this manager full system access. Their login, profile, and campaign history will stay the same. This cannot be undone from the dashboard.",
+              "امنح هذا المدير صلاحية كاملة للنظام. سيبقى تسجيل الدخول والملف وسجل الحملات كما هو. لا يمكن التراجع عن ذلك من لوحة التحكم."
+            )}</p>
+            ${manager.status === "active"
+              ? `<div class="row-wrap" style="margin-top: 12px;">
+                  <button type="button" class="secondary" data-action="promote-manager-to-admin" data-manager-id="${manager.id}" data-manager-name="${escapeHtml(manager.fullName)}">${l("Promote to admin", "الترقية إلى مدير نظام")}</button>
+                </div>`
+              : `<p class="compact status-strip-danger" style="margin-top: 12px;">${l("Reactivate this manager before promotion.", "أعد تفعيل هذا المدير قبل الترقية.")}</p>`}
+          </article>
         </div>
       </section>
     </section>
@@ -8468,6 +8481,24 @@ async function handleClick(event) {
   }
 
   if (action === "back-to-managers") {
+    state.passwordEditorUserId = null;
+    navigateTo("managers", { selectedManagerId: null });
+    return;
+  }
+
+  if (action === "promote-manager-to-admin") {
+    const managerId = Number(target.dataset.managerId);
+    const managerName = target.dataset.managerName || l("this manager", "هذا المدير");
+    if (!window.confirm(l(
+      `Promote ${managerName} to admin? This grants full system access and cannot be undone from the dashboard.`,
+      `هل تريد ترقية ${managerName} إلى مدير نظام؟ سيمنحه ذلك صلاحية كاملة ولا يمكن التراجع عنه من لوحة التحكم.`
+    ))) return;
+    await mutateAndRefresh(
+      `/api/managers/${managerId}/promote-to-admin`,
+      {},
+      l(`${managerName} is now an admin.`, `أصبح ${managerName} مدير نظام.`),
+      { rethrow: true }
+    );
     state.passwordEditorUserId = null;
     navigateTo("managers", { selectedManagerId: null });
     return;

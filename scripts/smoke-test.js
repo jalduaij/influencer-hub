@@ -194,6 +194,116 @@ async function run() {
     const smokeTag = payload.tags.find((tag) => tag.status === "active")?.value;
     assert(smokeTag, "Expected at least one active admin-controlled tag for smoke coverage.");
 
+    const promotionStamp = Date.now();
+    const promotableManager = {
+      fullName: "Smoke Promotable Manager",
+      email: `smoke-promote-${promotionStamp}@example.com`,
+      password: "PickSmoke1",
+      mobile: "95551234",
+    };
+    const createPromotableManager = await fetch(`${baseUrl}/api/managers`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(promotableManager),
+    });
+    assert(createPromotableManager.ok, `Promotable manager creation failed with status ${createPromotableManager.status}.`);
+    const storeWithPromotableManager = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const promotableManagerId = storeWithPromotableManager.users.find((user) => user.email === promotableManager.email)?.id;
+    assert(promotableManagerId, "Could not locate the promotable manager in the store.");
+
+    const promotableManagerLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ email: promotableManager.email, password: promotableManager.password }),
+    });
+    assert(promotableManagerLogin.ok, `Promotable manager login failed with status ${promotableManagerLogin.status}.`);
+    const promotableManagerCookie = promotableManagerLogin.headers.get("set-cookie");
+    assert(promotableManagerCookie, "Promotable manager login did not return a session cookie.");
+
+    const forbiddenSelfPromotion = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/promote-to-admin`, {
+      method: "POST",
+      headers: {
+        Cookie: promotableManagerCookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    assert(forbiddenSelfPromotion.status === 403, `Campaign managers must not promote accounts, got ${forbiddenSelfPromotion.status}.`);
+
+    const suspendPromotableManager = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "suspended" }),
+    });
+    assert(suspendPromotableManager.ok, `Suspending the promotable manager failed with status ${suspendPromotableManager.status}.`);
+
+    const suspendedPromotion = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/promote-to-admin`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    assert(suspendedPromotion.status === 409, `Suspended manager promotion should return 409, got ${suspendedPromotion.status}.`);
+
+    const reactivatePromotableManager = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/update`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert(reactivatePromotableManager.ok, `Reactivating the promotable manager failed with status ${reactivatePromotableManager.status}.`);
+
+    const promoteManager = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/promote-to-admin`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    assert(promoteManager.ok, `Manager promotion failed with status ${promoteManager.status}.`);
+    const promotedPayload = await promoteManager.json();
+    assert(promotedPayload.user?.role === "admin", "Promotion response should return the manager with the admin role.");
+
+    const promotedSessionBootstrap = await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Cookie: promotableManagerCookie.split(";")[0] },
+    }).then((response) => response.json());
+    assert(promotedSessionBootstrap.currentUser?.role === "admin", "The manager's existing session should receive admin access after promotion.");
+    assert(Array.isArray(promotedSessionBootstrap.auditEvents), "The promoted admin should receive the admin audit log.");
+    assert(
+      promotedSessionBootstrap.auditEvents.some(
+        (event) => event.action === "user.manager_promoted_to_admin" && event.targetId === promotableManagerId
+      ),
+      "Manager promotion should create an audit event."
+    );
+
+    const repeatedPromotion = await fetch(`${baseUrl}/api/managers/${promotableManagerId}/promote-to-admin`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    assert(repeatedPromotion.status === 409, `Repeated manager promotion should return 409, got ${repeatedPromotion.status}.`);
+
     const adminProfileUpdate = await fetch(`${baseUrl}/api/profile/update`, {
       method: "POST",
       headers: {

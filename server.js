@@ -3402,6 +3402,33 @@ async function handleUpdateManager(req, res, store, actor, userId) {
   return sendJson(res, 200, { ok: true });
 }
 
+async function handlePromoteManagerToAdmin(req, res, store, actor, userId) {
+  if (!requireRole(actor, ["admin"])) return sendJson(res, 403, { error: "Forbidden" });
+  const user = userById(store, userId);
+  if (!user) return sendJson(res, 404, { error: "Campaign manager not found." });
+  if (user.role !== "campaign_manager") {
+    return sendJson(res, 409, { error: "Only campaign managers can be promoted to admin." });
+  }
+  if (user.status !== "active") {
+    return sendJson(res, 409, { error: "Reactivate this campaign manager before promoting them to admin." });
+  }
+
+  const promotedAt = new Date().toISOString();
+  user.role = "admin";
+  user.promotedAt = promotedAt;
+  user.promotedByUserId = actor.id;
+  appendAuditEvent(store, actor, "user.manager_promoted_to_admin", "user", user.id, {
+    email: user.email,
+    fromRole: "campaign_manager",
+    toRole: "admin",
+  });
+  await writeStore(store);
+  return sendJson(res, 200, {
+    ok: true,
+    user: sanitizeUser(user),
+  });
+}
+
 async function handleCreateCity(req, res, store, actor) {
   return sendJson(res, 410, {
     error: "store_cities_retired",
@@ -4609,6 +4636,11 @@ async function requestHandler(req, res) {
   if (req.method === "POST" && managerUpdateMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleUpdateManager(req, res, store, actor, managerUpdateMatch[0]);
+  }
+  const managerPromoteMatch = routeMatch(pathname, /^\/api\/managers\/(\d+)\/promote-to-admin$/);
+  if (req.method === "POST" && managerPromoteMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handlePromoteManagerToAdmin(req, res, store, actor, managerPromoteMatch[0]);
   }
   if (req.method === "POST" && pathname === "/api/cities") {
     return handleCreateCity(req, res, store, actor);

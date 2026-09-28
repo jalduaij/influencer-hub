@@ -73,6 +73,7 @@ The app currently supports:
 - member signup with required residential cascade, category checklist, optional DOB, optional shipping address, and Terms & Conditions consent
 - admin approval and member management
 - admin-on-behalf member profile editing
+- admin-only promotion of active campaign managers to administrators
 - campaign creation, editing, duplication, targeting, banner upload, and code CSV upload
 - branch management with address-reference location cascade
 - master data for categories, platforms, tags, and Terms & Conditions
