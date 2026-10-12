@@ -415,6 +415,12 @@ async function run() {
         clientSource.includes('data-action="copy-delivery-code"'),
       "Campaign and member UI should include the bilingual app-code self-redemption controls."
     );
+    assert(
+      clientSource.includes('data-action="export-campaign-subscribers"') &&
+        clientSource.includes("Export broadcast CSV") &&
+        clientSource.includes("subscribers.csv?locale="),
+      "Campaign management UI should include the localized subscriber broadcast CSV action."
+    );
     assert(stylesSource.includes(".badge--muted"), "Hidden campaign badges should include the muted badge styling.");
     const campaignDeepLinkSource = clientSource.match(/function campaignDeepLink\(campaignId, baseUrl = window\.location\.origin\) \{[\s\S]*?\n\}/)?.[0];
     const defaultCampaignShareBodySource = clientSource.match(/function defaultCampaignShareBody\(campaign\) \{[\s\S]*?\n\}/)?.[0];
@@ -1200,6 +1206,94 @@ async function run() {
     const proofNotification = (afterJoinTwo.notifications || []).find((item) => item.id === "my-proof-1");
     assert(proofNotification?.title?.en && proofNotification?.title?.ar, "Notifications should expose bilingual titles.");
     assert(proofNotification?.body?.en && proofNotification?.body?.ar, "Notifications should expose bilingual bodies.");
+
+    const storeForBroadcastExport = JSON.parse(await fs.readFile(storePath, "utf8"));
+    const broadcastMember = storeForBroadcastExport.users.find((user) => user.id === freshUsers[0].id);
+    assert(broadcastMember?.mobile, "Expected the subscribed smoke member to have a mobile number.");
+    const managerBroadcastExport = await fetch(
+      `${baseUrl}/api/campaigns/${freshCampaignId}/subscribers.csv?locale=en`,
+      { headers: { Cookie: nasserCookie.split(";")[0] } }
+    );
+    assert(managerBroadcastExport.ok, `Campaign manager broadcast CSV export failed with status ${managerBroadcastExport.status}.`);
+    assert(
+      String(managerBroadcastExport.headers.get("content-type") || "").includes("text/csv"),
+      "Campaign subscriber export should return text/csv."
+    );
+    assert(
+      String(managerBroadcastExport.headers.get("content-disposition") || "").includes(
+        `pick-campaign-${freshCampaignId}-broadcast.csv`
+      ),
+      "Campaign subscriber export should include the campaign-specific broadcast filename."
+    );
+    const managerBroadcastBody = await managerBroadcastExport.text();
+    assert(
+      managerBroadcastBody.startsWith("mobile,name,message"),
+      "Campaign subscriber export should use the mobile, name, and message headers."
+    );
+    assert(
+      managerBroadcastBody.includes(`${broadcastMember.mobile},${broadcastMember.fullName}`),
+      "Campaign subscriber export should contain the active subscriber's international mobile and full name."
+    );
+    assert(
+      managerBroadcastBody.includes("Hi Smoke 💜") &&
+        managerBroadcastBody.includes("Custom body for smoke") &&
+        managerBroadcastBody.includes(`Open: ${baseUrl}/?campaign=${freshCampaignId}`),
+      "Campaign subscriber export should contain the personalized campaign message and deep link."
+    );
+    assert(
+      managerBroadcastBody.split(broadcastMember.mobile).length - 1 === 1,
+      "Canceled historical participations must not duplicate a member in the broadcast export."
+    );
+    const arabicBroadcastExport = await fetch(
+      `${baseUrl}/api/campaigns/${freshCampaignId}/subscribers.csv?locale=ar`,
+      { headers: { Cookie: nasserCookie.split(";")[0] } }
+    );
+    const arabicBroadcastBody = await arabicBroadcastExport.text();
+    assert(
+      arabicBroadcastExport.ok &&
+        arabicBroadcastBody.includes("مرحبا Smoke 💜") &&
+        arabicBroadcastBody.includes(`افتح: ${baseUrl}/?campaign=${freshCampaignId}`),
+      "Arabic campaign subscriber export should localize the personalized greeting and deep-link label."
+    );
+
+    const forbiddenBroadcastExport = await fetch(
+      `${baseUrl}/api/campaigns/${freshCampaignId}/subscribers.csv?locale=en`,
+      { headers: { Cookie: influencerCookie.split(";")[0] } }
+    );
+    assert(
+      forbiddenBroadcastExport.status === 403,
+      `Members must not export campaign subscribers, got ${forbiddenBroadcastExport.status}.`
+    );
+
+    const suspendBroadcastMember = await fetch(`${baseUrl}/api/users/${broadcastMember.id}/status`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "suspended" }),
+    });
+    assert(suspendBroadcastMember.ok, `Suspending the broadcast member failed with status ${suspendBroadcastMember.status}.`);
+    const suspendedBroadcastExport = await fetch(
+      `${baseUrl}/api/campaigns/${freshCampaignId}/subscribers.csv?locale=en`,
+      { headers: { Cookie: cookie.split(";")[0] } }
+    );
+    assert(suspendedBroadcastExport.ok, `Suspended-member broadcast export failed with status ${suspendedBroadcastExport.status}.`);
+    assert(
+      (await suspendedBroadcastExport.text()).replace(/^\uFEFF/, "").trim() === "mobile,name,message",
+      "A suspended subscriber should produce a header-only campaign export."
+    );
+    const reactivateBroadcastMember = await fetch(`${baseUrl}/api/users/${broadcastMember.id}/status`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie.split(";")[0],
+        Origin: baseUrl,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "active" }),
+    });
+    assert(reactivateBroadcastMember.ok, `Reactivating the broadcast member failed with status ${reactivateBroadcastMember.status}.`);
 
     const hideLiveCampaign = await fetch(`${baseUrl}/api/campaigns/${freshCampaignId}/update`, {
       method: "POST",

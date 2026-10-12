@@ -5117,11 +5117,15 @@ function renderCampaignViewPage() {
           `}
         ${renderCampaignOffer(campaign)}
         <article class="note-card">
-          <div class="row">
+          <div class="row" style="flex-wrap: wrap;">
             <strong>${l("WhatsApp post text", "نص واتساب")}</strong>
-            <button type="button" class="secondary button-small" data-action="copy-whatsapp-text" data-campaign-id="${campaign.id}">${l("Copy WhatsApp text", "نسخ نص واتساب")}</button>
+            <div class="row-wrap">
+              <button type="button" class="secondary button-small" data-action="copy-whatsapp-text" data-campaign-id="${campaign.id}">${l("Copy WhatsApp text", "نسخ نص واتساب")}</button>
+              <button type="button" class="button-small" data-action="export-campaign-subscribers" data-campaign-id="${campaign.id}">${l("Export broadcast CSV", "تصدير CSV للبث")}</button>
+            </div>
           </div>
           <pre class="compact" style="white-space: pre-wrap; margin-top: 12px;">${escapeHtml(generateCampaignShareText(campaign))}</pre>
+          <p class="panel-subtitle">${l("Includes active members subscribed to this campaign, with mobile, name, and a personalized message.", "يتضمن الأعضاء النشطين المشتركين في هذه الحملة مع رقم الهاتف والاسم ورسالة مخصصة.")}</p>
         </article>
         <article class="note-card" style="margin-top: 14px;">
           <div class="row report-toolbar-head">
@@ -8661,6 +8665,13 @@ async function handleClick(event) {
     const cid = target.dataset.campaignId;
     if (!cid) return;
     window.location.href = `/api/reports/export.csv?tab=submissions&campaignId=${encodeURIComponent(cid)}`;
+    return;
+  }
+
+  if (action === "export-campaign-subscribers") {
+    const cid = target.dataset.campaignId;
+    if (!cid) return;
+    window.location.href = `/api/campaigns/${encodeURIComponent(cid)}/subscribers.csv?locale=${encodeURIComponent(state.locale)}`;
     return;
   }
 

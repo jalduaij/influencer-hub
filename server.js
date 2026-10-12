@@ -2041,6 +2041,111 @@ function buildCsv(headers, rows) {
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
+function formatCampaignBroadcastDate(value, locale = "en") {
+  if (!value) return "-";
+  try {
+    return new Intl.DateTimeFormat(locale === "ar" ? "ar-KW" : "en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(value));
+  } catch (error) {
+    return String(value);
+  }
+}
+
+function defaultCampaignBroadcastBody(store, campaign, locale = "en") {
+  const arabic = locale === "ar";
+  const titleEn = campaign.titleEn || "PICK";
+  const titleAr = campaign.titleAr || campaign.titleEn || "PICK";
+  const offer = campaign.offerDescription || "";
+  const branchSummary =
+    campaign.branchMode === "all"
+      ? arabic
+        ? "جميع الأفرع"
+        : "All branches"
+      : (campaign.branchIds || [])
+          .map((branchId) => {
+            const branch = branchById(store, branchId);
+            return arabic ? branch?.nameAr || branch?.nameEn || "" : branch?.nameEn || branch?.nameAr || "";
+          })
+          .filter(Boolean)
+          .join(arabic ? "، " : ", ");
+  const visitDate = formatCampaignBroadcastDate(campaign.visitDeadline, locale);
+  const submitDate = formatCampaignBroadcastDate(campaign.submissionDeadline, locale);
+
+  if (arabic) {
+    return [
+      `من نادي بك: ${titleAr}`,
+      offer ? `العرض: ${offer}` : "",
+      `الأفرع: ${branchSummary}`,
+      `الزيارة قبل: ${visitDate}`,
+      `التسليم قبل: ${submitDate}`,
+      "",
+      "أكّد اهتمامك من نادي بك لحجز كود خاص بك.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return [
+    `From PICK Social Club: ${titleEn}`,
+    offer ? `Offer: ${offer}` : "",
+    `Branches: ${branchSummary}`,
+    `Visit by: ${visitDate}`,
+    `Submit by: ${submitDate}`,
+    "",
+    "Confirm interest in PICK Social Club to reserve your private one-time code.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function campaignBroadcastMessage(store, campaign, user, options = {}) {
+  const locale = options.locale === "ar" ? "ar" : "en";
+  const recipient = text(user?.fullName).split(/\s+/)[0];
+  const greeting =
+    locale === "ar"
+      ? recipient
+        ? `مرحبا ${recipient} \u{1F49C}`
+        : "مرحبا \u{1F49C}"
+      : recipient
+        ? `Hi ${recipient} \u{1F49C}`
+        : "Hi \u{1F49C}";
+  const body = text(campaign.whatsappMessage) || defaultCampaignBroadcastBody(store, campaign, locale);
+  const linkLabel = locale === "ar" ? "افتح" : "Open";
+  const deepLink = `${normalizeBaseUrl(options.baseUrl || APP_BASE_URL)}/?campaign=${campaign.id}`;
+  return `${greeting}\n\n${body}\n\n${linkLabel}: ${deepLink}`;
+}
+
+function campaignSubscriberBroadcastCsv(store, campaign, options = {}) {
+  const seenUserIds = new Set();
+  const users = store.participants
+    .filter(
+      (participant) =>
+        participant.campaignId === campaign.id &&
+        participant.status !== "canceled" &&
+        participant.source !== "offline"
+    )
+    .map((participant) => userById(store, participant.influencerId))
+    .filter((user) => {
+      if (!user || user.role !== "influencer" || user.status !== "active") return false;
+      if (!normalizeKuwaitMobile(user.mobile) || seenUserIds.has(user.id)) return false;
+      seenUserIds.add(user.id);
+      return true;
+    })
+    .sort((left, right) => text(left.fullName).localeCompare(text(right.fullName)));
+
+  return buildCsv(
+    ["mobile", "name", "message"],
+    users.map((user) => [
+      normalizeKuwaitMobile(user.mobile),
+      user.fullName || "",
+      campaignBroadcastMessage(store, campaign, user, options),
+    ])
+  );
+}
+
 function reportBundleForCampaigns(store, campaigns) {
   const campaignRows = campaigns.map((campaign) => {
     const participants = store.participants.filter((participant) => participant.campaignId === campaign.id);
@@ -2579,6 +2684,20 @@ function handleExportReportCsv(req, res, store, actor, searchParams) {
       ? `pick-submissions-campaign-${campaignId}.csv`
       : `pick-${tab}-report.csv`;
   return sendCsv(res, fileName, body);
+}
+
+function handleExportCampaignSubscribersCsv(req, res, store, actor, campaignId, searchParams) {
+  if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
+  const campaign = campaignById(store, campaignId);
+  if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
+  if (!canManageCampaign(actor, campaign)) return sendJson(res, 403, { error: "Forbidden" });
+
+  const locale = text(searchParams.get("locale")).toLowerCase() === "ar" ? "ar" : "en";
+  const body = campaignSubscriberBroadcastCsv(store, campaign, {
+    locale,
+    baseUrl: APP_BASE_URL,
+  });
+  return sendCsv(res, `pick-campaign-${campaign.id}-broadcast.csv`, body);
 }
 
 function publicMetadata(store) {
@@ -4623,6 +4742,18 @@ async function requestHandler(req, res) {
   if (req.method === "GET" && pathname === "/api/reports/export.csv") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleExportReportCsv(req, res, store, actor, url.searchParams);
+  }
+  const campaignSubscribersExportMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/subscribers\.csv$/);
+  if (req.method === "GET" && campaignSubscribersExportMatch) {
+    if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
+    return handleExportCampaignSubscribersCsv(
+      req,
+      res,
+      store,
+      actor,
+      campaignSubscribersExportMatch[0],
+      url.searchParams
+    );
   }
   if (req.method === "POST" && pathname === "/api/profile/update") {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
