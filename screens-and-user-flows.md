@@ -174,7 +174,7 @@ Shows:
 - submitted influencers
 - uploaded and remaining code counts
 - export-ready table
-- broadcast CSV export for active subscribed members, including international mobile, name, and personalized campaign message
+- broadcast CSV export for all active matching members who have not joined, including international mobile, name, and personalized campaign invitation
 
 ### 5. Code Upload
 

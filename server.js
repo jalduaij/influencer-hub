@@ -2118,21 +2118,18 @@ function campaignBroadcastMessage(store, campaign, user, options = {}) {
   return `${greeting}\n\n${body}\n\n${linkLabel}: ${deepLink}`;
 }
 
-function campaignSubscriberBroadcastCsv(store, campaign, options = {}) {
-  const seenUserIds = new Set();
-  const users = store.participants
-    .filter(
-      (participant) =>
-        participant.campaignId === campaign.id &&
-        participant.status !== "canceled" &&
-        participant.source !== "offline"
-    )
-    .map((participant) => userById(store, participant.influencerId))
+function campaignApplicableMemberBroadcastCsv(store, campaign, options = {}) {
+  const users = store.users
     .filter((user) => {
       if (!user || user.role !== "influencer" || user.status !== "active") return false;
-      if (!normalizeKuwaitMobile(user.mobile) || seenUserIds.has(user.id)) return false;
-      seenUserIds.add(user.id);
-      return true;
+      if (!normalizeKuwaitMobile(user.mobile)) return false;
+      if (!campaignMatchesInfluencer(store, campaign, user)) return false;
+      return !store.participants.some(
+        (participant) =>
+          participant.influencerId === user.id &&
+          participant.campaignId === campaign.id &&
+          participant.status !== "canceled"
+      );
     })
     .sort((left, right) => text(left.fullName).localeCompare(text(right.fullName)));
 
@@ -2686,18 +2683,18 @@ function handleExportReportCsv(req, res, store, actor, searchParams) {
   return sendCsv(res, fileName, body);
 }
 
-function handleExportCampaignSubscribersCsv(req, res, store, actor, campaignId, searchParams) {
+function handleExportCampaignApplicableMembersCsv(req, res, store, actor, campaignId, searchParams) {
   if (!requireRole(actor, ["admin", "campaign_manager"])) return sendJson(res, 403, { error: "Forbidden" });
   const campaign = campaignById(store, campaignId);
   if (!campaign) return sendJson(res, 404, { error: "Campaign not found." });
   if (!canManageCampaign(actor, campaign)) return sendJson(res, 403, { error: "Forbidden" });
 
   const locale = text(searchParams.get("locale")).toLowerCase() === "ar" ? "ar" : "en";
-  const body = campaignSubscriberBroadcastCsv(store, campaign, {
+  const body = campaignApplicableMemberBroadcastCsv(store, campaign, {
     locale,
     baseUrl: APP_BASE_URL,
   });
-  return sendCsv(res, `pick-campaign-${campaign.id}-broadcast.csv`, body);
+  return sendCsv(res, `pick-campaign-${campaign.id}-applicable-members.csv`, body);
 }
 
 function publicMetadata(store) {
@@ -4743,15 +4740,15 @@ async function requestHandler(req, res) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
     return handleExportReportCsv(req, res, store, actor, url.searchParams);
   }
-  const campaignSubscribersExportMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/subscribers\.csv$/);
-  if (req.method === "GET" && campaignSubscribersExportMatch) {
+  const campaignApplicableMembersExportMatch = routeMatch(pathname, /^\/api\/campaigns\/(\d+)\/applicable-members\.csv$/);
+  if (req.method === "GET" && campaignApplicableMembersExportMatch) {
     if (!actor) return sendJson(res, 401, { error: "Unauthorized" });
-    return handleExportCampaignSubscribersCsv(
+    return handleExportCampaignApplicableMembersCsv(
       req,
       res,
       store,
       actor,
-      campaignSubscribersExportMatch[0],
+      campaignApplicableMembersExportMatch[0],
       url.searchParams
     );
   }

@@ -1565,6 +1565,7 @@ function pendingApprovals() {
 }
 
 function campaignMatchesInfluencer(campaign, influencer) {
+  if (campaign.hiddenFromInfluencers) return false;
   if (campaign.status !== "live") return false;
   if (campaign.visitDeadline && localDateString(campaign.visitDeadline) < localDateString()) return false;
   if (influencer.status !== "active") return false;
@@ -4991,7 +4992,8 @@ function renderCampaignEditPage() {
 function renderCampaignViewPage() {
   const campaign = selectedCampaign();
   if (!campaign) return renderEmptyCampaignPage(l("No campaign selected.", "لا توجد حملة محددة."));
-  const whatsappEligible = eligibleInfluencersForCampaign(campaign).slice(0, 50);
+  const allWhatsappEligible = eligibleInfluencersForCampaign(campaign);
+  const whatsappEligible = allWhatsappEligible.slice(0, 50);
   const participants = campaignParticipants(campaign.id);
   const submittedRowsBase = participants
     .filter((participant) => ["submitted", "completed"].includes(participant.status))
@@ -5121,17 +5123,20 @@ function renderCampaignViewPage() {
             <strong>${l("WhatsApp post text", "نص واتساب")}</strong>
             <div class="row-wrap">
               <button type="button" class="secondary button-small" data-action="copy-whatsapp-text" data-campaign-id="${campaign.id}">${l("Copy WhatsApp text", "نسخ نص واتساب")}</button>
-              <button type="button" class="button-small" data-action="export-campaign-subscribers" data-campaign-id="${campaign.id}">${l("Export broadcast CSV", "تصدير CSV للبث")}</button>
+              <button type="button" class="button-small" data-action="export-campaign-applicable-members" data-campaign-id="${campaign.id}">${l("Export broadcast CSV", "تصدير CSV للبث")}</button>
             </div>
           </div>
           <pre class="compact" style="white-space: pre-wrap; margin-top: 12px;">${escapeHtml(generateCampaignShareText(campaign))}</pre>
-          <p class="panel-subtitle">${l("Includes active members subscribed to this campaign, with mobile, name, and a personalized message.", "يتضمن الأعضاء النشطين المشتركين في هذه الحملة مع رقم الهاتف والاسم ورسالة مخصصة.")}</p>
+          <p class="panel-subtitle">${l("Includes every active member this campaign applies to who has not joined yet, with mobile, name, and a personalized invitation.", "يتضمن جميع الأعضاء النشطين الذين تنطبق عليهم هذه الحملة ولم ينضموا إليها بعد، مع رقم الهاتف والاسم ودعوة مخصصة.")}</p>
         </article>
         <article class="note-card" style="margin-top: 14px;">
           <div class="row report-toolbar-head">
             <div>
               <strong>${l("Send to specific influencers", "إرسال لمؤثرين محددين")}</strong>
-              <p class="panel-subtitle">${l("Click a member to open WhatsApp with the share message and deep link pre-filled.", "اضغط على العضو لفتح واتساب مع رسالة المشاركة ورابط الانتقال.")}</p>
+              <p class="panel-subtitle">${l(
+                `Click a member to open WhatsApp with the invitation pre-filled. Showing up to 50 of ${allWhatsappEligible.length}; the CSV includes everyone applicable.`,
+                `اضغط على العضو لفتح واتساب مع الدعوة جاهزة. يتم عرض ما يصل إلى 50 من أصل ${allWhatsappEligible.length}؛ ويشمل ملف CSV جميع الأعضاء الذين تنطبق عليهم الحملة.`
+              )}</p>
             </div>
           </div>
           <div class="row-wrap" style="gap: 8px;">
@@ -8668,10 +8673,10 @@ async function handleClick(event) {
     return;
   }
 
-  if (action === "export-campaign-subscribers") {
+  if (action === "export-campaign-applicable-members") {
     const cid = target.dataset.campaignId;
     if (!cid) return;
-    window.location.href = `/api/campaigns/${encodeURIComponent(cid)}/subscribers.csv?locale=${encodeURIComponent(state.locale)}`;
+    window.location.href = `/api/campaigns/${encodeURIComponent(cid)}/applicable-members.csv?locale=${encodeURIComponent(state.locale)}`;
     return;
   }
 

@@ -257,7 +257,7 @@ Handles:
 - `PATCH /api/campaigns/:id`
 - `POST /api/campaigns/:id/codes/upload`
 - `GET /api/campaigns/:id/codes`
-- `GET /api/campaigns/:id/subscribers.csv`
+- `GET /api/campaigns/:id/applicable-members.csv`
 - `POST /api/campaigns/:id/publish`
 - `POST /api/campaigns/:id/close`
 
